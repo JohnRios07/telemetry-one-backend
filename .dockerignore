@@ -1,0 +1,9 @@
+.git
+.gitignore
+testdata/
+*.md
+Dockerfile
+.dockerignore
+compose.testing.yaml
+.env*
+.github/
