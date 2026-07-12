@@ -1,0 +1,145 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://telemetry-one.local/schemas/track-catalog.v1.schema.json",
+  "title": "Telemetry One Track Catalog v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["catalogVersion", "tracks"],
+  "properties": {
+    "catalogVersion": { "const": "telemetry-one.track-catalog.v1" },
+    "generatedBy": { "type": "string" },
+    "notes": { "type": "string" },
+    "tracks": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/track" }
+    }
+  },
+  "$defs": {
+    "track": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "layouts"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "country": { "type": "string" },
+        "sources": {
+          "description": "Optional in the structural schema for synthetic/dev fixtures; required by source-of-truth validation before track names may be emitted.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/source" }
+        },
+        "layouts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/layout" }
+        }
+      }
+    },
+    "layout": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "lengthMeters", "sectors", "corners"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "lengthMeters": { "type": "number", "exclusiveMinimum": 0 },
+        "sources": {
+          "description": "Optional in the structural schema for synthetic/dev fixtures; required by source-of-truth validation before layout names may be emitted.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/source" }
+        },
+        "sectors": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/sector" }
+        },
+        "corners": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/corner" }
+        },
+        "centerLine": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "$ref": "#/$defs/point" }
+        },
+        "fingerprint": { "$ref": "#/$defs/fingerprint" }
+      }
+    },
+    "sector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["number", "name", "startMeters", "endMeters"],
+      "properties": {
+        "number": { "type": "integer", "minimum": 0 },
+        "name": { "type": "string", "minLength": 1 },
+        "startMeters": { "type": "number", "minimum": 0 },
+        "endMeters": { "type": "number", "minimum": 0 },
+        "sources": {
+          "description": "Optional in the structural schema for synthetic/dev fixtures; required by source-of-truth validation before sector names may be emitted.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/source" }
+        }
+      }
+    },
+    "corner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "number", "name", "definitionMode", "startMeters", "apexMeters", "endMeters"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "number": { "type": "integer", "minimum": 0 },
+        "name": { "type": "string", "minLength": 1 },
+        "definitionMode": {
+          "description": "MVP corner ranges and names are manually curated catalog metadata only. auto_detected_future is reserved for a later contract and is not accepted as authoritative by the current Go validator or corner engines.",
+          "type": "string",
+          "enum": ["catalog_manual", "auto_detected_future"]
+        },
+        "startMeters": { "type": "number", "minimum": 0 },
+        "apexMeters": { "type": "number", "minimum": 0 },
+        "endMeters": { "type": "number", "minimum": 0 },
+        "direction": { "type": "string" },
+        "radiusMeters": { "type": "number", "minimum": 0 },
+        "severity": { "type": "string" },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "sources": {
+          "description": "Optional in the structural schema for synthetic/dev fixtures; required by source-of-truth validation before corner names may be emitted.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/source" }
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "sourceType", "retrievedAt"],
+      "properties": {
+        "url": { "type": "string", "format": "uri" },
+        "sourceType": { "type": "string", "minLength": 1 },
+        "retrievedAt": { "type": "string", "format": "date" },
+        "note": { "type": "string" }
+      }
+    },
+    "point": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["index", "x", "y", "z", "accumulatedMeters"],
+      "properties": {
+        "index": { "type": "integer", "minimum": 0 },
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "z": { "type": "number" },
+        "accumulatedMeters": { "type": "number", "minimum": 0 },
+        "headingRadians": { "type": "number" },
+        "curvature": { "type": "number" }
+      }
+    },
+    "fingerprint": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "normalizedLength": { "type": "number", "minimum": 0 },
+        "sampleCount": { "type": "integer", "minimum": 0 },
+        "signature": { "type": "array", "items": { "type": "number" } },
+        "elevationProfile": { "type": "array", "items": { "type": "number" } }
+      }
+    }
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "catalogVersion": "telemetry-one.track-catalog.v1",
+  "generatedBy": "telemetry-one synthetic dev fixture",
+  "notes": "Synthetic/dev-only catalog. This is not official Gran Turismo 7 metadata and must not be treated as real track or corner naming data.",
+  "tracks": [
+    {
+      "id": "synthetic_dev_track",
+      "name": "Synthetic Dev Track",
+      "country": "N/A",
+      "layouts": [
+        {
+          "id": "synthetic_dev_loop",
+          "name": "Synthetic Dev Loop",
+          "lengthMeters": 1300,
+          "centerLine": [
+            { "index": 0, "x": 0, "y": 0, "z": 0, "accumulatedMeters": 0 },
+            { "index": 1, "x": 400, "y": 0, "z": 0, "accumulatedMeters": 400 },
+            { "index": 2, "x": 400, "y": 250, "z": 0, "accumulatedMeters": 650 },
+            { "index": 3, "x": 0, "y": 250, "z": 0, "accumulatedMeters": 1050 },
+            { "index": 4, "x": 0, "y": 0, "z": 0, "accumulatedMeters": 1300 }
+          ],
+          "sectors": [
+            { "number": 1, "name": "Synthetic Sector 1", "startMeters": 0, "endMeters": 430 },
+            { "number": 2, "name": "Synthetic Sector 2", "startMeters": 430, "endMeters": 860 },
+            { "number": 3, "name": "Synthetic Sector 3", "startMeters": 860, "endMeters": 1300 }
+          ],
+          "corners": [
+            {
+              "id": "synthetic_dev_loop_t1",
+              "number": 1,
+              "name": "Synthetic Turn 1",
+              "definitionMode": "catalog_manual",
+              "startMeters": 100,
+              "apexMeters": 140,
+              "endMeters": 190,
+              "direction": "right",
+              "severity": "medium",
+              "confidence": 1
+            },
+            {
+              "id": "synthetic_dev_loop_t2",
+              "number": 2,
+              "name": "Synthetic Turn 2",
+              "definitionMode": "catalog_manual",
+              "startMeters": 520,
+              "apexMeters": 570,
+              "endMeters": 640,
+              "direction": "left",
+              "severity": "fast",
+              "confidence": 1
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

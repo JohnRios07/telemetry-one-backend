@@ -1,0 +1,96 @@
+{
+  "catalogVersion": "telemetry-one.track-catalog.v1",
+  "generatedBy": "telemetry-one manual official-source seed",
+  "notes": "Initial GT7 seed curated only from official Gran Turismo URLs. Corners and sectors are intentionally empty because the cited official pages do not provide corner-name catalogs or sector boundaries.",
+  "tracks": [
+    {
+      "id": "gt7_watkins_glen_international",
+      "name": "Watkins Glen International",
+      "country": "United States",
+      "sources": [
+        {
+          "url": "https://www.gran-turismo.com/us/news/00_5302315.html",
+          "sourceType": "official_gran_turismo_news",
+          "retrievedAt": "2026-07-12",
+          "note": "official Gran Turismo source"
+        }
+      ],
+      "layouts": [
+        {
+          "id": "gt7_watkins_glen_long_course",
+          "name": "Watkins Glen Long Course",
+          "lengthMeters": 5423,
+          "sources": [
+            {
+              "url": "https://www.gran-turismo.com/us/news/00_5302315.html",
+              "sourceType": "official_gran_turismo_news",
+              "retrievedAt": "2026-07-12",
+              "note": "official Gran Turismo source"
+            }
+          ],
+          "sectors": [],
+          "corners": []
+        }
+      ]
+    },
+    {
+      "id": "gt7_yas_marina_circuit",
+      "name": "Yas Marina Circuit",
+      "country": "United Arab Emirates",
+      "sources": [
+        {
+          "url": "https://www.gran-turismo.com/us/news/00_4185758.html",
+          "sourceType": "official_gran_turismo_news",
+          "retrievedAt": "2026-07-12",
+          "note": "official Gran Turismo source"
+        }
+      ],
+      "layouts": [
+        {
+          "id": "gt7_yas_marina_full_course",
+          "name": "Full Course",
+          "lengthMeters": 5281,
+          "sources": [
+            {
+              "url": "https://www.gran-turismo.com/us/news/00_4185758.html",
+              "sourceType": "official_gran_turismo_news",
+              "retrievedAt": "2026-07-12",
+              "note": "official Gran Turismo source"
+            }
+          ],
+          "sectors": [],
+          "corners": []
+        }
+      ]
+    },
+    {
+      "id": "gt7_circuit_gilles_villeneuve",
+      "name": "Circuit Gilles-Villeneuve",
+      "sources": [
+        {
+          "url": "https://www.gran-turismo.com/us/news/00_4185758.html",
+          "sourceType": "official_gran_turismo_news",
+          "retrievedAt": "2026-07-12",
+          "note": "official Gran Turismo source"
+        }
+      ],
+      "layouts": [
+        {
+          "id": "gt7_circuit_gilles_villeneuve_full_course",
+          "name": "Full Course",
+          "lengthMeters": 4361,
+          "sources": [
+            {
+              "url": "https://www.gran-turismo.com/us/news/00_4185758.html",
+              "sourceType": "official_gran_turismo_news",
+              "retrievedAt": "2026-07-12",
+              "note": "official Gran Turismo source"
+            }
+          ],
+          "sectors": [],
+          "corners": []
+        }
+      ]
+    }
+  ]
+}

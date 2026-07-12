@@ -1,0 +1,4 @@
+DROP TABLE IF EXISTS engineer_events;
+DROP TABLE IF EXISTS sessions;
+DROP TABLE IF EXISTS corners;
+DROP TABLE IF EXISTS tracks;
