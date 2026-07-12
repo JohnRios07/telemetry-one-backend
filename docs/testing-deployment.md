@@ -10,7 +10,7 @@
 │  │ Build & Push     │───────────────│─────▶│  ├── .env                          │
 │  │ to GHCR          │               │      │  └── (no git clone)                │
 │  └─────────────────┘                │      │                                    │
-│  ┌─────────────────┐                │      │  docker compose pull + up -d       │
+│  ┌─────────────────┐                │                                                  │  sudo docker compose pull + up -d       │
 │  │ Deploy over SSH  │───────────────│─────▶│  health check :8081/health         │
 │  └─────────────────┘                │      │                                    │
 └─────────────────────────────────────┘      └────────────────────────────────────┘
@@ -56,7 +56,9 @@ docker --version
 docker compose version
 ```
 
-The deploy user (`ubuntu`) **must have passwordless sudo** (`sudo ALL=(ALL) NOPASSWD:ALL` in `/etc/sudoers.d/90-cloud-init-users`). The first deploy uses it to create `/opt/telemetry-one/backend` and then `chown`s it to the deploy user so subsequent runs do not need sudo.
+The deploy user (`ubuntu`) **must have passwordless sudo** (`sudo ALL=(ALL) NOPASSWD:ALL` in `/etc/sudoers.d/90-cloud-init-users`) for both the initial `/opt` directory creation and all Docker commands (`sudo docker login`, `sudo docker compose pull`, `sudo docker compose up -d`).
+
+> If the user is later added to the `docker` group (via `usermod -aG docker "$USER"` followed by a new login), `sudo` can be dropped from the Docker commands — but the initial deploy will not benefit from this since the SSH session used by GitHub Actions does not re-login.
 
 ## First Deploy
 
@@ -66,7 +68,7 @@ The deploy user (`ubuntu`) **must have passwordless sudo** (`sudo ALL=(ALL) NOPA
    - Push to `ghcr.io/johnrios07/telemetry-one-backend:develop`.
    - SSH into the VPS and create `/opt/telemetry-one/backend/`.
    - Write `compose.testing.yaml` and a default `.env` if missing.
-   - Run `docker compose pull` and `docker compose up -d`.
+    - Run `sudo docker login`, `sudo docker compose pull`, and `sudo docker compose up -d`.
    - Wait for the health endpoint to respond.
 3. Verify: `curl http://<vps-ip>:8081/health`
 

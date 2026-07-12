@@ -88,9 +88,9 @@ jobs:
 
             cd "$DEPLOY_DIR"
             # Auth to GHCR via stdin so token never appears in process list
-            echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-            docker compose -f compose.testing.yaml pull
-            docker compose -f compose.testing.yaml up -d
+            echo "$GITHUB_TOKEN" | sudo docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+            sudo docker compose -f compose.testing.yaml pull
+            sudo docker compose -f compose.testing.yaml up -d
 
             echo "Waiting for health check..."
             for i in $(seq 1 12); do
