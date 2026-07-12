@@ -63,3 +63,7 @@ Phase 2.5 documents expected 20/30/60 Hz frame volumes, batch-size tradeoffs, re
 ## Track Catalog Metadata
 
 Phase 3.1 defines the versioned track/layout/sector/corner catalog format in `docs/track-catalog.md`, with a JSON Schema in `docs/track-catalog.schema.json`. The included `testdata/catalogs/synthetic_dev_catalog.json` fixture is synthetic/dev-only and is not official Gran Turismo 7 metadata.
+
+## Testing Deployment
+
+See [docs/testing-deployment.md](docs/testing-deployment.md) for the CI/CD architecture using GitHub Actions, GHCR, and SSH deployment to an ARM64 VPS.

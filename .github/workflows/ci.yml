@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [develop, master]
+  pull_request:
+    branches: [develop]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22.x"
+      - name: Check go.mod/go.sum consistency
+        run: |
+          go mod tidy
+          test -z "$(git status --porcelain -- go.mod go.sum)" || {
+            echo "ERROR: go.mod or go.sum is out of sync after 'go mod tidy'. Diff:"
+            git diff -- go.mod go.sum
+            echo "Untracked:"
+            git status --short -- go.mod go.sum
+            exit 1
+          }
+      - run: go test ./... -count=1
+      - run: go vet ./...
