@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -8,9 +9,14 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	"telemetry-one-backend/internal/ai"
 	"telemetry-one-backend/internal/config"
+	"telemetry-one-backend/internal/events"
+	"telemetry-one-backend/internal/sessions"
 	"telemetry-one-backend/internal/telemetry"
+	"telemetry-one-backend/internal/tracks"
 )
 
 func TestHealthEndpointWithoutPrefix(t *testing.T) {
@@ -157,6 +163,237 @@ func TestFormatTopReasonsUnderLimit(t *testing.T) {
 	result := formatTopReasons(summary)
 	if len(result) != 2 {
 		t.Fatalf("expected 2 reasons when under limit, got %d: %v", len(result), result)
+	}
+}
+
+func TestIngestFramesRejectsNonexistentSession(t *testing.T) {
+	sessionRepo := sessions.NewMemoryRepository()
+	handler := routesWithSessionRepository(
+		config.Config{Addr: ":0", Env: "test"},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		telemetry.NewFrameStore(100),
+		tracks.OfficialGT7SeedCatalog(),
+		events.NewStore(100, events.DedupOptions{}),
+		sessionRepo,
+	)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/session_nonexistent/frames", strings.NewReader(`{"frames":[{"timestampUnixMs":1,"speedMps":50,"rpm":5000,"gear":3,"throttle":0.5,"brake":0,"steering":0,"fuelLiters":30,"positionX":0,"positionY":0,"positionZ":0,"lapNumber":1,"currentLapMs":50000,"isOnTrack":true}]}`))
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d with body %s", http.StatusNotFound, recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), "session_not_found") {
+		t.Fatalf("expected session_not_found, got %s", recorder.Body.String())
+	}
+}
+
+func TestIngestFramesRejectsFinishedSession(t *testing.T) {
+	sessionRepo := sessions.NewMemoryRepository()
+	seedTestSession(t, sessionRepo, "session-finished")
+	if _, err := sessionRepo.End(context.Background(), "session-finished", time.Now()); err != nil {
+		t.Fatalf("finish session: %v", err)
+	}
+
+	handler := routesWithSessionRepository(
+		config.Config{Addr: ":0", Env: "test"},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		telemetry.NewFrameStore(100),
+		tracks.OfficialGT7SeedCatalog(),
+		events.NewStore(100, events.DedupOptions{}),
+		sessionRepo,
+	)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/session-finished/frames", strings.NewReader(`{"frames":[{"timestampUnixMs":1,"speedMps":50,"rpm":5000,"gear":3,"throttle":0.5,"brake":0,"steering":0,"fuelLiters":30,"positionX":0,"positionY":0,"positionZ":0,"lapNumber":1,"currentLapMs":50000,"isOnTrack":true}]}`))
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusConflict {
+		t.Fatalf("expected status %d, got %d with body %s", http.StatusConflict, recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), "session_finished") {
+		t.Fatalf("expected session_finished, got %s", recorder.Body.String())
+	}
+}
+
+func TestDetectTrackRejectsNonexistentSession(t *testing.T) {
+	sessionRepo := sessions.NewMemoryRepository()
+	handler := routesWithSessionRepository(
+		config.Config{Addr: ":0", Env: "test"},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		telemetry.NewFrameStore(100),
+		tracks.OfficialGT7SeedCatalog(),
+		events.NewStore(100, events.DedupOptions{}),
+		sessionRepo,
+	)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/session_nonexistent/track", nil)
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d with body %s", http.StatusNotFound, recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), "session_not_found") {
+		t.Fatalf("expected session_not_found, got %s", recorder.Body.String())
+	}
+}
+
+func TestDetectTrackAllowsFinishedSession(t *testing.T) {
+	sessionRepo := sessions.NewMemoryRepository()
+	seedTestSession(t, sessionRepo, "session-finished")
+	if _, err := sessionRepo.End(context.Background(), "session-finished", time.Now()); err != nil {
+		t.Fatalf("finish session: %v", err)
+	}
+
+	store := telemetry.NewFrameStore(40)
+	if err := store.Append(context.Background(), "session-finished", apiStraightCompletedLapFrames(5423, 32)); err != nil {
+		t.Fatalf("append frames: %v", err)
+	}
+
+	handler := routesWithSessionRepository(
+		config.Config{Addr: ":0", Env: "test"},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		store,
+		tracks.OfficialGT7SeedCatalog(),
+		events.NewStore(100, events.DedupOptions{}),
+		sessionRepo,
+	)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/session-finished/track", nil)
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d for finished session track, got %d with body %s", http.StatusOK, recorder.Code, recorder.Body.String())
+	}
+
+	var result tracks.DetectionResult
+	if err := json.Unmarshal(recorder.Body.Bytes(), &result); err != nil {
+		t.Fatalf("failed to decode detection result: %v", err)
+	}
+	if result.Status != tracks.DetectionStatusDetected {
+		t.Fatalf("expected detected status for finished session, got %q", result.Status)
+	}
+}
+
+func TestListEventsRejectsNonexistentSession(t *testing.T) {
+	sessionRepo := sessions.NewMemoryRepository()
+	handler := routesWithSessionRepository(
+		config.Config{Addr: ":0", Env: "test"},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		telemetry.NewFrameStore(100),
+		tracks.OfficialGT7SeedCatalog(),
+		events.NewStore(100, events.DedupOptions{}),
+		sessionRepo,
+	)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/session_nonexistent/events", nil)
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d with body %s", http.StatusNotFound, recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), "session_not_found") {
+		t.Fatalf("expected session_not_found, got %s", recorder.Body.String())
+	}
+}
+
+func TestListEventsAllowsFinishedSession(t *testing.T) {
+	sessionRepo := sessions.NewMemoryRepository()
+	seedTestSession(t, sessionRepo, "session-finished")
+	if _, err := sessionRepo.End(context.Background(), "session-finished", time.Now()); err != nil {
+		t.Fatalf("finish session: %v", err)
+	}
+
+	eventStore := events.NewStore(100, events.DedupOptions{})
+	seedAPIEvent(t, eventStore, apiEngineerEvent(func(event *events.EngineerEvent) {
+		event.SessionID = "session-finished"
+		event.EventID = "event-finished-1"
+	}))
+
+	handler := routesWithSessionRepository(
+		config.Config{Addr: ":0", Env: "test"},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		telemetry.NewFrameStore(100),
+		tracks.OfficialGT7SeedCatalog(),
+		eventStore,
+		sessionRepo,
+	)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/session-finished/events", nil)
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d for finished session events, got %d with body %s", http.StatusOK, recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), `"eventId":"event-finished-1"`) {
+		t.Fatalf("expected event-finished-1 in response, got %s", recorder.Body.String())
+	}
+}
+
+func TestAnalyzeRejectsNonexistentSession(t *testing.T) {
+	aiSvc := &testAIService{resp: ai.GatewayResponse{Summary: "should not be called"}}
+	handler := testAnalyzeHandler(t, aiSvc)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/session_nonexistent/analyze", strings.NewReader(validAnalyzePayload))
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d with body %s", http.StatusNotFound, recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), "session_not_found") {
+		t.Fatalf("expected session_not_found, got %s", recorder.Body.String())
+	}
+}
+
+func TestAnalyzeAllowsFinishedSession(t *testing.T) {
+	aiSvc := &testAIService{
+		resp: ai.GatewayResponse{
+			Summary: "Finished session analyzed",
+			EventExplanations: []ai.EventExplanation{
+				{EventID: "event-1", Type: events.TypeLateThrottle, Explanation: "late throttle exit", Relevance: 0.85},
+			},
+			Recommendations:  []string{"work on earlier throttle"},
+			ReferencedEvents: []string{"event-1"},
+			ProviderInfo: ai.ProviderResultInfo{
+				Model: "test-model", FinishReason: "stop",
+				Usage: ai.UsageInfo{PromptTokens: 50, CompletionTokens: 100, TotalTokens: 150},
+			},
+			Status: "success",
+		},
+	}
+
+	cfg := config.Config{Addr: ":0", Env: "test"}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	frameStore := telemetry.NewFrameStore(100)
+	catalog := tracks.OfficialGT7SeedCatalog()
+	eventStore := events.NewStore(100, events.DedupOptions{})
+	sessionRepo := sessions.NewMemoryRepository()
+	seedTestSession(t, sessionRepo, "session-finished")
+	if _, err := sessionRepo.End(context.Background(), "session-finished", time.Now()); err != nil {
+		t.Fatalf("finish session: %v", err)
+	}
+
+	handler := routesWithAIAndSessions(cfg, logger, frameStore, catalog, eventStore, sessionRepo, aiSvc)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/session-finished/analyze", strings.NewReader(validAnalyzePayload))
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d for finished session analyze, got %d with body %s", http.StatusOK, recorder.Code, recorder.Body.String())
+	}
+	var response ai.GatewayResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if response.Summary != "Finished session analyzed" {
+		t.Fatalf("expected summary on finished session analyze, got %q", response.Summary)
 	}
 }
 

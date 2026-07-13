@@ -191,8 +191,8 @@ func TestSessionLifecycleErrors(t *testing.T) {
 		request := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/session_missing", nil)
 		handler.ServeHTTP(recorder, request)
 
-		if recorder.Code != http.StatusNotFound || !strings.Contains(recorder.Body.String(), "not_found") {
-			t.Fatalf("expected not_found, got status %d body %s", recorder.Code, recorder.Body.String())
+		if recorder.Code != http.StatusNotFound || !strings.Contains(recorder.Body.String(), "session_not_found") {
+			t.Fatalf("expected session_not_found, got status %d body %s", recorder.Code, recorder.Body.String())
 		}
 	})
 
@@ -214,8 +214,8 @@ func TestSessionLifecycleErrors(t *testing.T) {
 
 		secondFinish := httptest.NewRecorder()
 		handler.ServeHTTP(secondFinish, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+createResponse.Session.ID+"/finish", strings.NewReader(`{}`)))
-		if secondFinish.Code != http.StatusConflict || !strings.Contains(secondFinish.Body.String(), "conflict") {
-			t.Fatalf("expected conflict, got status %d body %s", secondFinish.Code, secondFinish.Body.String())
+		if secondFinish.Code != http.StatusConflict || !strings.Contains(secondFinish.Body.String(), "session_finished") {
+			t.Fatalf("expected session_finished, got status %d body %s", secondFinish.Code, secondFinish.Body.String())
 		}
 	})
 }
@@ -235,7 +235,7 @@ func TestCreateSessionContractRejectsInvalidShape(t *testing.T) {
 }
 
 func TestIngestFramesContractValidatesShape(t *testing.T) {
-	handler := routes(config.Config{Addr: ":0", Env: "test"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	handler := newTestHandler(t)
 	body := []byte(`{
 		"sessionId":"session-1",
 		"frames":[{
@@ -294,7 +294,7 @@ func TestIngestFramesContractValidatesShape(t *testing.T) {
 }
 
 func TestIngestFramesContractRejectsInvalidJSON(t *testing.T) {
-	handler := routes(config.Config{Addr: ":0", Env: "test"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	handler := newTestHandler(t)
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/session-1/frames", strings.NewReader(`{"sessionId":"session-1","frames":[`))
 
@@ -309,7 +309,7 @@ func TestIngestFramesContractRejectsInvalidJSON(t *testing.T) {
 }
 
 func TestIngestFramesContractAcceptsPartialWithRejectionSummary(t *testing.T) {
-	handler := routes(config.Config{Addr: ":0", Env: "test"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	handler := newTestHandler(t)
 	body := `{"sessionId":"session-1","frames":[{"timestampUnixMs":1720656000000,"speedMps":58.33,"rpm":7100,"gear":4,"throttle":1.2,"brake":0,"steering":-0.12,"fuelLiters":38.4,"positionX":123.4,"positionY":5.6,"positionZ":789.1,"lapNumber":2,"currentLapMs":81234,"isOnTrack":true}]}`
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/session-1/frames", strings.NewReader(body))
@@ -348,7 +348,7 @@ func TestIngestFramesContractAcceptsPartialWithRejectionSummary(t *testing.T) {
 }
 
 func TestIngestFramesContractAcceptsOmittedOptionalFields(t *testing.T) {
-	handler := routes(config.Config{Addr: ":0", Env: "test"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	handler := newTestHandler(t)
 	body := `{"sessionId":"session-1","frames":[{"timestampUnixMs":1720656000000,"speedMps":57,"rpm":6900,"gear":4,"throttle":0.7,"brake":0,"steering":-0.1,"fuelLiters":38.3,"positionX":122,"positionY":5.5,"positionZ":788,"lapNumber":2,"currentLapMs":81111,"isOnTrack":true},{"timestampUnixMs":1720656000123,"speedMps":58.33,"rpm":7100,"gear":4,"throttle":0.82,"brake":0,"steering":-0.12,"fuelLiters":38.4,"positionX":123.4,"positionY":5.6,"positionZ":789.1,"lapNumber":2,"currentLapMs":81234,"isOnTrack":true}]}`
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/session-1/frames", strings.NewReader(body))
@@ -364,7 +364,7 @@ func TestIngestFramesContractAcceptsOmittedOptionalFields(t *testing.T) {
 }
 
 func TestIngestFramesContractRejectsBatchesOverMaxSize(t *testing.T) {
-	handler := routes(config.Config{Addr: ":0", Env: "test"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	handler := newTestHandler(t)
 	var body strings.Builder
 	body.WriteString(`{"sessionId":"session-1","frames":[`)
 	for i := 0; i < 601; i++ {
@@ -398,7 +398,7 @@ func TestIngestFramesContractRejectsBatchesOverMaxSize(t *testing.T) {
 }
 
 func TestIngestFramesContractRejectsRouteBodySessionMismatch(t *testing.T) {
-	handler := routes(config.Config{Addr: ":0", Env: "test"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	handler := newTestHandler(t)
 	body := `{"sessionId":"different-session","frames":[{"timestampUnixMs":1720656000000,"throttle":0,"brake":0,"lapNumber":0}]}`
 
 	recorder := httptest.NewRecorder()
@@ -420,7 +420,7 @@ func TestIngestFramesContractRejectsRouteBodySessionMismatch(t *testing.T) {
 }
 
 func TestIngestFramesContractPartialAcceptsConsistentFrames(t *testing.T) {
-	handler := routes(config.Config{Addr: ":0", Env: "test"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	handler := newTestHandler(t)
 	body := `{"sessionId":"session-1","frames":[{"timestampUnixMs":1720656000001,"speedMps":58.33,"rpm":7100,"gear":4,"throttle":0.82,"brake":0,"steering":-0.12,"fuelLiters":38.4,"positionX":123.4,"positionY":5.6,"positionZ":789.1,"lapNumber":2,"currentLapMs":81234,"isOnTrack":true},{"timestampUnixMs":1720656000000,"speedMps":58.33,"rpm":7100,"gear":4,"throttle":0.82,"brake":0,"steering":-0.12,"fuelLiters":38.4,"positionX":123.4,"positionY":5.6,"positionZ":789.1,"lapNumber":2,"currentLapMs":81235,"isOnTrack":true}]}`
 
 	recorder := httptest.NewRecorder()
@@ -447,7 +447,7 @@ func TestIngestFramesContractPartialAcceptsConsistentFrames(t *testing.T) {
 
 func TestIngestFramesStoresAcceptedNormalizedFrames(t *testing.T) {
 	store := telemetry.NewFrameStore(10)
-	handler := routesWithFrameStore(config.Config{Addr: ":0", Env: "test"}, slog.New(slog.NewTextHandler(io.Discard, nil)), store)
+	handler := newTestHandlerWithStores(t, store, events.NewStore(100, events.DedupOptions{}))
 	body := `{"frames":[{"timestampUnixMs":1720656000000,"speedMps":57,"rpm":6900,"gear":4,"throttle":0.7,"brake":0,"steering":-0.1,"fuelLiters":38.3,"positionX":122,"positionY":5.5,"positionZ":788,"lapNumber":2,"currentLapMs":81111,"isOnTrack":true},{"timestampUnixMs":1720656000123,"speedMps":58.33,"rpm":7100,"gear":4,"throttle":0.82,"brake":0,"steering":-0.12,"fuelLiters":38.4,"positionX":123.4,"positionY":5.6,"positionZ":789.1,"lapNumber":2,"currentLapMs":81234,"isOnTrack":true}]}`
 
 	recorder := httptest.NewRecorder()
@@ -475,7 +475,7 @@ func TestIngestFramesStoresAcceptedNormalizedFrames(t *testing.T) {
 
 func TestIngestFramesDoesNotStoreRejectedBatch(t *testing.T) {
 	store := telemetry.NewFrameStore(10)
-	handler := routesWithFrameStore(config.Config{Addr: ":0", Env: "test"}, slog.New(slog.NewTextHandler(io.Discard, nil)), store)
+	handler := newTestHandlerWithStores(t, store, events.NewStore(100, events.DedupOptions{}))
 	body := `{"sessionId":"session-1","frames":[{"timestampUnixMs":1720656000000,"speedMps":58.33,"rpm":7100,"gear":4,"throttle":1.2,"brake":0,"steering":-0.12,"fuelLiters":38.4,"positionX":123.4,"positionY":5.6,"positionZ":789.1,"lapNumber":2,"currentLapMs":81234,"isOnTrack":true}]}`
 
 	recorder := httptest.NewRecorder()
@@ -497,7 +497,7 @@ func TestIngestFramesDoesNotStoreRejectedBatch(t *testing.T) {
 
 func TestIngestFramesReturnsInternalServerErrorWhenPersistenceFails(t *testing.T) {
 	store := failingFrameStore{err: errors.New("append failed")}
-	handler := routesWithFrameStore(config.Config{Addr: ":0", Env: "test"}, slog.New(slog.NewTextHandler(io.Discard, nil)), store)
+	handler := newTestHandlerWithStores(t, store, events.NewStore(100, events.DedupOptions{}))
 	body := `{"frames":[{"timestampUnixMs":1720656000000,"speedMps":57,"rpm":6900,"gear":4,"throttle":0.7,"brake":0,"steering":-0.1,"fuelLiters":38.3,"positionX":122,"positionY":5.5,"positionZ":788,"lapNumber":2,"currentLapMs":81111,"isOnTrack":true}]}`
 
 	recorder := httptest.NewRecorder()
@@ -524,7 +524,7 @@ func (s failingFrameStore) Frames(_ context.Context, _ string) ([]telemetry.Fram
 
 func TestDetectTrackContractReturnsPendingForInsufficientFrames(t *testing.T) {
 	store := telemetry.NewFrameStore(10)
-	handler := routesWithDependencies(config.Config{Addr: ":0", Env: "test"}, slog.New(slog.NewTextHandler(io.Discard, nil)), store, tracks.OfficialGT7SeedCatalog())
+	handler := newTestHandlerWithStores(t, store, events.NewStore(100, events.DedupOptions{}))
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/session-1/track", nil)
@@ -547,7 +547,7 @@ func TestDetectTrackContractMatchesRetainedFramesAgainstSeedCatalog(t *testing.T
 	if err := store.Append(context.Background(), "session-1", apiStraightCompletedLapFrames(5423, 32)); err != nil {
 		t.Fatalf("append frames: %v", err)
 	}
-	handler := routesWithDependencies(config.Config{Addr: ":0", Env: "test"}, slog.New(slog.NewTextHandler(io.Discard, nil)), store, tracks.OfficialGT7SeedCatalog())
+	handler := newTestHandlerWithStores(t, store, events.NewStore(100, events.DedupOptions{}))
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/session-1/track", nil)
@@ -575,7 +575,7 @@ func TestListEventsContractReturnsStoredEvents(t *testing.T) {
 	seedAPIEvent(t, store, apiEngineerEvent(func(event *events.EngineerEvent) {
 		event.EventID = "event-api-1"
 	}))
-	handler := routesWithEventStore(config.Config{Addr: ":0", Env: "test"}, slog.New(slog.NewTextHandler(io.Discard, nil)), telemetry.NewFrameStore(10), tracks.OfficialGT7SeedCatalog(), store)
+	handler := newTestHandlerWithStores(t, telemetry.NewFrameStore(10), store)
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/session-1/events", nil)
@@ -597,7 +597,7 @@ func TestListEventsContractReturnsStoredEvents(t *testing.T) {
 
 func TestListEventsContractReturnsEmptyResult(t *testing.T) {
 	store := events.NewStore(10, events.DedupOptions{})
-	handler := routesWithEventStore(config.Config{Addr: ":0", Env: "test"}, slog.New(slog.NewTextHandler(io.Discard, nil)), telemetry.NewFrameStore(10), tracks.OfficialGT7SeedCatalog(), store)
+	handler := newTestHandlerWithStores(t, telemetry.NewFrameStore(10), store)
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/session-1/events", nil)
@@ -627,7 +627,7 @@ func TestListEventsContractFiltersByLapCornerAndType(t *testing.T) {
 		event.LapNumber = 4
 		event.Corner = &events.CatalogRef{ID: apiStringPtr("corner-other"), DisplayStrategy: events.DisplayStrategyIDOnly}
 	}))
-	handler := routesWithEventStore(config.Config{Addr: ":0", Env: "test"}, slog.New(slog.NewTextHandler(io.Discard, nil)), telemetry.NewFrameStore(10), tracks.OfficialGT7SeedCatalog(), store)
+	handler := newTestHandlerWithStores(t, telemetry.NewFrameStore(10), store)
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/session-1/events?lapNumber=3&cornerId=corner-filter&type=low_exit_speed", nil)
@@ -648,7 +648,7 @@ func TestListEventsContractDoesNotInventCatalogNames(t *testing.T) {
 		event.EventID = "event-id-only-corner"
 		event.Corner = &events.CatalogRef{ID: apiStringPtr("corner-id-only"), DisplayStrategy: events.DisplayStrategyIDOnly}
 	}))
-	handler := routesWithEventStore(config.Config{Addr: ":0", Env: "test"}, slog.New(slog.NewTextHandler(io.Discard, nil)), telemetry.NewFrameStore(10), tracks.OfficialGT7SeedCatalog(), store)
+	handler := newTestHandlerWithStores(t, telemetry.NewFrameStore(10), store)
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/session-1/events", nil)
@@ -665,7 +665,7 @@ func TestListEventsContractDoesNotInventCatalogNames(t *testing.T) {
 
 func TestListEventsContractRejectsInvalidFilters(t *testing.T) {
 	store := events.NewStore(10, events.DedupOptions{})
-	handler := routesWithEventStore(config.Config{Addr: ":0", Env: "test"}, slog.New(slog.NewTextHandler(io.Discard, nil)), telemetry.NewFrameStore(10), tracks.OfficialGT7SeedCatalog(), store)
+	handler := newTestHandlerWithStores(t, telemetry.NewFrameStore(10), store)
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/session-1/events?lapNumber=-1&type=weak_corner", nil)
@@ -741,4 +741,44 @@ func (failingEventStore) Append(context.Context, events.EngineerEvent) (events.E
 
 func (failingEventStore) List(context.Context, events.Query) ([]events.EngineerEvent, error) {
 	return nil, errors.New("event store unavailable")
+}
+
+func seedTestSession(t *testing.T, repo sessions.Repository, id string) sessions.Session {
+	t.Helper()
+	s, err := repo.Create(context.Background(), sessions.Session{
+		ID: id, Source: "test", Game: "gt7",
+		Platform: "ps5", StartedAt: time.UnixMilli(1720656000000).UTC(),
+	})
+	if err != nil {
+		t.Fatalf("seed session %s: %v", id, err)
+	}
+	return s
+}
+
+func newTestHandler(t *testing.T) http.Handler {
+	t.Helper()
+	sessionRepo := sessions.NewMemoryRepository()
+	seedTestSession(t, sessionRepo, "session-1")
+	return routesWithSessionRepository(
+		config.Config{Addr: ":0", Env: "test"},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		telemetry.NewFrameStore(100),
+		tracks.OfficialGT7SeedCatalog(),
+		events.NewStore(100, events.DedupOptions{}),
+		sessionRepo,
+	)
+}
+
+func newTestHandlerWithStores(t *testing.T, frameStore telemetry.Store, eventStore events.Repository) http.Handler {
+	t.Helper()
+	sessionRepo := sessions.NewMemoryRepository()
+	seedTestSession(t, sessionRepo, "session-1")
+	return routesWithSessionRepository(
+		config.Config{Addr: ":0", Env: "test"},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		frameStore,
+		tracks.OfficialGT7SeedCatalog(),
+		eventStore,
+		sessionRepo,
+	)
 }

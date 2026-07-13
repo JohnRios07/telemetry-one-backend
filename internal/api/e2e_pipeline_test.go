@@ -11,9 +11,12 @@ import (
 	"strings"
 	"testing"
 
+	"time"
+
 	"telemetry-one-backend/internal/config"
 	"telemetry-one-backend/internal/corners"
 	"telemetry-one-backend/internal/events"
+	"telemetry-one-backend/internal/sessions"
 	"telemetry-one-backend/internal/telemetry"
 	"telemetry-one-backend/internal/tracks"
 )
@@ -25,7 +28,11 @@ func TestE2EPipelineFullFlow(t *testing.T) {
 	frameStore := telemetry.NewFrameStore(100)
 	catalog := tracks.OfficialGT7SeedCatalog()
 	eventStore := events.NewStore(100, events.DedupOptions{})
-	handler := routesWithEventStore(cfg, logger, frameStore, catalog, eventStore)
+	sessionRepo := sessions.NewMemoryRepository()
+	if _, err := sessionRepo.Create(ctx, sessions.Session{ID: "e2e-session", Source: "test", Game: "gt7", Platform: "ps5", StartedAt: time.UnixMilli(1720656000000).UTC()}); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+	handler := routesWithSessionRepository(cfg, logger, frameStore, catalog, eventStore, sessionRepo)
 
 	var generatedEvents []events.EngineerEvent
 
