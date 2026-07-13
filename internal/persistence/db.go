@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"telemetry-one-backend/internal/tracks"
 	"telemetry-one-backend/migrations"
 )
 
@@ -30,6 +31,10 @@ func OpenPostgres(ctx context.Context, databaseURL string) (*PostgresDB, error) 
 		return nil, fmt.Errorf("ping postgres: %w", err)
 	}
 	if err := Migrate(ctx, pool); err != nil {
+		pool.Close()
+		return nil, err
+	}
+	if err := SeedTrackReferenceCatalog(ctx, pool, tracks.OfficialGT7SeedCatalog()); err != nil {
 		pool.Close()
 		return nil, err
 	}
