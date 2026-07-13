@@ -1,6 +1,14 @@
 package telemetry
 
-import "sync"
+import (
+	"context"
+	"sync"
+)
+
+type Store interface {
+	Append(ctx context.Context, sessionID string, frames []Frame) error
+	Frames(ctx context.Context, sessionID string) ([]Frame, error)
+}
 
 type FrameStore struct {
 	mu       sync.RWMutex
@@ -19,9 +27,12 @@ func NewFrameStore(capacity int) *FrameStore {
 	}
 }
 
-func (s *FrameStore) Append(sessionID string, frames []Frame) {
+func (s *FrameStore) Append(ctx context.Context, sessionID string, frames []Frame) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if sessionID == "" || len(frames) == 0 {
-		return
+		return nil
 	}
 
 	incoming := cloneFrames(frames)
@@ -37,13 +48,17 @@ func (s *FrameStore) Append(sessionID string, frames []Frame) {
 		retained = retained[len(retained)-s.capacity:]
 	}
 	s.frames[sessionID] = retained
+	return nil
 }
 
-func (s *FrameStore) Frames(sessionID string) []Frame {
+func (s *FrameStore) Frames(ctx context.Context, sessionID string) ([]Frame, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	return cloneFrames(s.frames[sessionID])
+	return cloneFrames(s.frames[sessionID]), nil
 }
 
 func cloneFrames(frames []Frame) []Frame {

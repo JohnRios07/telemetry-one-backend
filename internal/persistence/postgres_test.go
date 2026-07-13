@@ -48,3 +48,33 @@ func TestSessionsLifecycleMigrationIsIdempotent(t *testing.T) {
 		}
 	}
 }
+
+func TestRuntimePersistenceMigrationIsIdempotentAndDoesNotRequireBackendSession(t *testing.T) {
+	content, err := os.ReadFile("../../migrations/000003_runtime_persistence.up.sql")
+	if err != nil {
+		t.Fatalf("read migration: %v", err)
+	}
+
+	migration := string(content)
+	for _, expected := range []string{
+		"CREATE TABLE IF NOT EXISTS frame_batches",
+		"CREATE UNIQUE INDEX IF NOT EXISTS frame_batches_session_order_idx",
+		"CREATE TABLE IF NOT EXISTS ai_audit_logs",
+		"CREATE INDEX IF NOT EXISTS ai_audit_logs_session_id_idx",
+		"ALTER TABLE engineer_events DROP CONSTRAINT IF EXISTS engineer_events_session_id_fkey",
+	} {
+		if !strings.Contains(migration, expected) {
+			t.Fatalf("expected migration to contain %q", expected)
+		}
+	}
+
+	frameBatchesStart := strings.Index(migration, "CREATE TABLE IF NOT EXISTS frame_batches")
+	frameBatchesEnd := strings.Index(migration, "CREATE INDEX IF NOT EXISTS frame_batches_session_id_idx")
+	if frameBatchesStart < 0 || frameBatchesEnd < 0 || frameBatchesEnd <= frameBatchesStart {
+		t.Fatalf("expected frame_batches table definition before indexes")
+	}
+	frameBatchesDDL := migration[frameBatchesStart:frameBatchesEnd]
+	if strings.Contains(frameBatchesDDL, "REFERENCES sessions") {
+		t.Fatalf("frame_batches must not enforce backend session existence before Flutter session mapping")
+	}
+}

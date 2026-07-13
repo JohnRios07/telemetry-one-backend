@@ -26,13 +26,13 @@ func TestFrameStoreConcurrentAppend(t *testing.T) {
 						f.TimestampUnixMs = int64(i*framesPerGoroutine + j + 1)
 					})
 				}
-				store.Append("session-1", frames)
+				mustAppend(t, store, "session-1", frames)
 			}()
 		}
 
 		wg.Wait()
 
-		frames := store.Frames("session-1")
+		frames := mustFrames(t, store, "session-1")
 		if len(frames) > 1000 {
 			t.Fatalf("expected at most 1000 frames, got %d", len(frames))
 		}
@@ -69,7 +69,7 @@ func TestFrameStoreConcurrentReadWrite(t *testing.T) {
 					f.TimestampUnixMs = int64(id*1000 + j + 1)
 				})
 			}
-			store.Append("shared", frames)
+			mustAppend(t, store, "shared", frames)
 		}(i)
 	}
 
@@ -78,7 +78,7 @@ func TestFrameStoreConcurrentReadWrite(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_ = store.Frames("shared")
+			_ = mustFrames(t, store, "shared")
 		}()
 	}
 
@@ -89,7 +89,7 @@ func TestFrameStoreConcurrentReadWrite(t *testing.T) {
 			defer wg.Done()
 			sessionID := fmt.Sprintf("writer-%d", id)
 			for j := range 5 {
-				store.Append(sessionID, []Frame{withFrame(func(f *Frame) {
+				mustAppend(t, store, sessionID, []Frame{withFrame(func(f *Frame) {
 					f.TimestampUnixMs = int64(id*100 + j + 1)
 				})})
 			}
@@ -98,7 +98,7 @@ func TestFrameStoreConcurrentReadWrite(t *testing.T) {
 
 	wg.Wait()
 
-	sharedFrames := store.Frames("shared")
+	sharedFrames := mustFrames(t, store, "shared")
 	t.Logf("concurrent read/write completed — shared session has %d frames", len(sharedFrames))
 }
 
@@ -120,7 +120,7 @@ func TestFrameStoreConcurrentDifferentSessions(t *testing.T) {
 					f.TimestampUnixMs = int64(i*framesPerSession + j + 1)
 				})
 			}
-			store.Append(sessionID, frames)
+			mustAppend(t, store, sessionID, frames)
 		}()
 	}
 
@@ -128,7 +128,7 @@ func TestFrameStoreConcurrentDifferentSessions(t *testing.T) {
 
 	for i := range numSessions {
 		sessionID := fmt.Sprintf("session-%d", i)
-		frames := store.Frames(sessionID)
+		frames := mustFrames(t, store, sessionID)
 		if len(frames) != framesPerSession {
 			t.Fatalf("session %q: expected %d frames, got %d", sessionID, framesPerSession, len(frames))
 		}

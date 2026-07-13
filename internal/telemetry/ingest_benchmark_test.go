@@ -1,6 +1,7 @@
 package telemetry
 
 import (
+	"context"
 	"strconv"
 	"testing"
 )
@@ -42,7 +43,9 @@ func BenchmarkFrameStoreAppend(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				store.Append("session-bench", frames)
+				if err := store.Append(context.Background(), "session-bench", frames); err != nil {
+					b.Fatal(err)
+				}
 			}
 		})
 	}
@@ -51,13 +54,17 @@ func BenchmarkFrameStoreAppend(b *testing.B) {
 func BenchmarkFrameStoreAppendAtRetentionLimit(b *testing.B) {
 	store := NewFrameStore(12000)
 	seed := benchmarkFrames(12000)
-	store.Append("session-bench", seed)
+	if err := store.Append(context.Background(), "session-bench", seed); err != nil {
+		b.Fatal(err)
+	}
 	frames := benchmarkFrames(MaxBatchFrames)
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		store.Append("session-bench", frames)
+		if err := store.Append(context.Background(), "session-bench", frames); err != nil {
+			b.Fatal(err)
+		}
 	}
 }
 
