@@ -135,45 +135,99 @@ type IngestBatchRequest struct {
 	Frames    []Frame `json:"frames"`
 }
 
+type RejectionReasonCount struct {
+	Code  string `json:"code"`
+	Count int    `json:"count"`
+}
+
+type RejectionSummary struct {
+	Reasons []RejectionReasonCount `json:"reasons"`
+}
+
 type IngestBatchResponse struct {
-	SessionID          string `json:"sessionId"`
-	ReceivedFrames     int    `json:"receivedFrames"`
-	AcceptedFrames     int    `json:"acceptedFrames"`
-	RejectedFrames     int    `json:"rejectedFrames"`
-	AcceptedFromUnixMs int64  `json:"acceptedFromUnixMs"`
-	AcceptedToUnixMs   int64  `json:"acceptedToUnixMs"`
-	Status             string `json:"status"`
+	SessionID          string            `json:"sessionId"`
+	ReceivedFrames     int               `json:"receivedFrames"`
+	AcceptedFrames     int               `json:"acceptedFrames"`
+	RejectedFrames     int               `json:"rejectedFrames"`
+	AcceptedFromUnixMs int64             `json:"acceptedFromUnixMs"`
+	AcceptedToUnixMs   int64             `json:"acceptedToUnixMs"`
+	Status             string            `json:"status"`
+	RejectionSummary   *RejectionSummary `json:"rejectionSummary,omitempty"`
+}
+
+type NormalizeResult struct {
+	Frames     []Frame
+	Rejections []*RejectionError
 }
 
 func (r IngestBatchRequest) Validate() error {
-	_, err := r.Normalize()
-	return err
+	result, err := r.Normalize()
+	if err != nil {
+		return err
+	}
+	if len(result.Rejections) > 0 {
+		return result.Rejections[0]
+	}
+	return nil
 }
 
-func (r IngestBatchRequest) Normalize() ([]Frame, error) {
+func (r IngestBatchRequest) Normalize() (NormalizeResult, error) {
 	if r.SessionID == "" {
-		return nil, reject(RejectionCodeMissingSessionID, RejectionCategoryBatch, "sessionId", nil, ErrMissingSessionID)
+		return NormalizeResult{}, reject(RejectionCodeMissingSessionID, RejectionCategoryBatch, "sessionId", nil, ErrMissingSessionID)
 	}
 	if len(r.Frames) == 0 {
-		return nil, reject(RejectionCodeEmptyFrames, RejectionCategoryBatch, "frames", nil, ErrEmptyFrames)
+		return NormalizeResult{}, reject(RejectionCodeEmptyFrames, RejectionCategoryBatch, "frames", nil, ErrEmptyFrames)
 	}
 	if len(r.Frames) > MaxBatchFrames {
-		return nil, reject(RejectionCodeTooManyFrames, RejectionCategoryBatch, "frames", nil, ErrTooManyFrames)
+		return NormalizeResult{}, reject(RejectionCodeTooManyFrames, RejectionCategoryBatch, "frames", nil, ErrTooManyFrames)
 	}
 
-	normalized := make([]Frame, 0, len(r.Frames))
+	var accepted []Frame
+	var rejections []*RejectionError
+
 	for index, frame := range r.Frames {
 		normalizedFrame, err := frame.Normalize()
 		if err != nil {
-			return nil, withFrameIndex(index, err)
+			var rejection *RejectionError
+			if errors.As(err, &rejection) {
+				frameIndex := index
+				rej := &RejectionError{
+					Code:       rejection.Code,
+					Category:   rejection.Category,
+					Field:      rejection.Field,
+					FrameIndex: &frameIndex,
+					Message:    fmt.Sprintf("frames[%d]: %s", index, rejection.Error()),
+					Err:        rejection.Err,
+				}
+				rejections = append(rejections, rej)
+				continue
+			}
+			return NormalizeResult{}, fmt.Errorf("frames[%d]: %w", index, err)
 		}
-		if err := validateBatchConsistency(normalized, normalizedFrame, index); err != nil {
-			return nil, err
+		if err := validateBatchConsistency(accepted, normalizedFrame, index); err != nil {
+			var rejection *RejectionError
+			if errors.As(err, &rejection) {
+				rejections = append(rejections, rejection)
+				continue
+			}
+			return NormalizeResult{}, err
 		}
-		normalized = append(normalized, normalizedFrame)
+		accepted = append(accepted, normalizedFrame)
 	}
 
-	return normalized, nil
+	return NormalizeResult{Frames: accepted, Rejections: rejections}, nil
+}
+
+func BuildRejectionSummary(rejections []*RejectionError) RejectionSummary {
+	counts := make(map[string]int)
+	for _, r := range rejections {
+		counts[r.Code]++
+	}
+	reasons := make([]RejectionReasonCount, 0, len(counts))
+	for code, count := range counts {
+		reasons = append(reasons, RejectionReasonCount{Code: code, Count: count})
+	}
+	return RejectionSummary{Reasons: reasons}
 }
 
 func (f Frame) Validate() error {

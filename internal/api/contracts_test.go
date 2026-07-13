@@ -308,7 +308,7 @@ func TestIngestFramesContractRejectsInvalidJSON(t *testing.T) {
 	}
 }
 
-func TestIngestFramesContractRejectsInvalidFrame(t *testing.T) {
+func TestIngestFramesContractAcceptsPartialWithRejectionSummary(t *testing.T) {
 	handler := routes(config.Config{Addr: ":0", Env: "test"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	body := `{"sessionId":"session-1","frames":[{"timestampUnixMs":1720656000000,"speedMps":58.33,"rpm":7100,"gear":4,"throttle":1.2,"brake":0,"steering":-0.12,"fuelLiters":38.4,"positionX":123.4,"positionY":5.6,"positionZ":789.1,"lapNumber":2,"currentLapMs":81234,"isOnTrack":true}]}`
 	recorder := httptest.NewRecorder()
@@ -316,22 +316,34 @@ func TestIngestFramesContractRejectsInvalidFrame(t *testing.T) {
 
 	handler.ServeHTTP(recorder, request)
 
-	if recorder.Code != http.StatusBadRequest {
-		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, recorder.Code)
-	}
-	if !strings.Contains(recorder.Body.String(), "frames[0]: throttle must be between 0 and 1") {
-		t.Fatalf("expected indexed frame validation error, got %s", recorder.Body.String())
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusAccepted, recorder.Code, recorder.Body.String())
 	}
 
-	var response errorEnvelope
+	var response struct {
+		SessionID        string `json:"sessionId"`
+		ReceivedFrames   int    `json:"receivedFrames"`
+		AcceptedFrames   int    `json:"acceptedFrames"`
+		RejectedFrames   int    `json:"rejectedFrames"`
+		Status           string `json:"status"`
+		RejectionSummary *struct {
+			Reasons []struct {
+				Code  string `json:"code"`
+				Count int    `json:"count"`
+			} `json:"reasons"`
+		} `json:"rejectionSummary,omitempty"`
+	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
-		t.Fatalf("failed to decode error envelope: %v", err)
+		t.Fatalf("failed to decode response: %v", err)
 	}
-	if response.Error.Details.RejectionCode != "invalid_throttle" || response.Error.Details.Category != "frame" || response.Error.Details.Field != "throttle" {
-		t.Fatalf("unexpected rejection details: %+v", response.Error.Details)
+	if response.SessionID != "session-1" || response.ReceivedFrames != 1 || response.AcceptedFrames != 0 || response.RejectedFrames != 1 || response.Status != "rejected" {
+		t.Fatalf("unexpected response: %+v", response)
 	}
-	if response.Error.Details.FrameIndex == nil || *response.Error.Details.FrameIndex != 0 {
-		t.Fatalf("expected frameIndex 0, got %+v", response.Error.Details.FrameIndex)
+	if response.RejectionSummary == nil || len(response.RejectionSummary.Reasons) != 1 {
+		t.Fatalf("expected rejection summary with 1 reason, got %+v", response.RejectionSummary)
+	}
+	if response.RejectionSummary.Reasons[0].Code != "invalid_throttle" || response.RejectionSummary.Reasons[0].Count != 1 {
+		t.Fatalf("expected invalid_throttle count 1, got %+v", response.RejectionSummary.Reasons[0])
 	}
 }
 
@@ -407,7 +419,7 @@ func TestIngestFramesContractRejectsRouteBodySessionMismatch(t *testing.T) {
 	}
 }
 
-func TestIngestFramesContractRejectsNonMonotonicTimestampWithTypedDetails(t *testing.T) {
+func TestIngestFramesContractPartialAcceptsConsistentFrames(t *testing.T) {
 	handler := routes(config.Config{Addr: ":0", Env: "test"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	body := `{"sessionId":"session-1","frames":[{"timestampUnixMs":1720656000001,"speedMps":58.33,"rpm":7100,"gear":4,"throttle":0.82,"brake":0,"steering":-0.12,"fuelLiters":38.4,"positionX":123.4,"positionY":5.6,"positionZ":789.1,"lapNumber":2,"currentLapMs":81234,"isOnTrack":true},{"timestampUnixMs":1720656000000,"speedMps":58.33,"rpm":7100,"gear":4,"throttle":0.82,"brake":0,"steering":-0.12,"fuelLiters":38.4,"positionX":123.4,"positionY":5.6,"positionZ":789.1,"lapNumber":2,"currentLapMs":81235,"isOnTrack":true}]}`
 
@@ -416,19 +428,20 @@ func TestIngestFramesContractRejectsNonMonotonicTimestampWithTypedDetails(t *tes
 
 	handler.ServeHTTP(recorder, request)
 
-	if recorder.Code != http.StatusBadRequest {
-		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, recorder.Code)
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusAccepted, recorder.Code, recorder.Body.String())
 	}
 
-	var response errorEnvelope
+	var response struct {
+		AcceptedFrames int    `json:"acceptedFrames"`
+		RejectedFrames int    `json:"rejectedFrames"`
+		Status         string `json:"status"`
+	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
-		t.Fatalf("failed to decode error envelope: %v", err)
+		t.Fatalf("failed to decode response: %v", err)
 	}
-	if response.Error.Details.RejectionCode != "non_monotonic_timestamp" || response.Error.Details.Category != "consistency" || response.Error.Details.Field != "timestampUnixMs" {
-		t.Fatalf("unexpected rejection details: %+v", response.Error.Details)
-	}
-	if response.Error.Details.FrameIndex == nil || *response.Error.Details.FrameIndex != 1 {
-		t.Fatalf("expected frameIndex 1, got %+v", response.Error.Details.FrameIndex)
+	if response.AcceptedFrames != 1 || response.RejectedFrames != 1 || response.Status != "partial" {
+		t.Fatalf("expected 1 accepted, 1 rejected, status partial; got %+v", response)
 	}
 }
 
@@ -470,15 +483,15 @@ func TestIngestFramesDoesNotStoreRejectedBatch(t *testing.T) {
 
 	handler.ServeHTTP(recorder, request)
 
-	if recorder.Code != http.StatusBadRequest {
-		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, recorder.Code)
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusAccepted, recorder.Code, recorder.Body.String())
 	}
 	frames, err := store.Frames(context.Background(), "session-1")
 	if err != nil {
 		t.Fatalf("get frames: %v", err)
 	}
 	if got := len(frames); got != 0 {
-		t.Fatalf("expected rejected batch not to be retained, got %d frames", got)
+		t.Fatalf("expected all-rejected batch not to be retained, got %d frames", got)
 	}
 }
 
