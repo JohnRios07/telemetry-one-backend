@@ -47,34 +47,66 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GITHUB_ACTOR: ${{ github.actor }}
+          VPS_POSTGRES_PASSWORD: ${{ secrets.VPS_POSTGRES_PASSWORD }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           port: ${{ secrets.VPS_PORT || '22' }}
           key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
           # Pass GITHUB_TOKEN to remote so docker login can authenticate to GHCR
-          envs: GITHUB_TOKEN,GITHUB_ACTOR
+          envs: GITHUB_TOKEN,GITHUB_ACTOR,VPS_POSTGRES_PASSWORD
           script: |
             set -e
             DEPLOY_DIR="/opt/telemetry-one/backend"
+            if [ -z "$VPS_POSTGRES_PASSWORD" ]; then
+              echo "ERROR: required GitHub Actions secret VPS_POSTGRES_PASSWORD is not set."
+              exit 1
+            fi
+            case "$VPS_POSTGRES_PASSWORD" in
+              *[!A-Za-z0-9_.~-]*)
+                echo "ERROR: VPS_POSTGRES_PASSWORD must contain only URL-safe unreserved characters: A-Z a-z 0-9 _ . ~ -."
+                echo 'Regenerate it with: python3 -c "import secrets; print(secrets.token_urlsafe(32))"'
+                exit 1
+                ;;
+            esac
             sudo mkdir -p "$DEPLOY_DIR"
             sudo chown "$USER:$USER" "$DEPLOY_DIR"
 
             cat > "$DEPLOY_DIR/compose.testing.yaml" << 'COMPOSE'
             services:
+              postgres:
+                image: postgres:16-alpine
+                container_name: telemetry-one-postgres-testing
+                restart: unless-stopped
+                env_file: .env
+                volumes:
+                  - pgdata:/var/lib/postgresql/data
+                healthcheck:
+                  test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+                  interval: 10s
+                  timeout: 5s
+                  retries: 10
+                  start_period: 30s
+
               telemetry-one-backend:
                 image: ghcr.io/johnrios07/telemetry-one-backend:develop
                 container_name: telemetry-one-backend
                 restart: unless-stopped
                 env_file: .env
+                depends_on:
+                  postgres:
+                    condition: service_healthy
                 ports:
                   - "8081:8080"
                 healthcheck:
                   test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
                   interval: 30s
                   timeout: 5s
-                  start_period: 10s
+                  start_period: 30s
                   retries: 3
+
+            volumes:
+              pgdata:
             COMPOSE
 
             if [ ! -f "$DEPLOY_DIR/.env" ]; then
@@ -86,6 +118,20 @@ jobs:
             ENV
             fi
 
+            append_env_if_missing() {
+              key="$1"
+              value="$2"
+              if ! grep -q "^${key}=" "$DEPLOY_DIR/.env"; then
+                printf '%s=%s\n' "$key" "$value" >> "$DEPLOY_DIR/.env"
+              fi
+            }
+
+            append_env_if_missing "POSTGRES_USER" "telemetry"
+            append_env_if_missing "POSTGRES_PASSWORD" "$VPS_POSTGRES_PASSWORD"
+            append_env_if_missing "POSTGRES_DB" "telemetry_one"
+            append_env_if_missing "TELEMETRY_ONE_DATABASE_URL" "postgres://telemetry:${VPS_POSTGRES_PASSWORD}@postgres:5432/telemetry_one?sslmode=disable"
+            chmod 600 "$DEPLOY_DIR/.env"
+
             cd "$DEPLOY_DIR"
             # Auth to GHCR via stdin so token never appears in process list
             echo "$GITHUB_TOKEN" | sudo docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
@@ -93,12 +139,12 @@ jobs:
             sudo docker compose -f compose.testing.yaml up -d
 
             echo "Waiting for health check..."
-            for i in $(seq 1 12); do
+            for i in $(seq 1 24); do
               if curl -fsS http://127.0.0.1:8081/health >/dev/null 2>&1; then
                 echo "Health check OK"
                 exit 0
               fi
               sleep 5
             done
-            echo "Health check failed after 60s"
+            echo "Health check failed after 120s"
             exit 1
