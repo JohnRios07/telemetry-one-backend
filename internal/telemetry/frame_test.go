@@ -175,6 +175,54 @@ func TestBuildRejectionSummaryGroupsByCode(t *testing.T) {
 	}
 }
 
+func TestBuildRejectionSummaryOrdersByCountDescCodeAsc(t *testing.T) {
+	rejections := []*RejectionError{
+		{Code: "invalid_speed"},
+		{Code: "invalid_throttle"},
+		{Code: "invalid_speed"},
+		{Code: "invalid_timestamp"},
+		{Code: "invalid_throttle"},
+		{Code: "invalid_speed"},
+	}
+	summary := BuildRejectionSummary(rejections)
+	expected := []struct {
+		Code  string
+		Count int
+	}{
+		{Code: "invalid_speed", Count: 3},
+		{Code: "invalid_throttle", Count: 2},
+		{Code: "invalid_timestamp", Count: 1},
+	}
+	if len(summary.Reasons) != len(expected) {
+		t.Fatalf("expected %d reasons, got %d: %+v", len(expected), len(summary.Reasons), summary.Reasons)
+	}
+	for i, r := range summary.Reasons {
+		if r.Code != expected[i].Code || r.Count != expected[i].Count {
+			t.Fatalf("reason[%d]: expected %+v, got %+v", i, expected[i], r)
+		}
+	}
+}
+
+func TestBuildRejectionSummaryTiesOrderedByCode(t *testing.T) {
+	rejections := []*RejectionError{
+		{Code: "z_code"},
+		{Code: "a_code"},
+		{Code: "m_code"},
+		{Code: "z_code"},
+		{Code: "a_code"},
+		{Code: "m_code"},
+	}
+	summary := BuildRejectionSummary(rejections)
+	if len(summary.Reasons) != 3 {
+		t.Fatalf("expected 3 reasons, got %d", len(summary.Reasons))
+	}
+	for i := 1; i < len(summary.Reasons); i++ {
+		if summary.Reasons[i].Code < summary.Reasons[i-1].Code {
+			t.Fatalf("reasons not sorted by code asc on tie: %+v", summary.Reasons)
+		}
+	}
+}
+
 func TestBuildRejectionSummaryEmpty(t *testing.T) {
 	summary := BuildRejectionSummary(nil)
 	if len(summary.Reasons) != 0 {

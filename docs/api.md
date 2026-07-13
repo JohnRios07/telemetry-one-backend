@@ -245,7 +245,9 @@ All-rejected response (`202 Accepted`) — every frame in the batch was invalid:
 }
 ```
 
-The accepted time range is calculated from the accepted frame timestamps (zeroed when none accepted). `rejectionSummary` is present only when `rejectedFrames > 0`. Reasons are grouped by stable rejection code with counts; at most all unique codes are returned.
+The accepted time range is calculated from the accepted frame timestamps (zeroed when none accepted). `rejectionSummary` is present only when `rejectedFrames > 0`. Reasons are grouped by stable rejection code with counts; at most all unique codes are returned, ordered by count descending then code ascending for deterministic output.
+
+The response intentionally uses a compact aggregated summary (`rejectionSummary`) rather than per-frame rejection details. This keeps the API response lightweight for production telemetry ingest. Per-frame diagnostics (including `frameIndex`, `category`, `field`) are available through the error envelope (400) for batch-level validation failures such as missing session ID, empty batch, or exceeding the batch size limit. For batch-level failures there is no `rejectionSummary` because the entire request is rejected as a single unit and the specific rejection detail is returned in the error envelope.
 
 See `docs/ingest-performance.md` for expected frame rates, batch-size coverage, retention windows, current ingest benchmark coverage, and MVP limits.
 

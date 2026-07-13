@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"telemetry-one-backend/internal/config"
+	"telemetry-one-backend/internal/telemetry"
 )
 
 func TestHealthEndpointWithoutPrefix(t *testing.T) {
@@ -109,6 +110,53 @@ func TestIngestFramesSessionIdPathParamRequired(t *testing.T) {
 	// The mux normalizes // -> / before matching, so this becomes a redirect.
 	if recorder.Code != http.StatusMovedPermanently {
 		t.Fatalf("expected 301 redirect (path cleaning) for double-slash, got %d", recorder.Code)
+	}
+}
+
+func TestFormatTopReasonsDeterministic(t *testing.T) {
+	summary := &telemetry.RejectionSummary{
+		Reasons: []telemetry.RejectionReasonCount{
+			{Code: "invalid_speed", Count: 5},
+			{Code: "invalid_throttle", Count: 3},
+			{Code: "invalid_timestamp", Count: 3},
+			{Code: "non_monotonic_timestamp", Count: 1},
+		},
+	}
+	result := formatTopReasons(summary)
+	expected := []string{"invalid_speed", "invalid_throttle", "invalid_timestamp"}
+	if len(result) != len(expected) {
+		t.Fatalf("expected %d reasons, got %d: %v", len(expected), len(result), result)
+	}
+	for i, code := range result {
+		if code != expected[i] {
+			t.Fatalf("result[%d]: expected %q, got %q", i, expected[i], code)
+		}
+	}
+}
+
+func TestFormatTopReasonsNil(t *testing.T) {
+	if result := formatTopReasons(nil); result != nil {
+		t.Fatalf("expected nil for nil summary, got %v", result)
+	}
+}
+
+func TestFormatTopReasonsEmpty(t *testing.T) {
+	result := formatTopReasons(&telemetry.RejectionSummary{})
+	if result != nil {
+		t.Fatalf("expected nil for empty summary, got %v", result)
+	}
+}
+
+func TestFormatTopReasonsUnderLimit(t *testing.T) {
+	summary := &telemetry.RejectionSummary{
+		Reasons: []telemetry.RejectionReasonCount{
+			{Code: "a_code", Count: 2},
+			{Code: "b_code", Count: 1},
+		},
+	}
+	result := formatTopReasons(summary)
+	if len(result) != 2 {
+		t.Fatalf("expected 2 reasons when under limit, got %d: %v", len(result), result)
 	}
 }
 

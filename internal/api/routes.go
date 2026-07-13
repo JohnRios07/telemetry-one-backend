@@ -254,7 +254,7 @@ func ingestFramesHandler(frameStore telemetry.Store, logger *slog.Logger) http.H
 			}
 		}
 
-		fromUnixMs, toUnixMs := acceptedTimeRangeOrDefault(result.Frames)
+		fromUnixMs, toUnixMs := acceptedTimeRange(result.Frames)
 		status := "accepted"
 		if len(result.Frames) == 0 {
 			status = "rejected"
@@ -318,10 +318,6 @@ func acceptedTimeRange(frames []telemetry.Frame) (int64, int64) {
 	}
 
 	return fromUnixMs, toUnixMs
-}
-
-func acceptedTimeRangeOrDefault(frames []telemetry.Frame) (int64, int64) {
-	return acceptedTimeRange(frames)
 }
 
 func formatTopReasons(summary *telemetry.RejectionSummary) []string {

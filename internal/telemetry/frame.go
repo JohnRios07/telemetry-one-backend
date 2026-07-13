@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 )
 
 const MaxBatchFrames = 600
@@ -227,6 +228,12 @@ func BuildRejectionSummary(rejections []*RejectionError) RejectionSummary {
 	for code, count := range counts {
 		reasons = append(reasons, RejectionReasonCount{Code: code, Count: count})
 	}
+	sort.SliceStable(reasons, func(i, j int) bool {
+		if reasons[i].Count != reasons[j].Count {
+			return reasons[i].Count > reasons[j].Count
+		}
+		return reasons[i].Code < reasons[j].Code
+	})
 	return RejectionSummary{Reasons: reasons}
 }
 
@@ -297,23 +304,6 @@ func validateBatchConsistency(previous []Frame, current Frame, index int) error 
 
 func reject(code string, category string, field string, frameIndex *int, err error) *RejectionError {
 	return &RejectionError{Code: code, Category: category, Field: field, FrameIndex: frameIndex, Message: err.Error(), Err: err}
-}
-
-func withFrameIndex(index int, err error) error {
-	var rejection *RejectionError
-	if errors.As(err, &rejection) {
-		frameIndex := index
-		return &RejectionError{
-			Code:       rejection.Code,
-			Category:   rejection.Category,
-			Field:      rejection.Field,
-			FrameIndex: &frameIndex,
-			Message:    fmt.Sprintf("frames[%d]: %s", index, rejection.Error()),
-			Err:        rejection.Err,
-		}
-	}
-
-	return fmt.Errorf("frames[%d]: %w", index, err)
 }
 
 func isFinite(value float64) bool {
