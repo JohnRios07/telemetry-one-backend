@@ -43,11 +43,11 @@ func runtimeHandler(ctx context.Context, cfg config.Config, logger *slog.Logger)
 		return nil, nil, fmt.Errorf("open postgres runtime: %w", err)
 	}
 
-	frameStore := telemetry.NewFrameStore(cfg.RetainedFramesPerSession)
+	frameStore := telemetry.NewPostgresStore(db.Pool)
 	catalog := tracks.OfficialGT7SeedCatalog()
-	eventStore := events.NewStore(events.DefaultStoredEventsLimit, events.DedupOptions{})
+	eventStore := events.NewPostgresRepository(db.Pool, events.DedupOptions{})
 	sessionRepo := sessions.NewPostgresRepository(db.Pool)
-	aiSvc := ai.ComposePipeline(ai.PipelineConfigFromConfig(cfg), logger)
+	aiSvc := ai.ComposePipelineWithAudit(ai.PipelineConfigFromConfig(cfg), logger, ai.NewPostgresAuditStore(db.Pool))
 
 	return routesWithAIAndSessions(cfg, logger, frameStore, catalog, eventStore, sessionRepo, aiSvc), db.Close, nil
 }

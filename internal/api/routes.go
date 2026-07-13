@@ -34,19 +34,19 @@ func routes(cfg config.Config, logger *slog.Logger) http.Handler {
 	return routesWithAIAndSessions(cfg, logger, frameStore, catalog, eventStore, sessionRepo, aiSvc)
 }
 
-func routesWithFrameStore(cfg config.Config, logger *slog.Logger, frameStore *telemetry.FrameStore) http.Handler {
+func routesWithFrameStore(cfg config.Config, logger *slog.Logger, frameStore telemetry.Store) http.Handler {
 	return routesWithDependencies(cfg, logger, frameStore, tracks.OfficialGT7SeedCatalog())
 }
 
-func routesWithDependencies(cfg config.Config, logger *slog.Logger, frameStore *telemetry.FrameStore, catalog tracks.Catalog) http.Handler {
+func routesWithDependencies(cfg config.Config, logger *slog.Logger, frameStore telemetry.Store, catalog tracks.Catalog) http.Handler {
 	return routesWithEventStore(cfg, logger, frameStore, catalog, events.NewStore(events.DefaultStoredEventsLimit, events.DedupOptions{}))
 }
 
-func routesWithEventStore(cfg config.Config, logger *slog.Logger, frameStore *telemetry.FrameStore, catalog tracks.Catalog, eventStore events.Repository) http.Handler {
+func routesWithEventStore(cfg config.Config, logger *slog.Logger, frameStore telemetry.Store, catalog tracks.Catalog, eventStore events.Repository) http.Handler {
 	return routesWithSessionRepository(cfg, logger, frameStore, catalog, eventStore, sessions.NewMemoryRepository())
 }
 
-func routesWithSessionRepository(cfg config.Config, logger *slog.Logger, frameStore *telemetry.FrameStore, catalog tracks.Catalog, eventStore events.Repository, sessionRepo sessions.Repository) http.Handler {
+func routesWithSessionRepository(cfg config.Config, logger *slog.Logger, frameStore telemetry.Store, catalog tracks.Catalog, eventStore events.Repository, sessionRepo sessions.Repository) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler(cfg))
 	mux.HandleFunc("GET /api/v1/health", healthHandler(cfg))
@@ -120,7 +120,7 @@ func createSessionHandler(repo sessions.Repository, catalog tracks.Catalog) http
 	}
 }
 
-func getSessionHandler(repo sessions.Repository, frameStore *telemetry.FrameStore, eventStore events.Repository) http.HandlerFunc {
+func getSessionHandler(repo sessions.Repository, frameStore telemetry.Store, eventStore events.Repository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		session, err := repo.FindByID(r.Context(), r.PathValue("sessionId"))
 		if err != nil {
@@ -140,7 +140,7 @@ func getSessionHandler(repo sessions.Repository, frameStore *telemetry.FrameStor
 
 var nowUTC = func() time.Time { return time.Now().UTC() }
 
-func finishSessionHandler(repo sessions.Repository, frameStore *telemetry.FrameStore, eventStore events.Repository) http.HandlerFunc {
+func finishSessionHandler(repo sessions.Repository, frameStore telemetry.Store, eventStore events.Repository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var request sessions.FinishRequest
 		if r.Body != nil && r.ContentLength != 0 {
@@ -170,7 +170,7 @@ func finishSessionHandler(repo sessions.Repository, frameStore *telemetry.FrameS
 	}
 }
 
-func sessionDTO(r *http.Request, session sessions.Session, frameStore *telemetry.FrameStore, eventStore events.Repository) (sessions.DTO, error) {
+func sessionDTO(r *http.Request, session sessions.Session, frameStore telemetry.Store, eventStore events.Repository) (sessions.DTO, error) {
 	frameCount := len(frameStore.Frames(session.ID))
 	eventCount := 0
 	if eventStore != nil {
@@ -207,7 +207,7 @@ func catalogHasTrack(catalog tracks.Catalog, trackID string) bool {
 	return false
 }
 
-func ingestFramesHandler(frameStore *telemetry.FrameStore) http.HandlerFunc {
+func ingestFramesHandler(frameStore telemetry.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var request telemetry.IngestBatchRequest
 		if err := decodeJSON(r, &request); err != nil {
@@ -269,7 +269,7 @@ func acceptedTimeRange(frames []telemetry.Frame) (int64, int64) {
 	return fromUnixMs, toUnixMs
 }
 
-func detectTrackHandler(frameStore *telemetry.FrameStore, catalog tracks.Catalog) http.HandlerFunc {
+func detectTrackHandler(frameStore telemetry.Store, catalog tracks.Catalog) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sessionID := r.PathValue("sessionId")
 		if sessionID == "" {
@@ -318,11 +318,11 @@ func analyzeHandler(aiSvc ai.AIService) http.HandlerFunc {
 	}
 }
 
-func routesWithAI(cfg config.Config, logger *slog.Logger, frameStore *telemetry.FrameStore, catalog tracks.Catalog, eventStore events.Repository, aiSvc ai.AIService) http.Handler {
+func routesWithAI(cfg config.Config, logger *slog.Logger, frameStore telemetry.Store, catalog tracks.Catalog, eventStore events.Repository, aiSvc ai.AIService) http.Handler {
 	return routesWithAIAndSessions(cfg, logger, frameStore, catalog, eventStore, sessions.NewMemoryRepository(), aiSvc)
 }
 
-func routesWithAIAndSessions(cfg config.Config, logger *slog.Logger, frameStore *telemetry.FrameStore, catalog tracks.Catalog, eventStore events.Repository, sessionRepo sessions.Repository, aiSvc ai.AIService) http.Handler {
+func routesWithAIAndSessions(cfg config.Config, logger *slog.Logger, frameStore telemetry.Store, catalog tracks.Catalog, eventStore events.Repository, sessionRepo sessions.Repository, aiSvc ai.AIService) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler(cfg))
 	mux.HandleFunc("GET /api/v1/health", healthHandler(cfg))

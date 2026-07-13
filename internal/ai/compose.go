@@ -65,6 +65,14 @@ func PipelineConfigFromConfig(cfg config.Config) PipelineConfig {
 }
 
 func ComposePipeline(pipeCfg PipelineConfig, logger *slog.Logger) AIService {
+	return ComposePipelineWithAudit(pipeCfg, logger, NewMemoryAuditStore())
+}
+
+func ComposePipelineWithAudit(pipeCfg PipelineConfig, logger *slog.Logger, auditStore AuditLogger) AIService {
+	if auditStore == nil {
+		auditStore = NewMemoryAuditStore()
+	}
+
 	budget := TokenBudget{
 		MaxPromptChars:      pipeCfg.AIMaxPromptChars,
 		MaxCompletionTokens: pipeCfg.AIMaxCompletionTokens,
@@ -77,10 +85,10 @@ func ComposePipeline(pipeCfg PipelineConfig, logger *slog.Logger) AIService {
 	}
 
 	controller := &Controller{
-		Budget:        budget,
-		Retry:         retry,
-		RateLimiter:   NewRateLimiter(pipeCfg.AIRatePerSecond, pipeCfg.AIRateBurst),
-		Account:       NewUsageAccount(),
+		Budget:      budget,
+		Retry:       retry,
+		RateLimiter: NewRateLimiter(pipeCfg.AIRatePerSecond, pipeCfg.AIRateBurst),
+		Account:     NewUsageAccount(),
 		CostEstimator: CostEstimator{
 			PerPromptToken:     pipeCfg.AICostPerPromptToken,
 			PerCompletionToken: pipeCfg.AICostPerCompletionToken,
@@ -115,6 +123,5 @@ func ComposePipeline(pipeCfg PipelineConfig, logger *slog.Logger) AIService {
 
 	svc := NewService(adapter, controller).WithModel(pipeCfg.AIModel)
 	fallbackSvc := NewFallbackService(svc)
-	auditStore := NewMemoryAuditStore()
 	return NewAuditedService(fallbackSvc, auditStore, nil)
 }

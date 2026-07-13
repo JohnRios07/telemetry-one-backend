@@ -2,6 +2,11 @@ package telemetry
 
 import "sync"
 
+type Store interface {
+	Append(sessionID string, frames []Frame)
+	Frames(sessionID string) []Frame
+}
+
 type FrameStore struct {
 	mu       sync.RWMutex
 	capacity int
