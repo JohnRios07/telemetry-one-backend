@@ -63,6 +63,36 @@ func TestGetSessionReturnsErrorWhenEventCountCannotBeLoaded(t *testing.T) {
 	}
 }
 
+func TestGetSessionReturnsFrameRepositoryErrorWhenFrameCountCannotBeLoaded(t *testing.T) {
+	sessionRepo := sessions.NewMemoryRepository()
+	startedAt := time.UnixMilli(1720656000000).UTC()
+	if _, err := sessionRepo.Create(context.Background(), sessions.Session{ID: "session-1", Source: "flutter", Game: "gt7", Platform: "ps5", StartedAt: startedAt}); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+	handler := routesWithSessionRepository(
+		config.Config{Addr: ":0", Env: "test"},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		failingFrameStore{err: errors.New("frames failed")},
+		tracks.OfficialGT7SeedCatalog(),
+		events.NewStore(10, events.DedupOptions{}),
+		sessionRepo,
+	)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/session-1", nil)
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("expected status %d, got %d with body %s", http.StatusInternalServerError, recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), "frame repository error") {
+		t.Fatalf("expected frame repository error, got %s", recorder.Body.String())
+	}
+	if strings.Contains(recorder.Body.String(), "event repository error") {
+		t.Fatalf("expected frame error not event error, got %s", recorder.Body.String())
+	}
+}
+
 func TestCreateSessionContractValidatesShape(t *testing.T) {
 	handler := routes(config.Config{Addr: ":0", Env: "test"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	body := `{"source":"flutter","game":"gt7","platform":"ps5","startedUnixMs":1720656000000}`

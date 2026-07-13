@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -130,7 +131,7 @@ func getSessionHandler(repo sessions.Repository, frameStore telemetry.Store, eve
 
 		dto, err := sessionDTO(r, session, frameStore, eventStore)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, httperror.Envelope(httperror.Internal("event repository error")))
+			writeSessionDTOError(w, err)
 			return
 		}
 
@@ -162,7 +163,7 @@ func finishSessionHandler(repo sessions.Repository, frameStore telemetry.Store, 
 
 		dto, err := sessionDTO(r, session, frameStore, eventStore)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, httperror.Envelope(httperror.Internal("event repository error")))
+			writeSessionDTOError(w, err)
 			return
 		}
 
@@ -173,19 +174,32 @@ func finishSessionHandler(repo sessions.Repository, frameStore telemetry.Store, 
 func sessionDTO(r *http.Request, session sessions.Session, frameStore telemetry.Store, eventStore events.Repository) (sessions.DTO, error) {
 	frames, err := frameStore.Frames(r.Context(), session.ID)
 	if err != nil {
-		return sessions.DTO{}, err
+		return sessions.DTO{}, fmt.Errorf("%w: %v", errFrameRepository, err)
 	}
 	frameCount := len(frames)
 	eventCount := 0
 	if eventStore != nil {
 		storedEvents, err := eventStore.List(r.Context(), events.Query{SessionID: session.ID})
 		if err != nil {
-			return sessions.DTO{}, err
+			return sessions.DTO{}, fmt.Errorf("%w: %v", errEventRepository, err)
 		}
 		eventCount = len(storedEvents)
 	}
 
 	return sessions.NewDTO(session, frameCount, eventCount), nil
+}
+
+var (
+	errFrameRepository = errors.New("frame repository error")
+	errEventRepository = errors.New("event repository error")
+)
+
+func writeSessionDTOError(w http.ResponseWriter, err error) {
+	message := "event repository error"
+	if errors.Is(err, errFrameRepository) {
+		message = "frame repository error"
+	}
+	writeJSON(w, http.StatusInternalServerError, httperror.Envelope(httperror.Internal(message)))
 }
 
 func writeSessionError(w http.ResponseWriter, err error) {
