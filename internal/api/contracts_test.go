@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -11,9 +12,11 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"telemetry-one-backend/internal/config"
 	"telemetry-one-backend/internal/events"
+	"telemetry-one-backend/internal/sessions"
 	"telemetry-one-backend/internal/telemetry"
 	"telemetry-one-backend/internal/tracks"
 )
@@ -32,6 +35,34 @@ type errorEnvelope struct {
 	} `json:"error"`
 }
 
+func TestGetSessionReturnsErrorWhenEventCountCannotBeLoaded(t *testing.T) {
+	store := telemetry.NewFrameStore(10)
+	sessionRepo := sessions.NewMemoryRepository()
+	startedAt := time.UnixMilli(1720656000000).UTC()
+	if _, err := sessionRepo.Create(context.Background(), sessions.Session{ID: "session-1", Source: "flutter", Game: "gt7", Platform: "ps5", StartedAt: startedAt}); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+	handler := routesWithSessionRepository(
+		config.Config{Addr: ":0", Env: "test"},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		store,
+		tracks.OfficialGT7SeedCatalog(),
+		failingEventStore{},
+		sessionRepo,
+	)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/session-1", nil)
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("expected status %d, got %d with body %s", http.StatusInternalServerError, recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), "event repository error") {
+		t.Fatalf("expected event repository error, got %s", recorder.Body.String())
+	}
+}
+
 func TestCreateSessionContractValidatesShape(t *testing.T) {
 	handler := routes(config.Config{Addr: ":0", Env: "test"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	body := `{"source":"flutter","game":"gt7","platform":"ps5","startedUnixMs":1720656000000}`
@@ -41,12 +72,120 @@ func TestCreateSessionContractValidatesShape(t *testing.T) {
 
 	handler.ServeHTTP(recorder, request)
 
-	if recorder.Code != http.StatusNotImplemented {
-		t.Fatalf("expected valid contract payload to reach stub status %d, got %d", http.StatusNotImplemented, recorder.Code)
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d with body %s", http.StatusCreated, recorder.Code, recorder.Body.String())
 	}
-	if !strings.Contains(recorder.Body.String(), "not_implemented") {
-		t.Fatalf("expected not_implemented envelope, got %s", recorder.Body.String())
+	if !strings.Contains(recorder.Body.String(), `"id":"session_`) || !strings.Contains(recorder.Body.String(), `"status":"active"`) || !strings.Contains(recorder.Body.String(), `"endedAt":null`) {
+		t.Fatalf("expected active session response with generated id, got %s", recorder.Body.String())
 	}
+}
+
+func TestSessionLifecycleCreateGetFinish(t *testing.T) {
+	store := telemetry.NewFrameStore(10)
+	eventStore := events.NewStore(10, events.DedupOptions{})
+	sessionRepo := sessions.NewMemoryRepository()
+	handler := routesWithSessionRepository(config.Config{Addr: ":0", Env: "test"}, slog.New(slog.NewTextHandler(io.Discard, nil)), store, tracks.OfficialGT7SeedCatalog(), eventStore, sessionRepo)
+
+	createRecorder := httptest.NewRecorder()
+	createRequest := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", strings.NewReader(`{"source":"flutter","game":"gt7","platform":"ps5","driverAlias":"alex","trackId":"gt7_watkins_glen_international","startedUnixMs":1720656000000}`))
+	handler.ServeHTTP(createRecorder, createRequest)
+
+	if createRecorder.Code != http.StatusCreated {
+		t.Fatalf("expected create status %d, got %d with body %s", http.StatusCreated, createRecorder.Code, createRecorder.Body.String())
+	}
+	var createResponse sessions.Response
+	if err := json.Unmarshal(createRecorder.Body.Bytes(), &createResponse); err != nil {
+		t.Fatalf("failed to decode create response: %v", err)
+	}
+	if createResponse.Session.ID == "" || !strings.HasPrefix(createResponse.Session.ID, "session_") {
+		t.Fatalf("expected backend-owned session id, got %+v", createResponse.Session)
+	}
+	if createResponse.Session.Status != sessions.StatusActive || createResponse.Session.EndedAt != nil || createResponse.Session.StartedAt != time.UnixMilli(1720656000000).UTC() {
+		t.Fatalf("unexpected created session: %+v", createResponse.Session)
+	}
+
+	store.Append(createResponse.Session.ID, []telemetry.Frame{{TimestampUnixMs: 1720656000000}})
+	seedAPIEvent(t, eventStore, apiEngineerEvent(func(event *events.EngineerEvent) {
+		event.EventID = "event-lifecycle-1"
+		event.SessionID = createResponse.Session.ID
+	}))
+
+	getRecorder := httptest.NewRecorder()
+	getRequest := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/"+createResponse.Session.ID, nil)
+	handler.ServeHTTP(getRecorder, getRequest)
+
+	if getRecorder.Code != http.StatusOK {
+		t.Fatalf("expected get status %d, got %d with body %s", http.StatusOK, getRecorder.Code, getRecorder.Body.String())
+	}
+	var getResponse sessions.Response
+	if err := json.Unmarshal(getRecorder.Body.Bytes(), &getResponse); err != nil {
+		t.Fatalf("failed to decode get response: %v", err)
+	}
+	if getResponse.Session.FrameCount != 1 || getResponse.Session.EventCount != 1 || getResponse.Session.Status != sessions.StatusActive {
+		t.Fatalf("expected active session with counts, got %+v", getResponse.Session)
+	}
+
+	finishRecorder := httptest.NewRecorder()
+	finishRequest := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+createResponse.Session.ID+"/finish", strings.NewReader(`{"endedUnixMs":1720656123456}`))
+	handler.ServeHTTP(finishRecorder, finishRequest)
+
+	if finishRecorder.Code != http.StatusOK {
+		t.Fatalf("expected finish status %d, got %d with body %s", http.StatusOK, finishRecorder.Code, finishRecorder.Body.String())
+	}
+	var finishResponse sessions.Response
+	if err := json.Unmarshal(finishRecorder.Body.Bytes(), &finishResponse); err != nil {
+		t.Fatalf("failed to decode finish response: %v", err)
+	}
+	if finishResponse.Session.Status != sessions.StatusFinished || finishResponse.Session.EndedAt == nil || *finishResponse.Session.EndedAt != time.UnixMilli(1720656123456).UTC() || finishResponse.Session.DurationMs == nil || *finishResponse.Session.DurationMs != 123456 {
+		t.Fatalf("unexpected finished session: %+v", finishResponse.Session)
+	}
+}
+
+func TestSessionLifecycleErrors(t *testing.T) {
+	handler := routes(config.Config{Addr: ":0", Env: "test"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	t.Run("unknown track", func(t *testing.T) {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", strings.NewReader(`{"source":"flutter","game":"gt7","platform":"ps5","trackId":"missing-track","startedUnixMs":1720656000000}`))
+		handler.ServeHTTP(recorder, request)
+
+		if recorder.Code != http.StatusBadRequest || !strings.Contains(recorder.Body.String(), "trackId must exist in catalog") {
+			t.Fatalf("expected catalog validation error, got status %d body %s", recorder.Code, recorder.Body.String())
+		}
+	})
+
+	t.Run("missing session", func(t *testing.T) {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/session_missing", nil)
+		handler.ServeHTTP(recorder, request)
+
+		if recorder.Code != http.StatusNotFound || !strings.Contains(recorder.Body.String(), "not_found") {
+			t.Fatalf("expected not_found, got status %d body %s", recorder.Code, recorder.Body.String())
+		}
+	})
+
+	t.Run("finish conflict", func(t *testing.T) {
+		createRecorder := httptest.NewRecorder()
+		createRequest := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", strings.NewReader(`{"source":"flutter","game":"gt7","platform":"ps5","startedUnixMs":1720656000000}`))
+		handler.ServeHTTP(createRecorder, createRequest)
+
+		var createResponse sessions.Response
+		if err := json.Unmarshal(createRecorder.Body.Bytes(), &createResponse); err != nil {
+			t.Fatalf("failed to decode create response: %v", err)
+		}
+
+		firstFinish := httptest.NewRecorder()
+		handler.ServeHTTP(firstFinish, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+createResponse.Session.ID+"/finish", strings.NewReader(`{}`)))
+		if firstFinish.Code != http.StatusOK {
+			t.Fatalf("expected first finish OK, got %d body %s", firstFinish.Code, firstFinish.Body.String())
+		}
+
+		secondFinish := httptest.NewRecorder()
+		handler.ServeHTTP(secondFinish, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+createResponse.Session.ID+"/finish", strings.NewReader(`{}`)))
+		if secondFinish.Code != http.StatusConflict || !strings.Contains(secondFinish.Body.String(), "conflict") {
+			t.Fatalf("expected conflict, got status %d body %s", secondFinish.Code, secondFinish.Body.String())
+		}
+	})
 }
 
 func TestCreateSessionContractRejectsInvalidShape(t *testing.T) {
@@ -511,4 +650,14 @@ func apiEngineerEvent(mutate func(*events.EngineerEvent)) events.EngineerEvent {
 
 func apiStringPtr(value string) *string {
 	return &value
+}
+
+type failingEventStore struct{}
+
+func (failingEventStore) Append(context.Context, events.EngineerEvent) (events.EngineerEvent, bool, error) {
+	return events.EngineerEvent{}, false, errors.New("event store unavailable")
+}
+
+func (failingEventStore) List(context.Context, events.Query) ([]events.EngineerEvent, error) {
+	return nil, errors.New("event store unavailable")
 }

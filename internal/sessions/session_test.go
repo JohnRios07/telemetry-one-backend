@@ -1,6 +1,12 @@
 package sessions
 
-import "testing"
+import (
+	"context"
+	"os"
+	"strings"
+	"testing"
+	"time"
+)
 
 func TestCreateRequestValidate(t *testing.T) {
 	tests := []struct {
@@ -30,5 +36,104 @@ func TestCreateRequestValidate(t *testing.T) {
 				t.Fatalf("expected error %v, got %v", tt.wantErr, err)
 			}
 		})
+	}
+}
+
+func TestSessionStatusAndDuration(t *testing.T) {
+	startedAt := time.UnixMilli(1720656000000).UTC()
+	session := Session{ID: "session-1", StartedAt: startedAt}
+
+	if session.Status() != StatusActive || session.DurationMs() != nil {
+		t.Fatalf("expected active session without duration, got status=%s duration=%v", session.Status(), session.DurationMs())
+	}
+
+	endedAt := time.UnixMilli(1720656123456).UTC()
+	session.EndedAt = &endedAt
+	duration := session.DurationMs()
+	if session.Status() != StatusFinished || duration == nil || *duration != 123456 {
+		t.Fatalf("expected finished session duration 123456, got status=%s duration=%v", session.Status(), duration)
+	}
+}
+
+func TestMemoryRepositoryLifecycle(t *testing.T) {
+	repo := NewMemoryRepository()
+	ctx := context.Background()
+	startedAt := time.UnixMilli(1720656000000).UTC()
+
+	created, err := repo.Create(ctx, Session{ID: "session-1", Source: "flutter", Game: "gt7", Platform: "ps5", StartedAt: startedAt})
+	if err != nil {
+		t.Fatalf("expected create success: %v", err)
+	}
+	if created.Status() != StatusActive {
+		t.Fatalf("expected active created session, got %+v", created)
+	}
+
+	found, err := repo.FindByID(ctx, "session-1")
+	if err != nil || found.ID != "session-1" {
+		t.Fatalf("expected found session, got %+v err=%v", found, err)
+	}
+
+	endedAt := time.UnixMilli(1720656123456).UTC()
+	finished, err := repo.End(ctx, "session-1", endedAt)
+	if err != nil {
+		t.Fatalf("expected finish success: %v", err)
+	}
+	if finished.Status() != StatusFinished || finished.EndedAt == nil || !finished.EndedAt.Equal(endedAt) {
+		t.Fatalf("expected finished session, got %+v", finished)
+	}
+
+	if _, err := repo.End(ctx, "session-1", endedAt); err != ErrAlreadyFinished {
+		t.Fatalf("expected ErrAlreadyFinished, got %v", err)
+	}
+	if _, err := repo.FindByID(ctx, "missing"); err != ErrNotFound {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestMemoryRepositoryCreateRejectsDuplicateID(t *testing.T) {
+	repo := NewMemoryRepository()
+	ctx := context.Background()
+	startedAt := time.UnixMilli(1720656000000).UTC()
+	original := Session{ID: "session-1", Source: "flutter", Game: "gt7", Platform: "ps5", StartedAt: startedAt}
+
+	if _, err := repo.Create(ctx, original); err != nil {
+		t.Fatalf("expected initial create success: %v", err)
+	}
+	if _, err := repo.Create(ctx, Session{ID: "session-1", Source: "other", Game: "gt7", Platform: "ps5", StartedAt: startedAt}); err != ErrAlreadyExists {
+		t.Fatalf("expected ErrAlreadyExists, got %v", err)
+	}
+
+	found, err := repo.FindByID(ctx, "session-1")
+	if err != nil {
+		t.Fatalf("expected original session to remain stored: %v", err)
+	}
+	if found.Source != original.Source {
+		t.Fatalf("expected duplicate create not to overwrite original, got source %q", found.Source)
+	}
+}
+
+func TestPostgresRepositoryEndUsesAtomicActiveSessionUpdate(t *testing.T) {
+	content, err := os.ReadFile("postgres_repository.go")
+	if err != nil {
+		t.Fatalf("read postgres repository: %v", err)
+	}
+
+	source := string(content)
+	if !strings.Contains(source, "WHERE id = $1 AND ended_at IS NULL") {
+		t.Fatal("expected PostgresRepository.End to update only active sessions atomically")
+	}
+	if strings.Contains(source, "func (r *PostgresRepository) End(ctx context.Context, id string, endedAt time.Time) (Session, error) {\n\tcurrent, err := r.FindByID") {
+		t.Fatal("expected PostgresRepository.End not to pre-read session state before updating")
+	}
+}
+
+func TestNewIDUsesSessionPrefixedULIDShape(t *testing.T) {
+	id, err := NewID()
+	if err != nil {
+		t.Fatalf("expected id generation success: %v", err)
+	}
+
+	if !strings.HasPrefix(id, "session_") || len(id) != len("session_")+26 {
+		t.Fatalf("expected session-prefixed ULID, got %q", id)
 	}
 }

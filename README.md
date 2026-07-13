@@ -28,6 +28,7 @@ Environment variables:
 | `TELEMETRY_ONE_READ_HEADER_TIMEOUT` | `5s` | HTTP read header timeout as a Go duration. |
 | `TELEMETRY_ONE_SHUTDOWN_TIMEOUT` | `10s` | Graceful shutdown timeout as a Go duration. |
 | `TELEMETRY_ONE_RETAINED_FRAMES_PER_SESSION` | `12000` | Maximum accepted normalized frames retained in memory per session. |
+| `TELEMETRY_ONE_DATABASE_URL` | `` | Optional Postgres URL. When set, sessions use durable Postgres persistence and embedded migrations run at startup. When empty, sessions stay in-memory. |
 
 ## Service Conventions
 
@@ -36,7 +37,7 @@ Environment variables:
 
 ## Persistence
 
-Phase 1.4 targets PostgreSQL because the reference backend spec requires it. The current slice adds plain SQL migrations and repository boundaries only; runtime DB wiring and endpoint behavior are intentionally deferred.
+PostgreSQL is optional at runtime through `TELEMETRY_ONE_DATABASE_URL`. If configured, the API opens a pgx pool, runs embedded migrations, and stores session lifecycle data in Postgres. If empty, local development and tests keep the in-memory session repository.
 
 ## Synthetic Simulator
 

@@ -10,6 +10,6 @@ type StorageDecision struct {
 func DefaultStorageDecision() StorageDecision {
 	return StorageDecision{
 		Driver: DriverPostgres,
-		Reason: "reference spec requires PostgreSQL; Phase 1.4 keeps runtime wiring out and defines schema plus repository boundaries only",
+		Reason: "PostgreSQL is used when TELEMETRY_ONE_DATABASE_URL is configured; otherwise runtime falls back to in-memory repositories for local development and tests",
 	}
 }

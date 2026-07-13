@@ -28,9 +28,10 @@ func routes(cfg config.Config, logger *slog.Logger) http.Handler {
 	frameStore := telemetry.NewFrameStore(cfg.RetainedFramesPerSession)
 	catalog := tracks.OfficialGT7SeedCatalog()
 	eventStore := events.NewStore(events.DefaultStoredEventsLimit, events.DedupOptions{})
+	sessionRepo := sessions.NewMemoryRepository()
 	pipeCfg := ai.PipelineConfigFromConfig(cfg)
 	aiSvc := ai.ComposePipeline(pipeCfg, logger)
-	return routesWithAI(cfg, logger, frameStore, catalog, eventStore, aiSvc)
+	return routesWithAIAndSessions(cfg, logger, frameStore, catalog, eventStore, sessionRepo, aiSvc)
 }
 
 func routesWithFrameStore(cfg config.Config, logger *slog.Logger, frameStore *telemetry.FrameStore) http.Handler {
@@ -42,10 +43,16 @@ func routesWithDependencies(cfg config.Config, logger *slog.Logger, frameStore *
 }
 
 func routesWithEventStore(cfg config.Config, logger *slog.Logger, frameStore *telemetry.FrameStore, catalog tracks.Catalog, eventStore events.Repository) http.Handler {
+	return routesWithSessionRepository(cfg, logger, frameStore, catalog, eventStore, sessions.NewMemoryRepository())
+}
+
+func routesWithSessionRepository(cfg config.Config, logger *slog.Logger, frameStore *telemetry.FrameStore, catalog tracks.Catalog, eventStore events.Repository, sessionRepo sessions.Repository) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler(cfg))
 	mux.HandleFunc("GET /api/v1/health", healthHandler(cfg))
-	mux.HandleFunc("POST /api/v1/sessions", createSessionHandler)
+	mux.HandleFunc("POST /api/v1/sessions", createSessionHandler(sessionRepo, catalog))
+	mux.HandleFunc("GET /api/v1/sessions/{sessionId}", getSessionHandler(sessionRepo, frameStore, eventStore))
+	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/finish", finishSessionHandler(sessionRepo, frameStore, eventStore))
 	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/frames", ingestFramesHandler(frameStore))
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/track", detectTrackHandler(frameStore, catalog))
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/events", listEventsHandler(eventStore))
@@ -72,19 +79,132 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	}
 }
 
-func createSessionHandler(w http.ResponseWriter, r *http.Request) {
-	var request sessions.CreateRequest
-	if err := decodeJSON(r, &request); err != nil {
-		writeJSON(w, http.StatusBadRequest, httperror.Envelope(httperror.BadRequest("invalid JSON body")))
-		return
+func createSessionHandler(repo sessions.Repository, catalog tracks.Catalog) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var request sessions.CreateRequest
+		if err := decodeJSON(r, &request); err != nil {
+			writeJSON(w, http.StatusBadRequest, httperror.Envelope(httperror.BadRequest("invalid JSON body")))
+			return
+		}
+
+		if err := request.Validate(); err != nil {
+			writeJSON(w, http.StatusBadRequest, httperror.Envelope(httperror.BadRequest(err.Error())))
+			return
+		}
+		if request.TrackID != "" && !catalogHasTrack(catalog, request.TrackID) {
+			writeJSON(w, http.StatusBadRequest, httperror.Envelope(httperror.BadRequest("trackId must exist in catalog")))
+			return
+		}
+
+		id, err := sessions.NewID()
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, httperror.Envelope(httperror.Internal("failed to generate session id")))
+			return
+		}
+
+		session, err := repo.Create(r.Context(), sessions.Session{
+			ID:          id,
+			Source:      request.Source,
+			Game:        request.Game,
+			Platform:    request.Platform,
+			DriverAlias: request.DriverAlias,
+			StartedAt:   time.UnixMilli(request.StartedUnixMs).UTC(),
+			TrackID:     request.TrackID,
+		})
+		if err != nil {
+			writeSessionError(w, err)
+			return
+		}
+
+		writeJSON(w, http.StatusCreated, sessions.Response{Session: sessions.NewDTO(session, 0, 0)})
+	}
+}
+
+func getSessionHandler(repo sessions.Repository, frameStore *telemetry.FrameStore, eventStore events.Repository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		session, err := repo.FindByID(r.Context(), r.PathValue("sessionId"))
+		if err != nil {
+			writeSessionError(w, err)
+			return
+		}
+
+		dto, err := sessionDTO(r, session, frameStore, eventStore)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, httperror.Envelope(httperror.Internal("event repository error")))
+			return
+		}
+
+		writeJSON(w, http.StatusOK, sessions.Response{Session: dto})
+	}
+}
+
+var nowUTC = func() time.Time { return time.Now().UTC() }
+
+func finishSessionHandler(repo sessions.Repository, frameStore *telemetry.FrameStore, eventStore events.Repository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var request sessions.FinishRequest
+		if r.Body != nil && r.ContentLength != 0 {
+			if err := decodeJSON(r, &request); err != nil {
+				if errors.Is(err, io.EOF) {
+					request = sessions.FinishRequest{}
+				} else {
+					writeJSON(w, http.StatusBadRequest, httperror.Envelope(httperror.BadRequest("invalid JSON body")))
+					return
+				}
+			}
+		}
+
+		session, err := repo.End(r.Context(), r.PathValue("sessionId"), request.EndedAt(nowUTC))
+		if err != nil {
+			writeSessionError(w, err)
+			return
+		}
+
+		dto, err := sessionDTO(r, session, frameStore, eventStore)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, httperror.Envelope(httperror.Internal("event repository error")))
+			return
+		}
+
+		writeJSON(w, http.StatusOK, sessions.Response{Session: dto})
+	}
+}
+
+func sessionDTO(r *http.Request, session sessions.Session, frameStore *telemetry.FrameStore, eventStore events.Repository) (sessions.DTO, error) {
+	frameCount := len(frameStore.Frames(session.ID))
+	eventCount := 0
+	if eventStore != nil {
+		storedEvents, err := eventStore.List(r.Context(), events.Query{SessionID: session.ID})
+		if err != nil {
+			return sessions.DTO{}, err
+		}
+		eventCount = len(storedEvents)
 	}
 
-	if err := request.Validate(); err != nil {
+	return sessions.NewDTO(session, frameCount, eventCount), nil
+}
+
+func writeSessionError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, sessions.ErrNotFound):
+		writeJSON(w, http.StatusNotFound, httperror.Envelope(httperror.NotFound(err.Error())))
+	case errors.Is(err, sessions.ErrAlreadyFinished), errors.Is(err, sessions.ErrAlreadyExists):
+		writeJSON(w, http.StatusConflict, httperror.Envelope(httperror.Conflict(err.Error())))
+	case errors.Is(err, sessions.ErrInvalidEndedAt), errors.Is(err, sessions.ErrMissingID):
 		writeJSON(w, http.StatusBadRequest, httperror.Envelope(httperror.BadRequest(err.Error())))
-		return
+	default:
+		writeJSON(w, http.StatusInternalServerError, httperror.Envelope(httperror.Internal("session repository error")))
+	}
+}
+
+func catalogHasTrack(catalog tracks.Catalog, trackID string) bool {
+	for _, track := range catalog.Tracks {
+		if track.ID == trackID {
+			return true
+		}
 	}
 
-	writeJSON(w, http.StatusNotImplemented, httperror.Envelope(httperror.NotImplemented("session persistence is planned for phase 1.4")))
+	return false
 }
 
 func ingestFramesHandler(frameStore *telemetry.FrameStore) http.HandlerFunc {
@@ -199,10 +319,16 @@ func analyzeHandler(aiSvc ai.AIService) http.HandlerFunc {
 }
 
 func routesWithAI(cfg config.Config, logger *slog.Logger, frameStore *telemetry.FrameStore, catalog tracks.Catalog, eventStore events.Repository, aiSvc ai.AIService) http.Handler {
+	return routesWithAIAndSessions(cfg, logger, frameStore, catalog, eventStore, sessions.NewMemoryRepository(), aiSvc)
+}
+
+func routesWithAIAndSessions(cfg config.Config, logger *slog.Logger, frameStore *telemetry.FrameStore, catalog tracks.Catalog, eventStore events.Repository, sessionRepo sessions.Repository, aiSvc ai.AIService) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler(cfg))
 	mux.HandleFunc("GET /api/v1/health", healthHandler(cfg))
-	mux.HandleFunc("POST /api/v1/sessions", createSessionHandler)
+	mux.HandleFunc("POST /api/v1/sessions", createSessionHandler(sessionRepo, catalog))
+	mux.HandleFunc("GET /api/v1/sessions/{sessionId}", getSessionHandler(sessionRepo, frameStore, eventStore))
+	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/finish", finishSessionHandler(sessionRepo, frameStore, eventStore))
 	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/frames", ingestFramesHandler(frameStore))
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/track", detectTrackHandler(frameStore, catalog))
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/events", listEventsHandler(eventStore))
