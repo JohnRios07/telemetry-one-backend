@@ -80,3 +80,9 @@ Phase 3.1 defines the versioned track/layout/sector/corner catalog format in `do
 ## Testing Deployment
 
 See [docs/testing-deployment.md](docs/testing-deployment.md) for the CI/CD architecture using GitHub Actions, GHCR, and SSH deployment to an ARM64 VPS.
+
+Testing deployment requires a `VPS_POSTGRES_PASSWORD` GitHub Actions secret. Because that value is embedded directly in the Postgres URL, generate it with URL-safe characters only, for example:
+
+```sh
+python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+```

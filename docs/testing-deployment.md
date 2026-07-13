@@ -34,9 +34,9 @@ Set these in the GitHub repository → Settings → Secrets and variables → Ac
 | `VPS_USER` | SSH user (e.g., `ubuntu`, `deploy`) |
 | `VPS_PORT` | SSH port (optional, defaults to 22) |
 | `VPS_SSH_PRIVATE_KEY` | SSH private key for the deploy user |
-| `VPS_POSTGRES_PASSWORD` | Testing Postgres password used for `POSTGRES_PASSWORD` and `TELEMETRY_ONE_DATABASE_URL` |
+| `VPS_POSTGRES_PASSWORD` | Testing Postgres password used for `POSTGRES_PASSWORD` and embedded directly in `TELEMETRY_ONE_DATABASE_URL`; must contain only URL-safe unreserved characters (`A-Z`, `a-z`, `0-9`, `_`, `.`, `~`, `-`). Generate with `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`. |
 
-The `GITHUB_TOKEN` secret is automatically provided by GitHub Actions for `packages: write`. If `VPS_POSTGRES_PASSWORD` is absent, deployment fails before touching Docker so testing never boots with a weak default password.
+The `GITHUB_TOKEN` secret is automatically provided by GitHub Actions for `packages: write`. If `VPS_POSTGRES_PASSWORD` is absent or contains URL-unsafe characters, deployment fails before touching Docker so testing never boots with a weak default password or malformed Postgres URL.
 
 ## VPS Prerequisites
 
@@ -70,7 +70,7 @@ The deploy user (`ubuntu`) **must have passwordless sudo** (`sudo ALL=(ALL) NOPA
    - Push to `ghcr.io/johnrios07/telemetry-one-backend:develop`.
    - SSH into the VPS and create `/opt/telemetry-one/backend/`.
    - Write `compose.testing.yaml`.
-   - Create `.env` if missing, or append missing Postgres keys to an existing `.env` without overwriting existing values.
+   - Create `.env` if missing, or append missing Postgres keys to an existing `.env` without overwriting existing values. This append-only migration is intentional: it does not prune obsolete keys from the VPS `.env`.
    - Set `.env` permissions to `600`.
    - Run `sudo docker login`, `sudo docker compose pull`, and `sudo docker compose up -d`.
    - Wait up to 120 seconds for the health endpoint to respond, allowing time for first Postgres initialization and migrations.

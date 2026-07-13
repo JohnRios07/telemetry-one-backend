@@ -62,6 +62,13 @@ jobs:
               echo "ERROR: required GitHub Actions secret VPS_POSTGRES_PASSWORD is not set."
               exit 1
             fi
+            case "$VPS_POSTGRES_PASSWORD" in
+              *[!A-Za-z0-9_.~-]*)
+                echo "ERROR: VPS_POSTGRES_PASSWORD must contain only URL-safe unreserved characters: A-Z a-z 0-9 _ . ~ -."
+                echo 'Regenerate it with: python3 -c "import secrets; print(secrets.token_urlsafe(32))"'
+                exit 1
+                ;;
+            esac
             sudo mkdir -p "$DEPLOY_DIR"
             sudo chown "$USER:$USER" "$DEPLOY_DIR"
 
