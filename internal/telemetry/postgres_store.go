@@ -18,8 +18,15 @@ type postgresFrameDB interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 }
 
+type postgresFrameTx interface {
+	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+	Commit(ctx context.Context) error
+	Rollback(ctx context.Context) error
+}
+
 type PostgresStore struct {
 	pool    postgresFrameDB
+	begin   func(context.Context) (postgresFrameTx, error)
 	timeout time.Duration
 }
 
@@ -28,7 +35,13 @@ func NewPostgresStore(pool *pgxpool.Pool) *PostgresStore {
 	if pool != nil {
 		db = pool
 	}
-	return &PostgresStore{pool: db, timeout: 5 * time.Second}
+	return &PostgresStore{
+		pool: db,
+		begin: func(ctx context.Context) (postgresFrameTx, error) {
+			return pool.Begin(ctx)
+		},
+		timeout: 5 * time.Second,
+	}
 }
 
 func (s *PostgresStore) Append(ctx context.Context, sessionID string, frames []Frame) error {
@@ -40,16 +53,36 @@ func (s *PostgresStore) Append(ctx context.Context, sessionID string, frames []F
 	}
 
 	incoming := cloneFrames(frames)
-	for _, batch := range splitFramesByLap(incoming) {
-		if err := s.appendBatch(ctx, sessionID, batch); err != nil {
+	batches := splitFramesByLap(incoming)
+	if len(batches) == 1 {
+		return s.appendBatch(ctx, s.pool, sessionID, batches[0])
+	}
+
+	if s.begin == nil {
+		return fmt.Errorf("append frame batches transaction: begin unavailable")
+	}
+	tx, err := s.begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin append frame batches transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	for _, batch := range batches {
+		if err := s.appendBatch(ctx, tx, sessionID, batch); err != nil {
 			return err
 		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit append frame batches transaction: %w", err)
 	}
 
 	return nil
 }
 
-func (s *PostgresStore) appendBatch(ctx context.Context, sessionID string, frames []Frame) error {
+func (s *PostgresStore) appendBatch(ctx context.Context, db interface {
+	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+}, sessionID string, frames []Frame) error {
 	body, err := json.Marshal(frames)
 	if err != nil {
 		return fmt.Errorf("marshal frame batch: %w", err)
@@ -59,7 +92,7 @@ func (s *PostgresStore) appendBatch(ctx context.Context, sessionID string, frame
 	ctx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
 
-	_, err = s.pool.Exec(ctx, `
+	_, err = db.Exec(ctx, `
 WITH locked AS (
     SELECT pg_advisory_xact_lock(hashtextextended($1, 0))
 ), next_batch AS (
