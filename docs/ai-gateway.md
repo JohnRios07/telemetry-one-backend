@@ -323,7 +323,9 @@ Request body:
 
 Response (200): `GatewayResponse` JSON — summary, event explanations, recommendations, provider info, status.
 
-Error (400): Standard error envelope for invalid requests, raw telemetry rejection, unsupported mode.
+Errors:
+- 400: Standard error envelope for invalid requests, raw telemetry rejection, unsupported mode.
+- 404 `session_not_found`: Session does not exist. Create one via `POST /api/v1/sessions` first.
 
 ### Route Registration
 

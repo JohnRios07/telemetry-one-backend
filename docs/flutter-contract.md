@@ -94,7 +94,7 @@ Flutter behavior:
 
 - Treat `501 not_implemented` as an MVP backend limitation, not a user telemetry error.
 - Once persistence exists, use the returned `session.id` for all frame, live, track, analysis, and event requests.
-- Until then, development clients may use a locally generated session ID for ingest routes.
+- Until then, development clients must call `POST /api/v1/sessions` to create an in-memory session and use the returned ID. V2 endpoints reject arbitrary local session IDs with `session_not_found`.
 
 ## Ingest Frame Batch
 
@@ -187,6 +187,7 @@ Batching and retry semantics:
 - Retry transient network failures with the same ordered batch and same `sessionId`.
 - Do not blindly retry deterministic `bad_request` rejections. Use `details.rejectionCode` and `details.frameIndex` to drop, fix, or quarantine the bad frame before resubmitting a new valid batch.
 - A `session_id_mismatch` is a client bug: route `{sessionId}` and body `sessionId` must match, or Flutter can omit the body `sessionId` and rely on the route.
+- A `session_not_found` error means the session does not exist or was lost (e.g. server restart). Do not retry with the same session ID. Instead, create a new session via `POST /api/v1/sessions`, update `BackendSyncState.sessionId`, and flush buffered frames under the new ID.
 
 ## Live State And Track Detection
 
@@ -516,7 +517,7 @@ Feature flag (useV2Data: false by default)
 - Planned endpoints (`live`, `analysis`) are NEVER called through the bridge.
 - Track/corner names come exclusively from the backend catalog via `TrackDetectionResponse`. The bridge never invents official names.
 - Feature flag default is `false`. Enable by setting `BackendConfig(useV2Data: true)`.
-- Session ID is read from `BackendSyncState.sessionId` (local temporary ID until create-session persistence exists).
+- Session ID is read from `BackendSyncState.sessionId` (returned by `POST /api/v1/sessions`). V2 endpoints reject arbitrary local IDs.
 
 ### Tests
 
