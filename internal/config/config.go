@@ -14,20 +14,21 @@ const (
 	DefaultReadHeaderTimeout        = 5 * time.Second
 	DefaultShutdownTimeout          = 10 * time.Second
 	DefaultRetainedFramesPerSession = 12000
+	DefaultDatabaseURL              = ""
 
-	DefaultAIMaxPromptChars       = 40000
-	DefaultAIMaxCompletionTokens  = 2000
-	DefaultAIMaxEventsPerRequest  = 50
-	DefaultAIRetryMaxAttempts     = 3
-	DefaultAIRetryBaseBackoffMs   = 1000
-	DefaultAIRetryMaxBackoffMs    = 10000
-	DefaultAIRatePerSecond        = 10.0
-	DefaultAIRateBurst            = 5
-	DefaultAICostPerPromptToken   = 0.00015
+	DefaultAIMaxPromptChars         = 40000
+	DefaultAIMaxCompletionTokens    = 2000
+	DefaultAIMaxEventsPerRequest    = 50
+	DefaultAIRetryMaxAttempts       = 3
+	DefaultAIRetryBaseBackoffMs     = 1000
+	DefaultAIRetryMaxBackoffMs      = 10000
+	DefaultAIRatePerSecond          = 10.0
+	DefaultAIRateBurst              = 5
+	DefaultAICostPerPromptToken     = 0.00015
 	DefaultAICostPerCompletionToken = 0.00060
-	DefaultAIModel                = "gpt-4o-mini"
-	DefaultAIProvider             = "fake"
-	DefaultOpenRouterBaseURL      = "https://openrouter.ai/api/v1"
+	DefaultAIModel                  = "gpt-4o-mini"
+	DefaultAIProvider               = "fake"
+	DefaultOpenRouterBaseURL        = "https://openrouter.ai/api/v1"
 )
 
 type Config struct {
@@ -37,24 +38,25 @@ type Config struct {
 	ReadHeaderTimeout        time.Duration
 	ShutdownTimeout          time.Duration
 	RetainedFramesPerSession int
+	DatabaseURL              string
 
-	AIMaxPromptChars        int
-	AIMaxCompletionTokens   int
-	AIMaxEventsPerRequest   int
-	AIRetryMaxAttempts      int
-	AIRetryBaseBackoffMs    int
-	AIRetryMaxBackoffMs     int
-	AIRatePerSecond         float64
-	AIRateBurst             int
-	AICostPerPromptToken    float64
+	AIMaxPromptChars         int
+	AIMaxCompletionTokens    int
+	AIMaxEventsPerRequest    int
+	AIRetryMaxAttempts       int
+	AIRetryBaseBackoffMs     int
+	AIRetryMaxBackoffMs      int
+	AIRatePerSecond          float64
+	AIRateBurst              int
+	AICostPerPromptToken     float64
 	AICostPerCompletionToken float64
 	AIModel                  string
 
-	AIProvider           string
-	OpenRouterAPIKey     string
-	OpenRouterBaseURL    string
+	AIProvider            string
+	OpenRouterAPIKey      string
+	OpenRouterBaseURL     string
 	OpenRouterHTTPReferer string
-	OpenRouterTitle      string
+	OpenRouterTitle       string
 }
 
 func Load() (Config, error) {
@@ -121,6 +123,7 @@ func Load() (Config, error) {
 		ReadHeaderTimeout:        readHeaderTimeout,
 		ShutdownTimeout:          shutdownTimeout,
 		RetainedFramesPerSession: retainedFramesPerSession,
+		DatabaseURL:              stringEnv("TELEMETRY_ONE_DATABASE_URL", DefaultDatabaseURL),
 
 		AIMaxPromptChars:         aiMaxPromptChars,
 		AIMaxCompletionTokens:    aiMaxCompletionTokens,
@@ -134,11 +137,11 @@ func Load() (Config, error) {
 		AICostPerCompletionToken: aiCostPerCompletionToken,
 		AIModel:                  stringEnv("TELEMETRY_ONE_AI_MODEL", DefaultAIModel),
 
-		AIProvider:           stringEnv("TELEMETRY_ONE_AI_PROVIDER", DefaultAIProvider),
-		OpenRouterAPIKey:     stringEnv("TELEMETRY_ONE_OPENROUTER_API_KEY", ""),
-		OpenRouterBaseURL:    stringEnv("TELEMETRY_ONE_OPENROUTER_BASE_URL", DefaultOpenRouterBaseURL),
+		AIProvider:            stringEnv("TELEMETRY_ONE_AI_PROVIDER", DefaultAIProvider),
+		OpenRouterAPIKey:      stringEnv("TELEMETRY_ONE_OPENROUTER_API_KEY", ""),
+		OpenRouterBaseURL:     stringEnv("TELEMETRY_ONE_OPENROUTER_BASE_URL", DefaultOpenRouterBaseURL),
 		OpenRouterHTTPReferer: stringEnv("TELEMETRY_ONE_OPENROUTER_HTTP_REFERER", ""),
-		OpenRouterTitle:      stringEnv("TELEMETRY_ONE_OPENROUTER_TITLE", ""),
+		OpenRouterTitle:       stringEnv("TELEMETRY_ONE_OPENROUTER_TITLE", ""),
 	}, nil
 }
 

@@ -22,6 +22,10 @@ func NotFound(message string) Error {
 	return Error{Code: "not_found", Message: message}
 }
 
+func Conflict(message string) Error {
+	return Error{Code: "conflict", Message: message}
+}
+
 func NotImplemented(message string) Error {
 	return Error{Code: "not_implemented", Message: message}
 }

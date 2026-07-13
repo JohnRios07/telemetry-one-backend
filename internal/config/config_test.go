@@ -12,6 +12,7 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("TELEMETRY_ONE_READ_HEADER_TIMEOUT", "")
 	t.Setenv("TELEMETRY_ONE_SHUTDOWN_TIMEOUT", "")
 	t.Setenv("TELEMETRY_ONE_RETAINED_FRAMES_PER_SESSION", "")
+	t.Setenv("TELEMETRY_ONE_DATABASE_URL", "")
 	t.Setenv("TELEMETRY_ONE_AI_MAX_PROMPT_CHARS", "")
 	t.Setenv("TELEMETRY_ONE_AI_MAX_COMPLETION_TOKENS", "")
 	t.Setenv("TELEMETRY_ONE_AI_MAX_EVENTS_PER_REQUEST", "")
@@ -51,6 +52,9 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if cfg.RetainedFramesPerSession != DefaultRetainedFramesPerSession {
 		t.Fatalf("expected retained frames per session %d, got %d", DefaultRetainedFramesPerSession, cfg.RetainedFramesPerSession)
+	}
+	if cfg.DatabaseURL != DefaultDatabaseURL {
+		t.Fatalf("expected database URL %q, got %q", DefaultDatabaseURL, cfg.DatabaseURL)
 	}
 	if cfg.AIMaxPromptChars != DefaultAIMaxPromptChars {
 		t.Fatalf("expected AI max prompt chars %d, got %d", DefaultAIMaxPromptChars, cfg.AIMaxPromptChars)
@@ -109,6 +113,7 @@ func TestLoadEnvironmentOverrides(t *testing.T) {
 	t.Setenv("TELEMETRY_ONE_READ_HEADER_TIMEOUT", "2s")
 	t.Setenv("TELEMETRY_ONE_SHUTDOWN_TIMEOUT", "3s")
 	t.Setenv("TELEMETRY_ONE_RETAINED_FRAMES_PER_SESSION", "42")
+	t.Setenv("TELEMETRY_ONE_DATABASE_URL", "postgres://telemetry:secret@localhost:5432/telemetry_one?sslmode=disable")
 
 	cfg, err := Load()
 	if err != nil {
@@ -132,6 +137,9 @@ func TestLoadEnvironmentOverrides(t *testing.T) {
 	}
 	if cfg.RetainedFramesPerSession != 42 {
 		t.Fatalf("expected retained frames per session override, got %d", cfg.RetainedFramesPerSession)
+	}
+	if cfg.DatabaseURL != "postgres://telemetry:secret@localhost:5432/telemetry_one?sslmode=disable" {
+		t.Fatalf("expected database URL override, got %q", cfg.DatabaseURL)
 	}
 }
 

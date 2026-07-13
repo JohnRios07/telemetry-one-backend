@@ -21,7 +21,11 @@ func main() {
 
 	logger := logging.NewJSONLogger(os.Stdout, cfg.LogLevel)
 
-	server := api.NewServer(cfg, logger)
+	server, err := api.NewServer(context.Background(), cfg, logger)
+	if err != nil {
+		logger.Error("api server initialization failed", "error", err)
+		os.Exit(1)
+	}
 
 	go func() {
 		logger.Info("api server listening", "addr", cfg.Addr, "env", cfg.Env)

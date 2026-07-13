@@ -29,3 +29,22 @@ func TestInitialMigrationDefinesPhase14Tables(t *testing.T) {
 		}
 	}
 }
+
+func TestSessionsLifecycleMigrationIsIdempotent(t *testing.T) {
+	content, err := os.ReadFile("../../migrations/000002_sessions_lifecycle.up.sql")
+	if err != nil {
+		t.Fatalf("read migration: %v", err)
+	}
+
+	migration := string(content)
+	for _, expected := range []string{
+		"CREATE TABLE IF NOT EXISTS sessions",
+		"CREATE INDEX IF NOT EXISTS sessions_track_id_idx",
+		"CREATE INDEX IF NOT EXISTS sessions_started_at_idx",
+		"CREATE INDEX IF NOT EXISTS sessions_status_idx",
+	} {
+		if !strings.Contains(migration, expected) {
+			t.Fatalf("expected migration to contain %q", expected)
+		}
+	}
+}
