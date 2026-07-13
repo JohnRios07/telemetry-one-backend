@@ -8,36 +8,60 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+type postgresFrameDB interface {
+	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+}
+
 type PostgresStore struct {
-	pool    *pgxpool.Pool
+	pool    postgresFrameDB
 	timeout time.Duration
 }
 
 func NewPostgresStore(pool *pgxpool.Pool) *PostgresStore {
-	return &PostgresStore{pool: pool, timeout: 5 * time.Second}
+	var db postgresFrameDB
+	if pool != nil {
+		db = pool
+	}
+	return &PostgresStore{pool: db, timeout: 5 * time.Second}
 }
 
-func (s *PostgresStore) Append(sessionID string, frames []Frame) {
+func (s *PostgresStore) Append(ctx context.Context, sessionID string, frames []Frame) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if sessionID == "" || len(frames) == 0 || s == nil || s.pool == nil {
-		return
+		return nil
 	}
 
 	incoming := cloneFrames(frames)
-	body, err := json.Marshal(incoming)
-	if err != nil {
-		return
+	for _, batch := range splitFramesByLap(incoming) {
+		if err := s.appendBatch(ctx, sessionID, batch); err != nil {
+			return err
+		}
 	}
 
-	fromUnixMs, toUnixMs := frameTimeRange(incoming)
-	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
+	return nil
+}
+
+func (s *PostgresStore) appendBatch(ctx context.Context, sessionID string, frames []Frame) error {
+	body, err := json.Marshal(frames)
+	if err != nil {
+		return fmt.Errorf("marshal frame batch: %w", err)
+	}
+
+	fromUnixMs, toUnixMs := frameTimeRange(frames)
+	ctx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
 
-	_, _ = s.pool.Exec(ctx, `
+	_, err = s.pool.Exec(ctx, `
 WITH locked AS (
-    SELECT pg_advisory_xact_lock(hashtext($1))
+    SELECT pg_advisory_xact_lock(hashtextextended($1, 0))
 ), next_batch AS (
     SELECT COALESCE(MAX(batch_index), -1) + 1 AS batch_index
     FROM frame_batches
@@ -45,20 +69,28 @@ WITH locked AS (
 )
 INSERT INTO frame_batches (id, session_id, lap_number, batch_index, frame_count, frames_jsonb, time_start_ms, time_end_ms)
 SELECT $2, $1, $3, batch_index, $4, $5::jsonb, $6, $7
-FROM next_batch, locked`, sessionID, newFrameBatchID(), incoming[0].LapNumber, len(incoming), body, fromUnixMs, toUnixMs)
-}
-
-func (s *PostgresStore) Frames(sessionID string) []Frame {
-	if sessionID == "" || s == nil || s.pool == nil {
-		return nil
+FROM next_batch, locked`, sessionID, newFrameBatchID(), frames[0].LapNumber, len(frames), body, fromUnixMs, toUnixMs)
+	if err != nil {
+		return fmt.Errorf("append frame batch: %w", err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
+	return nil
+}
+
+func (s *PostgresStore) Frames(ctx context.Context, sessionID string) ([]Frame, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if sessionID == "" || s == nil || s.pool == nil {
+		return nil, nil
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
 
 	rows, err := s.pool.Query(ctx, `SELECT frames_jsonb FROM frame_batches WHERE session_id = $1 ORDER BY batch_index ASC`, sessionID)
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("query frame batches: %w", err)
 	}
 	defer rows.Close()
 
@@ -66,19 +98,38 @@ func (s *PostgresStore) Frames(sessionID string) []Frame {
 	for rows.Next() {
 		var raw []byte
 		if err := rows.Scan(&raw); err != nil {
-			return nil
+			return nil, fmt.Errorf("scan frame batch: %w", err)
 		}
 		var batch []Frame
 		if err := json.Unmarshal(raw, &batch); err != nil {
-			return nil
+			return nil, fmt.Errorf("unmarshal frame batch: %w", err)
 		}
 		result = append(result, batch...)
 	}
-	if rows.Err() != nil {
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate frame batches: %w", err)
+	}
+
+	return cloneFrames(result), nil
+}
+
+func splitFramesByLap(frames []Frame) [][]Frame {
+	if len(frames) == 0 {
 		return nil
 	}
 
-	return cloneFrames(result)
+	batches := make([][]Frame, 0, 1)
+	start := 0
+	for index := 1; index < len(frames); index++ {
+		if frames[index].LapNumber == frames[start].LapNumber {
+			continue
+		}
+		batches = append(batches, frames[start:index])
+		start = index
+	}
+	batches = append(batches, frames[start:])
+
+	return batches
 }
 
 func frameTimeRange(frames []Frame) (int64, int64) {

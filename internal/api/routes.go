@@ -171,7 +171,11 @@ func finishSessionHandler(repo sessions.Repository, frameStore telemetry.Store, 
 }
 
 func sessionDTO(r *http.Request, session sessions.Session, frameStore telemetry.Store, eventStore events.Repository) (sessions.DTO, error) {
-	frameCount := len(frameStore.Frames(session.ID))
+	frames, err := frameStore.Frames(r.Context(), session.ID)
+	if err != nil {
+		return sessions.DTO{}, err
+	}
+	frameCount := len(frames)
 	eventCount := 0
 	if eventStore != nil {
 		storedEvents, err := eventStore.List(r.Context(), events.Query{SessionID: session.ID})
@@ -229,7 +233,10 @@ func ingestFramesHandler(frameStore telemetry.Store) http.HandlerFunc {
 			return
 		}
 
-		frameStore.Append(request.SessionID, frames)
+		if err := frameStore.Append(r.Context(), request.SessionID, frames); err != nil {
+			writeJSON(w, http.StatusInternalServerError, httperror.Envelope(httperror.Internal("frame persistence error")))
+			return
+		}
 
 		fromUnixMs, toUnixMs := acceptedTimeRange(frames)
 		writeJSON(w, http.StatusAccepted, telemetry.IngestBatchResponse{
@@ -277,7 +284,13 @@ func detectTrackHandler(frameStore telemetry.Store, catalog tracks.Catalog) http
 			return
 		}
 
-		result := tracks.DetectTrack(frameStore.Frames(sessionID), catalog, tracks.DetectionOptions{})
+		frames, err := frameStore.Frames(r.Context(), sessionID)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, httperror.Envelope(httperror.Internal("frame persistence error")))
+			return
+		}
+
+		result := tracks.DetectTrack(frames, catalog, tracks.DetectionOptions{})
 		writeJSON(w, http.StatusOK, result)
 	}
 }

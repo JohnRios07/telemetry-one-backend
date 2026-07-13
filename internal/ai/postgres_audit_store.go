@@ -2,18 +2,29 @@ package ai
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+type postgresAuditDB interface {
+	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+}
+
 type PostgresAuditStore struct {
-	pool *pgxpool.Pool
+	pool postgresAuditDB
 }
 
 func NewPostgresAuditStore(pool *pgxpool.Pool) *PostgresAuditStore {
-	return &PostgresAuditStore{pool: pool}
+	var db postgresAuditDB
+	if pool != nil {
+		db = pool
+	}
+	return &PostgresAuditStore{pool: db}
 }
 
 func (s *PostgresAuditStore) Record(ctx context.Context, record AuditRecord) error {
@@ -41,10 +52,11 @@ INSERT INTO ai_audit_logs (
     error_message,
     redaction_verified,
     created_at
-) VALUES ($1, $2, $1, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
 ON CONFLICT (id) DO NOTHING`,
-		record.TraceID,
+		newAuditLogID(),
 		record.SessionID,
+		record.TraceID,
 		record.Mode,
 		record.ProviderModel,
 		record.PromptTemplateVersion,
@@ -66,6 +78,14 @@ ON CONFLICT (id) DO NOTHING`,
 	}
 
 	return nil
+}
+
+func newAuditLogID() string {
+	var bytes [16]byte
+	if _, err := rand.Read(bytes[:]); err != nil {
+		return fmt.Sprintf("audit_log_%d", time.Now().UnixNano())
+	}
+	return "audit_log_" + hex.EncodeToString(bytes[:])
 }
 
 var _ AuditLogger = (*PostgresAuditStore)(nil)

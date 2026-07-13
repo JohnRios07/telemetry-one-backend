@@ -104,7 +104,9 @@ func TestSessionLifecycleCreateGetFinish(t *testing.T) {
 		t.Fatalf("unexpected created session: %+v", createResponse.Session)
 	}
 
-	store.Append(createResponse.Session.ID, []telemetry.Frame{{TimestampUnixMs: 1720656000000}})
+	if err := store.Append(context.Background(), createResponse.Session.ID, []telemetry.Frame{{TimestampUnixMs: 1720656000000}}); err != nil {
+		t.Fatalf("append frames: %v", err)
+	}
 	seedAPIEvent(t, eventStore, apiEngineerEvent(func(event *events.EngineerEvent) {
 		event.EventID = "event-lifecycle-1"
 		event.SessionID = createResponse.Session.ID
@@ -413,7 +415,10 @@ func TestIngestFramesStoresAcceptedNormalizedFrames(t *testing.T) {
 	if recorder.Code != http.StatusAccepted {
 		t.Fatalf("expected status %d, got %d with body %s", http.StatusAccepted, recorder.Code, recorder.Body.String())
 	}
-	frames := store.Frames("session-1")
+	frames, err := store.Frames(context.Background(), "session-1")
+	if err != nil {
+		t.Fatalf("get frames: %v", err)
+	}
 	if len(frames) != 2 {
 		t.Fatalf("expected 2 retained frames, got %d", len(frames))
 	}
@@ -438,9 +443,40 @@ func TestIngestFramesDoesNotStoreRejectedBatch(t *testing.T) {
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, recorder.Code)
 	}
-	if got := len(store.Frames("session-1")); got != 0 {
+	frames, err := store.Frames(context.Background(), "session-1")
+	if err != nil {
+		t.Fatalf("get frames: %v", err)
+	}
+	if got := len(frames); got != 0 {
 		t.Fatalf("expected rejected batch not to be retained, got %d frames", got)
 	}
+}
+
+func TestIngestFramesReturnsInternalServerErrorWhenPersistenceFails(t *testing.T) {
+	store := failingFrameStore{err: errors.New("append failed")}
+	handler := routesWithFrameStore(config.Config{Addr: ":0", Env: "test"}, slog.New(slog.NewTextHandler(io.Discard, nil)), store)
+	body := `{"frames":[{"timestampUnixMs":1720656000000,"speedMps":57,"rpm":6900,"gear":4,"throttle":0.7,"brake":0,"steering":-0.1,"fuelLiters":38.3,"positionX":122,"positionY":5.5,"positionZ":788,"lapNumber":2,"currentLapMs":81111,"isOnTrack":true}]}`
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/session-1/frames", strings.NewReader(body))
+
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("expected status %d, got %d with body %s", http.StatusInternalServerError, recorder.Code, recorder.Body.String())
+	}
+}
+
+type failingFrameStore struct {
+	err error
+}
+
+func (s failingFrameStore) Append(_ context.Context, _ string, _ []telemetry.Frame) error {
+	return s.err
+}
+
+func (s failingFrameStore) Frames(_ context.Context, _ string) ([]telemetry.Frame, error) {
+	return nil, s.err
 }
 
 func TestDetectTrackContractReturnsPendingForInsufficientFrames(t *testing.T) {
@@ -465,7 +501,9 @@ func TestDetectTrackContractReturnsPendingForInsufficientFrames(t *testing.T) {
 
 func TestDetectTrackContractMatchesRetainedFramesAgainstSeedCatalog(t *testing.T) {
 	store := telemetry.NewFrameStore(40)
-	store.Append("session-1", apiStraightCompletedLapFrames(5423, 32))
+	if err := store.Append(context.Background(), "session-1", apiStraightCompletedLapFrames(5423, 32)); err != nil {
+		t.Fatalf("append frames: %v", err)
+	}
 	handler := routesWithDependencies(config.Config{Addr: ":0", Env: "test"}, slog.New(slog.NewTextHandler(io.Discard, nil)), store, tracks.OfficialGT7SeedCatalog())
 
 	recorder := httptest.NewRecorder()

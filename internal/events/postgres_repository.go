@@ -8,17 +8,27 @@ import (
 	"sync"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+type postgresEventsDB interface {
+	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+}
+
 type PostgresRepository struct {
 	mu           sync.Mutex
-	pool         *pgxpool.Pool
+	pool         postgresEventsDB
 	deduplicator *EventDeduplicator
 }
 
 func NewPostgresRepository(pool *pgxpool.Pool, dedupOptions DedupOptions) *PostgresRepository {
-	return &PostgresRepository{pool: pool, deduplicator: NewEventDeduplicator(dedupOptions)}
+	var db postgresEventsDB
+	if pool != nil {
+		db = pool
+	}
+	return &PostgresRepository{pool: db, deduplicator: NewEventDeduplicator(dedupOptions)}
 }
 
 func (r *PostgresRepository) Append(ctx context.Context, event EngineerEvent) (EngineerEvent, bool, error) {
@@ -29,9 +39,6 @@ func (r *PostgresRepository) Append(ctx context.Context, event EngineerEvent) (E
 		return EngineerEvent{}, false, err
 	}
 	r.mu.Lock()
-	if r.deduplicator == nil {
-		r.deduplicator = NewEventDeduplicator(DedupOptions{})
-	}
 	accepted, _ := r.deduplicator.Filter([]EngineerEvent{event})
 	r.mu.Unlock()
 	if len(accepted) == 0 {
