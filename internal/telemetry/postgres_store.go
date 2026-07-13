@@ -5,12 +5,18 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+var (
+	ErrSessionNotFound = errors.New("session not found")
+	ErrSessionFinished = errors.New("session is finished")
 )
 
 type postgresFrameDB interface {
@@ -20,6 +26,7 @@ type postgresFrameDB interface {
 
 type postgresFrameTx interface {
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 	Commit(ctx context.Context) error
 	Rollback(ctx context.Context) error
 }
@@ -54,18 +61,35 @@ func (s *PostgresStore) Append(ctx context.Context, sessionID string, frames []F
 
 	incoming := cloneFrames(frames)
 	batches := splitFramesByLap(incoming)
-	if len(batches) == 1 {
-		return s.appendBatch(ctx, s.pool, sessionID, batches[0])
+
+	// Fallback for unit tests that construct PostgresStore without begin.
+	if s.begin == nil {
+		for _, batch := range batches {
+			if err := s.appendBatch(ctx, s.pool, sessionID, batch); err != nil {
+				return err
+			}
+		}
+		return nil
 	}
 
-	if s.begin == nil {
-		return fmt.Errorf("append frame batches transaction: begin unavailable")
-	}
 	tx, err := s.begin(ctx)
 	if err != nil {
-		return fmt.Errorf("begin append frame batches transaction: %w", err)
+		return fmt.Errorf("begin append transaction: %w", err)
 	}
 	defer tx.Rollback(ctx)
+
+	// Atomic session check with row lock prevents concurrent finish from
+	// completing between this check and the frame_batches insert.
+	var endedAt *time.Time
+	if err := tx.QueryRow(ctx, `SELECT ended_at FROM sessions WHERE id = $1 FOR UPDATE`, sessionID).Scan(&endedAt); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrSessionNotFound
+		}
+		return fmt.Errorf("check session before append: %w", err)
+	}
+	if endedAt != nil {
+		return ErrSessionFinished
+	}
 
 	for _, batch := range batches {
 		if err := s.appendBatch(ctx, tx, sessionID, batch); err != nil {
@@ -74,7 +98,7 @@ func (s *PostgresStore) Append(ctx context.Context, sessionID string, frames []F
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("commit append frame batches transaction: %w", err)
+		return fmt.Errorf("commit append transaction: %w", err)
 	}
 
 	return nil
@@ -92,7 +116,7 @@ func (s *PostgresStore) appendBatch(ctx context.Context, db interface {
 	ctx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
 
-	_, err = db.Exec(ctx, `
+	tag, err := db.Exec(ctx, `
 WITH locked AS (
     SELECT pg_advisory_xact_lock(hashtextextended($1, 0))
 ), next_batch AS (
@@ -102,9 +126,13 @@ WITH locked AS (
 )
 INSERT INTO frame_batches (id, session_id, lap_number, batch_index, frame_count, frames_jsonb, time_start_ms, time_end_ms)
 SELECT $2, $1, $3, batch_index, $4, $5::jsonb, $6, $7
-FROM next_batch, locked`, sessionID, newFrameBatchID(), frames[0].LapNumber, len(frames), body, fromUnixMs, toUnixMs)
+FROM next_batch, locked
+WHERE EXISTS (SELECT 1 FROM sessions WHERE id = $1 AND ended_at IS NULL)`, sessionID, newFrameBatchID(), frames[0].LapNumber, len(frames), body, fromUnixMs, toUnixMs)
 	if err != nil {
 		return fmt.Errorf("append frame batch: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrSessionFinished
 	}
 
 	return nil
