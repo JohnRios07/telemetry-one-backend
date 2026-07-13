@@ -23,6 +23,9 @@ func (r *MemoryRepository) Create(_ context.Context, session Session) (Session, 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	if _, ok := r.sessions[session.ID]; ok {
+		return Session{}, ErrAlreadyExists
+	}
 	r.sessions[session.ID] = cloneSession(session)
 	return cloneSession(session), nil
 }

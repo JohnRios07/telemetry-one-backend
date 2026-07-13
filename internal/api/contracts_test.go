@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -32,6 +33,34 @@ type errorEnvelope struct {
 			MaxFrames     int    `json:"maxFrames"`
 		} `json:"details"`
 	} `json:"error"`
+}
+
+func TestGetSessionReturnsErrorWhenEventCountCannotBeLoaded(t *testing.T) {
+	store := telemetry.NewFrameStore(10)
+	sessionRepo := sessions.NewMemoryRepository()
+	startedAt := time.UnixMilli(1720656000000).UTC()
+	if _, err := sessionRepo.Create(context.Background(), sessions.Session{ID: "session-1", Source: "flutter", Game: "gt7", Platform: "ps5", StartedAt: startedAt}); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+	handler := routesWithSessionRepository(
+		config.Config{Addr: ":0", Env: "test"},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		store,
+		tracks.OfficialGT7SeedCatalog(),
+		failingEventStore{},
+		sessionRepo,
+	)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/session-1", nil)
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("expected status %d, got %d with body %s", http.StatusInternalServerError, recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), "event repository error") {
+		t.Fatalf("expected event repository error, got %s", recorder.Body.String())
+	}
 }
 
 func TestCreateSessionContractValidatesShape(t *testing.T) {
@@ -621,4 +650,14 @@ func apiEngineerEvent(mutate func(*events.EngineerEvent)) events.EngineerEvent {
 
 func apiStringPtr(value string) *string {
 	return &value
+}
+
+type failingEventStore struct{}
+
+func (failingEventStore) Append(context.Context, events.EngineerEvent) (events.EngineerEvent, bool, error) {
+	return events.EngineerEvent{}, false, errors.New("event store unavailable")
+}
+
+func (failingEventStore) List(context.Context, events.Query) ([]events.EngineerEvent, error) {
+	return nil, errors.New("event store unavailable")
 }

@@ -2,6 +2,7 @@ package sessions
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -86,6 +87,43 @@ func TestMemoryRepositoryLifecycle(t *testing.T) {
 	}
 	if _, err := repo.FindByID(ctx, "missing"); err != ErrNotFound {
 		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestMemoryRepositoryCreateRejectsDuplicateID(t *testing.T) {
+	repo := NewMemoryRepository()
+	ctx := context.Background()
+	startedAt := time.UnixMilli(1720656000000).UTC()
+	original := Session{ID: "session-1", Source: "flutter", Game: "gt7", Platform: "ps5", StartedAt: startedAt}
+
+	if _, err := repo.Create(ctx, original); err != nil {
+		t.Fatalf("expected initial create success: %v", err)
+	}
+	if _, err := repo.Create(ctx, Session{ID: "session-1", Source: "other", Game: "gt7", Platform: "ps5", StartedAt: startedAt}); err != ErrAlreadyExists {
+		t.Fatalf("expected ErrAlreadyExists, got %v", err)
+	}
+
+	found, err := repo.FindByID(ctx, "session-1")
+	if err != nil {
+		t.Fatalf("expected original session to remain stored: %v", err)
+	}
+	if found.Source != original.Source {
+		t.Fatalf("expected duplicate create not to overwrite original, got source %q", found.Source)
+	}
+}
+
+func TestPostgresRepositoryEndUsesAtomicActiveSessionUpdate(t *testing.T) {
+	content, err := os.ReadFile("postgres_repository.go")
+	if err != nil {
+		t.Fatalf("read postgres repository: %v", err)
+	}
+
+	source := string(content)
+	if !strings.Contains(source, "WHERE id = $1 AND ended_at IS NULL") {
+		t.Fatal("expected PostgresRepository.End to update only active sessions atomically")
+	}
+	if strings.Contains(source, "func (r *PostgresRepository) End(ctx context.Context, id string, endedAt time.Time) (Session, error) {\n\tcurrent, err := r.FindByID") {
+		t.Fatal("expected PostgresRepository.End not to pre-read session state before updating")
 	}
 }
 

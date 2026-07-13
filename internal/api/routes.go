@@ -128,7 +128,13 @@ func getSessionHandler(repo sessions.Repository, frameStore *telemetry.FrameStor
 			return
 		}
 
-		writeJSON(w, http.StatusOK, sessions.Response{Session: sessionDTO(r, session, frameStore, eventStore)})
+		dto, err := sessionDTO(r, session, frameStore, eventStore)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, httperror.Envelope(httperror.Internal("event repository error")))
+			return
+		}
+
+		writeJSON(w, http.StatusOK, sessions.Response{Session: dto})
 	}
 }
 
@@ -154,27 +160,35 @@ func finishSessionHandler(repo sessions.Repository, frameStore *telemetry.FrameS
 			return
 		}
 
-		writeJSON(w, http.StatusOK, sessions.Response{Session: sessionDTO(r, session, frameStore, eventStore)})
+		dto, err := sessionDTO(r, session, frameStore, eventStore)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, httperror.Envelope(httperror.Internal("event repository error")))
+			return
+		}
+
+		writeJSON(w, http.StatusOK, sessions.Response{Session: dto})
 	}
 }
 
-func sessionDTO(r *http.Request, session sessions.Session, frameStore *telemetry.FrameStore, eventStore events.Repository) sessions.DTO {
+func sessionDTO(r *http.Request, session sessions.Session, frameStore *telemetry.FrameStore, eventStore events.Repository) (sessions.DTO, error) {
 	frameCount := len(frameStore.Frames(session.ID))
 	eventCount := 0
 	if eventStore != nil {
-		if storedEvents, err := eventStore.List(r.Context(), events.Query{SessionID: session.ID}); err == nil {
-			eventCount = len(storedEvents)
+		storedEvents, err := eventStore.List(r.Context(), events.Query{SessionID: session.ID})
+		if err != nil {
+			return sessions.DTO{}, err
 		}
+		eventCount = len(storedEvents)
 	}
 
-	return sessions.NewDTO(session, frameCount, eventCount)
+	return sessions.NewDTO(session, frameCount, eventCount), nil
 }
 
 func writeSessionError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, sessions.ErrNotFound):
 		writeJSON(w, http.StatusNotFound, httperror.Envelope(httperror.NotFound(err.Error())))
-	case errors.Is(err, sessions.ErrAlreadyFinished):
+	case errors.Is(err, sessions.ErrAlreadyFinished), errors.Is(err, sessions.ErrAlreadyExists):
 		writeJSON(w, http.StatusConflict, httperror.Envelope(httperror.Conflict(err.Error())))
 	case errors.Is(err, sessions.ErrInvalidEndedAt), errors.Is(err, sessions.ErrMissingID):
 		writeJSON(w, http.StatusBadRequest, httperror.Envelope(httperror.BadRequest(err.Error())))

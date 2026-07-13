@@ -58,30 +58,36 @@ func (r *PostgresRepository) FindByID(ctx context.Context, id string) (Session, 
 }
 
 func (r *PostgresRepository) End(ctx context.Context, id string, endedAt time.Time) (Session, error) {
-	current, err := r.FindByID(ctx, id)
-	if err != nil {
-		return Session{}, err
-	}
-	if current.EndedAt != nil {
-		return Session{}, ErrAlreadyFinished
-	}
-	if endedAt.Before(current.StartedAt) {
-		return Session{}, ErrInvalidEndedAt
-	}
+	endedAt = endedAt.UTC()
 
 	session, err := scanSession(r.pool.QueryRow(ctx, `
 UPDATE sessions
 SET ended_at = $2, updated_at = now()
-WHERE id = $1
-RETURNING id, source, game, platform, driver_alias, COALESCE(track_id, ''), started_at, ended_at`, id, endedAt.UTC()))
+WHERE id = $1 AND ended_at IS NULL AND started_at <= $2
+RETURNING id, source, game, platform, driver_alias, COALESCE(track_id, ''), started_at, ended_at`, id, endedAt))
 	if errors.Is(err, pgx.ErrNoRows) {
-		return Session{}, ErrNotFound
+		return Session{}, r.classifyEndNoRows(ctx, id, endedAt)
 	}
 	if err != nil {
 		return Session{}, fmt.Errorf("end session: %w", err)
 	}
 
 	return session, nil
+}
+
+func (r *PostgresRepository) classifyEndNoRows(ctx context.Context, id string, endedAt time.Time) error {
+	current, err := r.FindByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if current.EndedAt != nil {
+		return ErrAlreadyFinished
+	}
+	if endedAt.Before(current.StartedAt) {
+		return ErrInvalidEndedAt
+	}
+
+	return fmt.Errorf("end session: active session %q was not updated", id)
 }
 
 func (r *PostgresRepository) Update(ctx context.Context, session Session) (Session, error) {
