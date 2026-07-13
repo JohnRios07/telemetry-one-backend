@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"telemetry-one-backend/internal/admin"
 	"telemetry-one-backend/internal/ai"
 	"telemetry-one-backend/internal/config"
 	"telemetry-one-backend/internal/events"
@@ -48,6 +49,7 @@ func runtimeHandler(ctx context.Context, cfg config.Config, logger *slog.Logger)
 	eventStore := events.NewPostgresRepository(db.Pool, events.DedupOptions{})
 	sessionRepo := sessions.NewPostgresRepository(db.Pool)
 	aiSvc := ai.ComposePipelineWithAudit(ai.PipelineConfigFromConfig(cfg), logger, ai.NewPostgresAuditStore(db.Pool))
+	statsRepo := admin.NewPostgresStatsRepo(db.Pool)
 
-	return routesWithAIAndSessions(cfg, logger, frameStore, catalog, eventStore, sessionRepo, aiSvc), db.Close, nil
+	return routesWithAIAndSessions(cfg, logger, frameStore, catalog, eventStore, sessionRepo, aiSvc, statsRepo), db.Close, nil
 }

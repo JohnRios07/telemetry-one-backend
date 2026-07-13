@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"telemetry-one-backend/internal/admin"
 	"telemetry-one-backend/internal/ai"
 	"telemetry-one-backend/internal/config"
 	"telemetry-one-backend/internal/events"
@@ -379,7 +380,8 @@ func TestAnalyzeAllowsFinishedSession(t *testing.T) {
 		t.Fatalf("finish session: %v", err)
 	}
 
-	handler := routesWithAIAndSessions(cfg, logger, frameStore, catalog, eventStore, sessionRepo, aiSvc)
+	statsRepo := admin.NewMemoryStatsRepo(sessionRepo, frameStore)
+	handler := routesWithAIAndSessions(cfg, logger, frameStore, catalog, eventStore, sessionRepo, aiSvc, statsRepo)
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/session-finished/analyze", strings.NewReader(validAnalyzePayload))
