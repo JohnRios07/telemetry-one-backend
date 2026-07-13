@@ -169,15 +169,5 @@ ORDER BY date ASC`, cutoff)
 	return result, nil
 }
 
-func clamp(value, min, max int) int {
-	if value < min {
-		return min
-	}
-	if value > max {
-		return max
-	}
-	return value
-}
-
 var _ StatsRepository = (*PostgresStatsRepo)(nil)
 var _ StatsRepository = (*MemoryStatsRepo)(nil)

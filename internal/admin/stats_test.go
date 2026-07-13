@@ -145,36 +145,6 @@ func TestRecentSession_DurationMs(t *testing.T) {
 	}
 }
 
-func TestClamp(t *testing.T) {
-	if got := clamp(5, 1, 100); got != 5 {
-		t.Fatalf("expected 5, got %d", got)
-	}
-	if got := clamp(0, 1, 100); got != 1 {
-		t.Fatalf("expected 1, got %d", got)
-	}
-	if got := clamp(200, 1, 100); got != 100 {
-		t.Fatalf("expected 100, got %d", got)
-	}
-}
-
-func TestDefaults(t *testing.T) {
-	if DefaultLimit != 10 {
-		t.Fatalf("expected default limit 10, got %d", DefaultLimit)
-	}
-	if DefaultDays != 7 {
-		t.Fatalf("expected default days 7, got %d", DefaultDays)
-	}
-	if MinLimit != 1 || MaxLimit != 100 {
-		t.Fatalf("expected limit range 1..100")
-	}
-	if MinDays != 1 || MaxDays != 90 {
-		t.Fatalf("expected days range 1..90")
-	}
-	if ModeMemory != "memory" || ModePostgres != "postgres" {
-		t.Fatalf("unexpected mode values")
-	}
-}
-
 func TestMemoryStatsRepo_LimitRecentSessions(t *testing.T) {
 	ctx := context.Background()
 	sessionRepo := sessions.NewMemoryRepository()

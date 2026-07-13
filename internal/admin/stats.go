@@ -89,9 +89,22 @@ func (r *MemoryStatsRepo) Stats(ctx context.Context, limit int, days int) (*Inge
 
 	totalSessions := len(all)
 
+	framesCache := make(map[string][]telemetry.Frame, totalSessions)
+	var loadFrames = func(sessionID string) ([]telemetry.Frame, error) {
+		if cached, ok := framesCache[sessionID]; ok {
+			return cached, nil
+		}
+		frames, err := r.frameStore.Frames(ctx, sessionID)
+		if err != nil {
+			return nil, err
+		}
+		framesCache[sessionID] = frames
+		return frames, nil
+	}
+
 	var totalPersistedFrames int
 	for _, s := range all {
-		frames, err := r.frameStore.Frames(ctx, s.ID)
+		frames, err := loadFrames(s.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -124,7 +137,7 @@ func (r *MemoryStatsRepo) Stats(ctx context.Context, limit int, days int) (*Inge
 			d := s.EndedAt.Sub(s.StartedAt).Milliseconds()
 			rs.DurationMs = &d
 		}
-		frames, err := r.frameStore.Frames(ctx, s.ID)
+		frames, err := loadFrames(s.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -143,7 +156,7 @@ func (r *MemoryStatsRepo) Stats(ctx context.Context, limit int, days int) (*Inge
 			dailyMap[date] = &DailyStats{Date: date}
 		}
 		dailyMap[date].Sessions++
-		frames, err := r.frameStore.Frames(ctx, s.ID)
+		frames, err := loadFrames(s.ID)
 		if err != nil {
 			return nil, err
 		}
