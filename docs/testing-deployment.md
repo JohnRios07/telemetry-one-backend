@@ -56,6 +56,8 @@ docker --version
 docker compose version
 ```
 
+The deploy user (`ubuntu`) **must have passwordless sudo** (`sudo ALL=(ALL) NOPASSWD:ALL` in `/etc/sudoers.d/90-cloud-init-users`). The first deploy uses it to create `/opt/telemetry-one/backend` and then `chown`s it to the deploy user so subsequent runs do not need sudo.
+
 ## First Deploy
 
 1. Push to `develop` (or trigger manually via GitHub Actions → Deploy Testing → Run workflow).

@@ -54,7 +54,8 @@ jobs:
           script: |
             set -e
             DEPLOY_DIR="/opt/telemetry-one/backend"
-            mkdir -p "$DEPLOY_DIR"
+            sudo mkdir -p "$DEPLOY_DIR"
+            sudo chown "$USER:$USER" "$DEPLOY_DIR"
 
             cat > "$DEPLOY_DIR/compose.testing.yaml" << 'COMPOSE'
             services:
