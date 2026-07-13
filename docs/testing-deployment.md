@@ -19,6 +19,7 @@
 Key decisions:
 
 - **No repo clone on VPS.** The compose file is written to the VPS via SSH heredoc; the image is pulled from GHCR. The VPS never needs a GitHub token or deploy key.
+- **Postgres in testing.** The testing compose stack runs a private `postgres:16-alpine` service with a persistent `pgdata` volume. The backend connects through Docker DNS (`postgres:5432`) when `TELEMETRY_ONE_DATABASE_URL` is set, and embedded migrations run at backend startup.
 - **GHCR for images.** The repo is public, so pulling the image does not require authentication unless the package is later made private. If you make it private, run `docker login ghcr.io` on the VPS with a personal access token.
 - **linux/arm64 only.** The VPS is ARM64; the CI build targets `linux/arm64` exclusively to keep builds fast. If you later add amd64 runners, add the platform to `docker/build-push-action`.
 - **Free-tier friendly.** GitHub Actions hosted runners, GHCR free tier (1 GB free, public images free), no external CI service.
@@ -33,8 +34,9 @@ Set these in the GitHub repository → Settings → Secrets and variables → Ac
 | `VPS_USER` | SSH user (e.g., `ubuntu`, `deploy`) |
 | `VPS_PORT` | SSH port (optional, defaults to 22) |
 | `VPS_SSH_PRIVATE_KEY` | SSH private key for the deploy user |
+| `VPS_POSTGRES_PASSWORD` | Testing Postgres password used for `POSTGRES_PASSWORD` and `TELEMETRY_ONE_DATABASE_URL` |
 
-The `GITHUB_TOKEN` secret is automatically provided by GitHub Actions for `packages: write`.
+The `GITHUB_TOKEN` secret is automatically provided by GitHub Actions for `packages: write`. If `VPS_POSTGRES_PASSWORD` is absent, deployment fails before touching Docker so testing never boots with a weak default password.
 
 ## VPS Prerequisites
 
@@ -67,10 +69,47 @@ The deploy user (`ubuntu`) **must have passwordless sudo** (`sudo ALL=(ALL) NOPA
    - Build the Docker image for `linux/arm64`.
    - Push to `ghcr.io/johnrios07/telemetry-one-backend:develop`.
    - SSH into the VPS and create `/opt/telemetry-one/backend/`.
-   - Write `compose.testing.yaml` and a default `.env` if missing.
-    - Run `sudo docker login`, `sudo docker compose pull`, and `sudo docker compose up -d`.
-   - Wait for the health endpoint to respond.
+   - Write `compose.testing.yaml`.
+   - Create `.env` if missing, or append missing Postgres keys to an existing `.env` without overwriting existing values.
+   - Set `.env` permissions to `600`.
+   - Run `sudo docker login`, `sudo docker compose pull`, and `sudo docker compose up -d`.
+   - Wait up to 120 seconds for the health endpoint to respond, allowing time for first Postgres initialization and migrations.
 3. Verify: `curl http://<vps-ip>:8081/health`
+
+The workflow preserves the no-repo-clone model: only `compose.testing.yaml` and `.env` live under `/opt/telemetry-one/backend/` on the VPS.
+
+## Local Postgres Development
+
+Use the shareable local Compose file when you want to exercise the real Postgres path:
+
+```sh
+docker compose -f compose.local.yaml up -d postgres
+TELEMETRY_ONE_DATABASE_URL='postgres://telemetry:telemetry@localhost:5432/telemetry_one?sslmode=disable' go run ./cmd/api
+docker compose -f compose.local.yaml down
+```
+
+Use `docker compose -f compose.local.yaml down -v` only when you intentionally want to delete the local Postgres volume.
+
+When `TELEMETRY_ONE_DATABASE_URL` is not set, the backend keeps using the in-memory repositories for local development and tests.
+
+## Testing Postgres Operations
+
+The VPS testing database runs inside Docker only; port `5432` is not exposed on the host. Docker Compose automatically creates the `pgdata` volume on first deploy.
+
+Create a backup from the VPS:
+
+```sh
+ssh user@host
+cd /opt/telemetry-one/backend
+sudo docker compose -f compose.testing.yaml exec -T postgres pg_dump -U telemetry -d telemetry_one > telemetry-one-testing-$(date +%Y%m%d%H%M%S).sql
+```
+
+Inspect services and health:
+
+```sh
+sudo docker compose -f compose.testing.yaml ps
+sudo docker compose -f compose.testing.yaml logs -f postgres telemetry-one-backend
+```
 
 ## Rollback
 
@@ -107,7 +146,7 @@ The Docker Compose healthcheck runs every 30s against the container's internal `
 
 The default `.env` sets `TELEMETRY_ONE_AI_PROVIDER=fake`, which returns mock AI responses without any API key. This is safe for the testing environment.
 
-To enable real AI analysis, uncomment the `TELEMETRY_ONE_OPENROUTER_*` vars in `.env` and set a valid OpenRouter API key. The deployment workflow does NOT touch `.env` after creation — key management is your responsibility.
+To enable real AI analysis, uncomment the `TELEMETRY_ONE_OPENROUTER_*` vars in `.env` and set a valid OpenRouter API key. The deployment workflow only appends missing Postgres keys; it does not overwrite existing `.env` values. Key management remains your responsibility.
 
 ## Why No Repo Clone?
 

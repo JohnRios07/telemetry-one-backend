@@ -10,6 +10,16 @@ Run the API locally:
 go run ./cmd/api
 ```
 
+Run local Postgres for durable persistence testing:
+
+```sh
+docker compose -f compose.local.yaml up -d postgres
+TELEMETRY_ONE_DATABASE_URL='postgres://telemetry:telemetry@localhost:5432/telemetry_one?sslmode=disable' go run ./cmd/api
+docker compose -f compose.local.yaml down
+```
+
+Leave `TELEMETRY_ONE_DATABASE_URL` unset to keep the default in-memory mode.
+
 Run tests:
 
 ```sh
@@ -38,6 +48,8 @@ Environment variables:
 ## Persistence
 
 PostgreSQL is optional at runtime through `TELEMETRY_ONE_DATABASE_URL`. If configured, the API opens a pgx pool, runs embedded migrations, and stores session lifecycle data in Postgres. If empty, local development and tests keep the in-memory session repository.
+
+For local Postgres, use `compose.local.yaml` and the development URL `postgres://telemetry:telemetry@localhost:5432/telemetry_one?sslmode=disable`.
 
 ## Synthetic Simulator
 
