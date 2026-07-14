@@ -18,6 +18,18 @@ import (
 	"telemetry-one-backend/internal/tracks"
 )
 
+type contractSummaryRepo struct {
+	summary *sessions.SessionDetailSummary
+}
+
+func (r contractSummaryRepo) List(context.Context, sessions.SummaryFilter) (*sessions.ListResponse, error) {
+	return &sessions.ListResponse{Sessions: []sessions.SessionSummaryItem{}}, nil
+}
+
+func (r contractSummaryRepo) Summary(context.Context, string) (*sessions.SessionDetailSummary, error) {
+	return r.summary, nil
+}
+
 func TestListSessionsContractSeededSingle(t *testing.T) {
 	handler := newTestHandler(t)
 
@@ -162,32 +174,37 @@ func TestListSessionsContractLimit(t *testing.T) {
 }
 
 func TestSessionSummaryContractFound(t *testing.T) {
-	store := telemetry.NewFrameStore(10)
-	eventStore := events.NewStore(10, events.DedupOptions{})
-	sessionRepo := sessions.NewMemoryRepository()
 	startedAt := time.UnixMilli(1720656000000).UTC()
-	if _, err := sessionRepo.Create(context.Background(), sessions.Session{
-		ID: "session-summary-1", Source: "flutter", Game: "gt7", Platform: "ps5",
-		DriverAlias: "alex", TrackID: "gt7_watkins_glen_international", StartedAt: startedAt,
-	}); err != nil {
-		t.Fatalf("seed session: %v", err)
-	}
-
-	if err := store.Append(context.Background(), "session-summary-1", []telemetry.Frame{
-		{TimestampUnixMs: 1000, LapNumber: 1},
-		{TimestampUnixMs: 2000, LapNumber: 1},
-		{TimestampUnixMs: 3000, LapNumber: 2},
-	}); err != nil {
-		t.Fatalf("append frames: %v", err)
-	}
-
-	handler := routesWithSessionRepository(
+	handler := routesWithAIAndSessions(
 		config.Config{Addr: ":0", Env: "test"},
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
-		store,
+		telemetry.NewFrameStore(10),
 		tracks.OfficialGT7SeedCatalog(),
-		eventStore,
-		sessionRepo,
+		events.NewStore(10, events.DedupOptions{}),
+		sessions.NewMemoryRepository(),
+		nil,
+		nil,
+		contractSummaryRepo{summary: &sessions.SessionDetailSummary{
+			Session: sessions.SessionSummaryItem{
+				ID:              "session-summary-1",
+				Source:          "flutter",
+				Game:            "gt7",
+				Platform:        "ps5",
+				DriverAlias:     "alex",
+				TrackID:         "gt7_watkins_glen_international",
+				Status:          sessions.StatusActive,
+				StartedAt:       startedAt.Format(time.RFC3339),
+				FrameBatches:    3,
+				PersistedFrames: 12,
+				EventCount:      1,
+			},
+			FrameBatches:       3,
+			PersistedFrames:    12,
+			LapsDetected:       2,
+			EngineerEventCount: 1,
+			AIAuditLogCount:    0,
+			TimeRangeMs:        &sessions.TimeRange{From: 1000, To: 3000},
+		}},
 	)
 
 	recorder := httptest.NewRecorder()
@@ -206,11 +223,17 @@ func TestSessionSummaryContractFound(t *testing.T) {
 	if resp.Session.ID != "session-summary-1" || resp.Session.Source != "flutter" {
 		t.Fatalf("unexpected session metadata: %+v", resp.Session)
 	}
-	if resp.PersistedFrames != 3 {
-		t.Fatalf("expected 3 persisted frames, got %d", resp.PersistedFrames)
+	if resp.FrameBatches != 3 {
+		t.Fatalf("expected 3 frame batches, got %d", resp.FrameBatches)
+	}
+	if resp.PersistedFrames != 12 {
+		t.Fatalf("expected 12 persisted frames, got %d", resp.PersistedFrames)
 	}
 	if resp.LapsDetected != 2 {
 		t.Fatalf("expected 2 laps detected, got %d", resp.LapsDetected)
+	}
+	if resp.EngineerEventCount != 1 {
+		t.Fatalf("expected 1 engineer event, got %d", resp.EngineerEventCount)
 	}
 	if resp.TimeRangeMs == nil || resp.TimeRangeMs.From != 1000 || resp.TimeRangeMs.To != 3000 {
 		t.Fatalf("expected timeRange [1000, 3000], got %+v", resp.TimeRangeMs)
@@ -220,6 +243,15 @@ func TestSessionSummaryContractFound(t *testing.T) {
 	}
 	if resp.Session.TrackID != "gt7_watkins_glen_international" {
 		t.Fatalf("expected trackId, got %q", resp.Session.TrackID)
+	}
+	if resp.Session.FrameBatches != 3 {
+		t.Fatalf("expected nested frameBatches 3, got %d", resp.Session.FrameBatches)
+	}
+	if resp.Session.PersistedFrames != 12 {
+		t.Fatalf("expected nested persistedFrames 12, got %d", resp.Session.PersistedFrames)
+	}
+	if resp.Session.EventCount != 1 {
+		t.Fatalf("expected nested eventCount 1, got %d", resp.Session.EventCount)
 	}
 }
 

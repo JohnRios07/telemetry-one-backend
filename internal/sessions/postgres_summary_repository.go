@@ -145,6 +145,10 @@ WHERE s.id = $1`
 		item.Status = StatusFinished
 	}
 
+	item.FrameBatches = fb.batches
+	item.PersistedFrames = fb.persisted
+	item.EventCount = eeCount
+
 	summary := &SessionDetailSummary{
 		Session:            item,
 		FrameBatches:       fb.batches,

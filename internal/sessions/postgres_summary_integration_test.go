@@ -303,6 +303,15 @@ func TestPostgresIntegration_SummaryDetail(t *testing.T) {
 	if summary.Session.TrackID != "gt7_watkins_glen_international" {
 		t.Fatalf("expected trackId, got %q", summary.Session.TrackID)
 	}
+	if summary.Session.FrameBatches != summary.FrameBatches {
+		t.Fatalf("expected nested frame batches %d, got %d", summary.FrameBatches, summary.Session.FrameBatches)
+	}
+	if summary.Session.PersistedFrames != summary.PersistedFrames {
+		t.Fatalf("expected nested persisted frames %d, got %d", summary.PersistedFrames, summary.Session.PersistedFrames)
+	}
+	if summary.Session.EventCount != summary.EngineerEventCount {
+		t.Fatalf("expected nested engineer event count %d, got %d", summary.EngineerEventCount, summary.Session.EventCount)
+	}
 	if summary.Session.Status != StatusActive {
 		t.Fatalf("expected active, got %s", summary.Session.Status)
 	}
