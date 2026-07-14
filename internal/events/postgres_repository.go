@@ -65,7 +65,7 @@ ON CONFLICT (id) DO NOTHING`,
 		event.EventID,
 		event.SessionID,
 		event.LapNumber,
-		catalogRefID(event.Corner),
+		catalogRefStorageID(event.Corner),
 		event.Type,
 		event.Severity,
 		event.TimestampUnixMs,
@@ -142,3 +142,10 @@ func scanEvent(row pgx.Row) (EngineerEvent, error) {
 }
 
 var _ Repository = (*PostgresRepository)(nil)
+
+func catalogRefStorageID(ref *CatalogRef) string {
+	if ref == nil || ref.ID == nil {
+		return ""
+	}
+	return strings.TrimSpace(*ref.ID)
+}

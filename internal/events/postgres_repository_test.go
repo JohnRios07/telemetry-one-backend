@@ -78,3 +78,27 @@ func TestPostgresRepositoryAppendStoresFullEventMetadata(t *testing.T) {
 		t.Fatalf("expected full event metadata to preserve event id %q, got %q", event.EventID, metadata.Event.EventID)
 	}
 }
+
+func TestPostgresRepositoryAppendUsesNullCornerForUnassignedDeterministicEvents(t *testing.T) {
+	db := &fakeEventsDB{rows: 1}
+	repo := NewPostgresRepository(nil, DedupOptions{})
+	repo.pool = db
+	event := validEvent()
+	event.Corner = nil
+
+	_, accepted, err := repo.Append(context.Background(), event)
+	if err != nil || !accepted {
+		t.Fatalf("expected accepted event, accepted=%v err=%v", accepted, err)
+	}
+
+	if len(db.execs) != 1 {
+		t.Fatalf("expected one insert, got %d", len(db.execs))
+	}
+	cornerID, ok := db.execs[0].args[3].(string)
+	if !ok {
+		t.Fatalf("expected corner id argument to be string, got %T", db.execs[0].args[3])
+	}
+	if cornerID != "" {
+		t.Fatalf("expected empty corner id for NULL insert, got %q", cornerID)
+	}
+}
