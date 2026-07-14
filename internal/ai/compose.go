@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"log/slog"
+	"strings"
 
 	"telemetry-one-backend/internal/config"
 )
@@ -11,7 +12,9 @@ type FakeProvider struct{}
 
 func (f *FakeProvider) Analyze(_ context.Context, req ProviderRequest) (ProviderResponse, error) {
 	content := "AI analysis result"
-	if len(req.Messages) > 0 {
+	if isEngineerAnalysisRequest(req.Messages) {
+		content = "Fake race engineer analysis: reviewed structured engineer events only. Prioritize the highest-severity corner events, smooth inputs on the next lap, and use referenced events for follow-up."
+	} else if len(req.Messages) > 0 {
 		content = "AI analysis result for " + req.Messages[0].Content
 	}
 	return ProviderResponse{
@@ -23,6 +26,18 @@ func (f *FakeProvider) Analyze(_ context.Context, req ProviderRequest) (Provider
 }
 
 var _ ProviderAdapter = (*FakeProvider)(nil)
+
+func isEngineerAnalysisRequest(messages []Message) bool {
+	for _, message := range messages {
+		content := strings.ToLower(message.Content)
+		if strings.Contains(content, "telemetry one engineer") ||
+			strings.Contains(content, "structured engineer events") ||
+			strings.Contains(content, "engineer events") {
+			return true
+		}
+	}
+	return false
+}
 
 type PipelineConfig struct {
 	AIMaxPromptChars         int

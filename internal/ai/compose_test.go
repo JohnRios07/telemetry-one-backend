@@ -43,6 +43,12 @@ func TestComposePipelineDefaultFakeProvider(t *testing.T) {
 	if resp.Summary == "" {
 		t.Fatal("expected non-empty summary")
 	}
+	if !strings.Contains(resp.Summary, "structured engineer events") {
+		t.Fatalf("expected fake engineer summary to mention structured engineer events, got %q", resp.Summary)
+	}
+	if strings.Contains(resp.Summary, "Telemetry One Engineer") || strings.Contains(resp.Summary, "Session:") {
+		t.Fatalf("expected fake engineer summary not to echo raw prompt, got %q", resp.Summary)
+	}
 	if len(resp.ReferencedEvents) == 0 {
 		t.Fatal("expected referenced events")
 	}
@@ -160,6 +166,33 @@ func TestComposePipelineCascadesFallbackOnProviderError(t *testing.T) {
 	}
 	if !strings.Contains(resp.Summary, "AI analysis is currently unavailable") {
 		t.Fatalf("expected fallback summary, got: %s", resp.Summary)
+	}
+}
+
+func TestFakeProviderReturnsEngineerAdviceWithoutPromptEcho(t *testing.T) {
+	adapter := &FakeProvider{}
+	inputPrompt := "Telemetry One Engineer\nSession: session-1\nEngineer Events (1 total): event-1"
+
+	resp, err := adapter.Analyze(context.Background(), ProviderRequest{
+		Model: "test-model",
+		Messages: []Message{
+			{Role: "system", Content: inputPrompt},
+			{Role: "user", Content: "Analyze structured engineer events for live advice."},
+		},
+		Temperature: 0.7,
+		MaxTokens:   500,
+	})
+	if err != nil {
+		t.Fatalf("expected fake provider to succeed: %v", err)
+	}
+	if resp.Content == "" || !strings.Contains(resp.Content, "Fake race engineer analysis") {
+		t.Fatalf("expected presentable fake race engineer content, got %q", resp.Content)
+	}
+	if !strings.Contains(resp.Content, "structured engineer events") || !strings.Contains(resp.Content, "actionable") && !strings.Contains(resp.Content, "Prioritize") {
+		t.Fatalf("expected fake content to mention structured events and actionable advice, got %q", resp.Content)
+	}
+	if strings.Contains(resp.Content, inputPrompt) || strings.Contains(resp.Content, "Session: session-1") {
+		t.Fatalf("expected fake content not to echo raw prompt, got %q", resp.Content)
 	}
 }
 
