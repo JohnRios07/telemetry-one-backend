@@ -44,7 +44,10 @@ func (r *MemorySummaryRepository) List(ctx context.Context, filter SummaryFilter
 
 	items := make([]SessionSummaryItem, 0, limit)
 	for _, s := range all[:limit] {
-		item := r.buildItem(ctx, s)
+		item, err := r.buildItem(ctx, s, nil, nil)
+		if err != nil {
+			return nil, err
+		}
 		items = append(items, item)
 	}
 
@@ -57,9 +60,24 @@ func (r *MemorySummaryRepository) Summary(ctx context.Context, sessionID string)
 		return nil, err
 	}
 
-	item := r.buildItem(ctx, session)
+	frames, err := r.frameStore.Frames(ctx, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("load frames for session %s: %w", sessionID, err)
+	}
 
-	frames, _ := r.frameStore.Frames(ctx, sessionID)
+	var eventCount int
+	if r.eventRepo != nil {
+		storedEvents, err := r.eventRepo.List(ctx, events.Query{SessionID: session.ID})
+		if err != nil {
+			return nil, fmt.Errorf("load events for session %s: %w", sessionID, err)
+		}
+		eventCount = len(storedEvents)
+	}
+
+	item, err := r.buildItem(ctx, session, frames, &eventCount)
+	if err != nil {
+		return nil, err
+	}
 
 	pf := len(frames)
 	fb := 0
@@ -95,7 +113,7 @@ func (r *MemorySummaryRepository) Summary(ctx context.Context, sessionID string)
 	}, nil
 }
 
-func (r *MemorySummaryRepository) buildItem(ctx context.Context, session Session) SessionSummaryItem {
+func (r *MemorySummaryRepository) buildItem(ctx context.Context, session Session, frames []telemetry.Frame, eventCount *int) (SessionSummaryItem, error) {
 	item := SessionSummaryItem{
 		ID:          session.ID,
 		Source:      session.Source,
@@ -114,15 +132,27 @@ func (r *MemorySummaryRepository) buildItem(ctx context.Context, session Session
 		item.DurationMs = d
 	}
 
-	frames, _ := r.frameStore.Frames(ctx, session.ID)
+	if frames == nil {
+		loadedFrames, err := r.frameStore.Frames(ctx, session.ID)
+		if err != nil {
+			return SessionSummaryItem{}, fmt.Errorf("load frames for session %s: %w", session.ID, err)
+		}
+		frames = loadedFrames
+	}
 	item.PersistedFrames = len(frames)
+
+	if eventCount != nil {
+		item.EventCount = *eventCount
+		return item, nil
+	}
 
 	if r.eventRepo != nil {
 		storedEvents, err := r.eventRepo.List(ctx, events.Query{SessionID: session.ID})
-		if err == nil {
-			item.EventCount = len(storedEvents)
+		if err != nil {
+			return SessionSummaryItem{}, fmt.Errorf("load events for session %s: %w", session.ID, err)
 		}
+		item.EventCount = len(storedEvents)
 	}
 
-	return item
+	return item, nil
 }

@@ -2,6 +2,7 @@ package sessions
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -143,8 +144,50 @@ func validSummaryEvent(eventID, sessionID string) events.EngineerEvent {
 		Metrics: []events.MetricEvidence{
 			{Name: "throttleReapplicationDeltaMs", Value: 320, Unit: "ms", Status: events.MetricStatusAvailable, Role: events.MetricRoleDelta},
 		},
-		Source:          events.EventSource{Kind: events.SourceDeterministicRule, RuleID: "late_throttle.v1", RuleVersion: "v1"},
+		Source: events.EventSource{Kind: events.SourceDeterministicRule, RuleID: "late_throttle.v1", RuleVersion: "v1"},
 	}
+}
+
+type failingFrameStore struct {
+	err error
+	get int
+}
+
+func (s *failingFrameStore) Append(context.Context, string, []telemetry.Frame) error { return nil }
+
+func (s *failingFrameStore) Frames(context.Context, string) ([]telemetry.Frame, error) {
+	s.get++
+	return nil, s.err
+}
+
+type scriptedFrameStore struct {
+	snapshots [][]telemetry.Frame
+	get       int
+}
+
+func (s *scriptedFrameStore) Append(context.Context, string, []telemetry.Frame) error { return nil }
+
+func (s *scriptedFrameStore) Frames(_ context.Context, _ string) ([]telemetry.Frame, error) {
+	idx := s.get
+	s.get++
+	if idx >= len(s.snapshots) {
+		idx = len(s.snapshots) - 1
+	}
+	return s.snapshots[idx], nil
+}
+
+type failingEventRepo struct {
+	err error
+	get int
+}
+
+func (r *failingEventRepo) Append(context.Context, events.EngineerEvent) (events.EngineerEvent, bool, error) {
+	return events.EngineerEvent{}, false, nil
+}
+
+func (r *failingEventRepo) List(context.Context, events.Query) ([]events.EngineerEvent, error) {
+	r.get++
+	return nil, r.err
 }
 
 func TestMemorySummaryRepositorySummaryNotFound(t *testing.T) {
@@ -153,5 +196,99 @@ func TestMemorySummaryRepositorySummaryNotFound(t *testing.T) {
 	_, err := repo.Summary(context.Background(), "session-missing")
 	if err != ErrNotFound {
 		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestMemorySummaryRepositoryListFrameStoreError(t *testing.T) {
+	sessionRepo := NewMemoryRepository()
+	ctx := context.Background()
+	_, _ = sessionRepo.Create(ctx, Session{ID: "session-1", Source: "flutter", Game: "gt7", Platform: "ps5", StartedAt: time.UnixMilli(1).UTC()})
+
+	repo := NewMemorySummaryRepository(sessionRepo, &failingFrameStore{err: errors.New("frame store down")}, nil)
+
+	_, err := repo.List(ctx, SummaryFilter{Limit: 10})
+	if err == nil || err.Error() != "load frames for session session-1: frame store down" {
+		t.Fatalf("expected frame store error, got %v", err)
+	}
+}
+
+func TestMemorySummaryRepositorySummaryFrameStoreError(t *testing.T) {
+	sessionRepo := NewMemoryRepository()
+	ctx := context.Background()
+	_, _ = sessionRepo.Create(ctx, Session{ID: "session-1", Source: "flutter", Game: "gt7", Platform: "ps5", StartedAt: time.UnixMilli(1).UTC()})
+
+	repo := NewMemorySummaryRepository(sessionRepo, &failingFrameStore{err: errors.New("frame store down")}, nil)
+
+	_, err := repo.Summary(ctx, "session-1")
+	if err == nil || err.Error() != "load frames for session session-1: frame store down" {
+		t.Fatalf("expected frame store error, got %v", err)
+	}
+}
+
+func TestMemorySummaryRepositoryListEventRepoError(t *testing.T) {
+	sessionRepo := NewMemoryRepository()
+	frameStore := telemetry.NewFrameStore(10)
+	ctx := context.Background()
+	_, _ = sessionRepo.Create(ctx, Session{ID: "session-1", Source: "flutter", Game: "gt7", Platform: "ps5", StartedAt: time.UnixMilli(1).UTC()})
+	if err := frameStore.Append(ctx, "session-1", []telemetry.Frame{{TimestampUnixMs: 1}}); err != nil {
+		t.Fatalf("append frames: %v", err)
+	}
+
+	repo := NewMemorySummaryRepository(sessionRepo, frameStore, &failingEventRepo{err: errors.New("event repo down")})
+
+	_, err := repo.List(ctx, SummaryFilter{Limit: 10})
+	if err == nil || err.Error() != "load events for session session-1: event repo down" {
+		t.Fatalf("expected event repo error, got %v", err)
+	}
+}
+
+func TestMemorySummaryRepositorySummaryEventRepoError(t *testing.T) {
+	sessionRepo := NewMemoryRepository()
+	frameStore := telemetry.NewFrameStore(10)
+	ctx := context.Background()
+	_, _ = sessionRepo.Create(ctx, Session{ID: "session-1", Source: "flutter", Game: "gt7", Platform: "ps5", StartedAt: time.UnixMilli(1).UTC()})
+	if err := frameStore.Append(ctx, "session-1", []telemetry.Frame{{TimestampUnixMs: 1}}); err != nil {
+		t.Fatalf("append frames: %v", err)
+	}
+
+	repo := NewMemorySummaryRepository(sessionRepo, frameStore, &failingEventRepo{err: errors.New("event repo down")})
+
+	_, err := repo.Summary(ctx, "session-1")
+	if err == nil || err.Error() != "load events for session session-1: event repo down" {
+		t.Fatalf("expected event repo error, got %v", err)
+	}
+}
+
+func TestMemorySummaryRepositorySummaryUsesSingleFrameSnapshot(t *testing.T) {
+	sessionRepo := NewMemoryRepository()
+	frameStore := &scriptedFrameStore{snapshots: [][]telemetry.Frame{
+		{
+			{TimestampUnixMs: 100, LapNumber: 1},
+			{TimestampUnixMs: 200, LapNumber: 1},
+		},
+		{
+			{TimestampUnixMs: 999, LapNumber: 9},
+		},
+	}}
+	ctx := context.Background()
+	_, _ = sessionRepo.Create(ctx, Session{ID: "session-1", Source: "flutter", Game: "gt7", Platform: "ps5", StartedAt: time.UnixMilli(1).UTC()})
+
+	repo := NewMemorySummaryRepository(sessionRepo, frameStore, nil)
+
+	summary, err := repo.Summary(ctx, "session-1")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if frameStore.get != 1 {
+		t.Fatalf("expected 1 frame-store call, got %d", frameStore.get)
+	}
+	if summary.Session.PersistedFrames != 2 || summary.PersistedFrames != 2 {
+		t.Fatalf("expected consistent frame counts from one snapshot, got session=%d summary=%d", summary.Session.PersistedFrames, summary.PersistedFrames)
+	}
+	if summary.LapsDetected != 1 {
+		t.Fatalf("expected 1 lap from first snapshot, got %d", summary.LapsDetected)
+	}
+	if summary.TimeRangeMs == nil || summary.TimeRangeMs.From != 100 || summary.TimeRangeMs.To != 200 {
+		t.Fatalf("expected time range [100, 200], got %+v", summary.TimeRangeMs)
 	}
 }
