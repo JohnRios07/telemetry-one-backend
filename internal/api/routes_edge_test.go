@@ -381,7 +381,8 @@ func TestAnalyzeAllowsFinishedSession(t *testing.T) {
 	}
 
 	statsRepo := admin.NewMemoryStatsRepo(sessionRepo, frameStore)
-	handler := routesWithAIAndSessions(cfg, logger, frameStore, catalog, eventStore, sessionRepo, aiSvc, statsRepo)
+	summaryRepo := sessions.NewMemorySummaryRepository(sessionRepo, frameStore, eventStore)
+	handler := routesWithAIAndSessions(cfg, logger, frameStore, catalog, eventStore, sessionRepo, aiSvc, statsRepo, summaryRepo)
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/session-finished/analyze", strings.NewReader(validAnalyzePayload))

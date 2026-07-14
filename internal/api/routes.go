@@ -36,7 +36,8 @@ func routes(cfg config.Config, logger *slog.Logger) http.Handler {
 	pipeCfg := ai.PipelineConfigFromConfig(cfg)
 	aiSvc := ai.ComposePipeline(pipeCfg, logger)
 	statsRepo := admin.NewMemoryStatsRepo(sessionRepo, frameStore)
-	return routesWithAIAndSessions(cfg, logger, frameStore, catalog, eventStore, sessionRepo, aiSvc, statsRepo)
+	summaryRepo := sessions.NewMemorySummaryRepository(sessionRepo, frameStore, eventStore)
+	return routesWithAIAndSessions(cfg, logger, frameStore, catalog, eventStore, sessionRepo, aiSvc, statsRepo, summaryRepo)
 }
 
 func routesWithFrameStore(cfg config.Config, logger *slog.Logger, frameStore telemetry.Store) http.Handler {
@@ -61,6 +62,10 @@ func routesWithSessionRepository(cfg config.Config, logger *slog.Logger, frameSt
 	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/frames", ingestFramesHandler(frameStore, sessionRepo, logger))
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/track", detectTrackHandler(frameStore, catalog, sessionRepo))
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/events", listEventsHandler(eventStore, sessionRepo))
+
+	summaryRepo := sessions.NewMemorySummaryRepository(sessionRepo, frameStore, eventStore)
+	mux.HandleFunc("GET /api/v1/sessions", listSessionsHandler(summaryRepo))
+	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/summary", sessionSummaryHandler(summaryRepo))
 
 	return loggingMiddleware(logger, mux)
 }
@@ -438,10 +443,11 @@ func analyzeHandler(aiSvc ai.AIService, sessionRepo sessions.Repository) http.Ha
 func routesWithAI(cfg config.Config, logger *slog.Logger, frameStore telemetry.Store, catalog tracks.Catalog, eventStore events.Repository, aiSvc ai.AIService) http.Handler {
 	sessionRepo := sessions.NewMemoryRepository()
 	statsRepo := admin.NewMemoryStatsRepo(sessionRepo, frameStore)
-	return routesWithAIAndSessions(cfg, logger, frameStore, catalog, eventStore, sessionRepo, aiSvc, statsRepo)
+	summaryRepo := sessions.NewMemorySummaryRepository(sessionRepo, frameStore, eventStore)
+	return routesWithAIAndSessions(cfg, logger, frameStore, catalog, eventStore, sessionRepo, aiSvc, statsRepo, summaryRepo)
 }
 
-func routesWithAIAndSessions(cfg config.Config, logger *slog.Logger, frameStore telemetry.Store, catalog tracks.Catalog, eventStore events.Repository, sessionRepo sessions.Repository, aiSvc ai.AIService, statsRepo admin.StatsRepository) http.Handler {
+func routesWithAIAndSessions(cfg config.Config, logger *slog.Logger, frameStore telemetry.Store, catalog tracks.Catalog, eventStore events.Repository, sessionRepo sessions.Repository, aiSvc ai.AIService, statsRepo admin.StatsRepository, summaryRepo sessions.SummaryRepository) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler(cfg))
 	mux.HandleFunc("GET /api/v1/health", healthHandler(cfg))
@@ -453,6 +459,8 @@ func routesWithAIAndSessions(cfg config.Config, logger *slog.Logger, frameStore 
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/events", listEventsHandler(eventStore, sessionRepo))
 	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/analyze", analyzeHandler(aiSvc, sessionRepo))
 	mux.Handle("GET /api/v1/admin/ingest-stats", adminAuthMiddleware(cfg, ingestStatsHandler(statsRepo)))
+	mux.HandleFunc("GET /api/v1/sessions", listSessionsHandler(summaryRepo))
+	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/summary", sessionSummaryHandler(summaryRepo))
 	return loggingMiddleware(logger, mux)
 }
 
@@ -538,6 +546,38 @@ func ingestStatsHandler(statsRepo admin.StatsRepository) http.HandlerFunc {
 		resp, err := statsRepo.Stats(r.Context(), limit, days)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, httperror.Envelope(httperror.Internal("failed to load ingest stats")))
+			return
+		}
+
+		writeJSON(w, http.StatusOK, resp)
+	}
+}
+
+func listSessionsHandler(summaryRepo sessions.SummaryRepository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		limit := clampQueryParam(r, "limit", sessions.DefaultListLimit, sessions.MinListLimit, sessions.MaxListLimit)
+
+		resp, err := summaryRepo.List(r.Context(), sessions.SummaryFilter{Limit: limit})
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, httperror.Envelope(httperror.Internal("failed to list sessions")))
+			return
+		}
+
+		if resp.Sessions == nil {
+			resp.Sessions = []sessions.SessionSummaryItem{}
+		}
+
+		writeJSON(w, http.StatusOK, resp)
+	}
+}
+
+func sessionSummaryHandler(summaryRepo sessions.SummaryRepository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		sessionID := r.PathValue("sessionId")
+
+		resp, err := summaryRepo.Summary(r.Context(), sessionID)
+		if err != nil {
+			writeSessionError(w, err)
 			return
 		}
 

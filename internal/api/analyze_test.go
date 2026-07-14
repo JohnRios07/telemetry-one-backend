@@ -276,5 +276,6 @@ func testAnalyzeHandler(t *testing.T, aiSvc ai.AIService) http.Handler {
 	})
 
 	statsRepo := admin.NewMemoryStatsRepo(sessionRepo, frameStore)
-	return routesWithAIAndSessions(cfg, logger, frameStore, catalog, eventStore, sessionRepo, aiSvc, statsRepo)
+	summaryRepo := sessions.NewMemorySummaryRepository(sessionRepo, frameStore, eventStore)
+	return routesWithAIAndSessions(cfg, logger, frameStore, catalog, eventStore, sessionRepo, aiSvc, statsRepo, summaryRepo)
 }

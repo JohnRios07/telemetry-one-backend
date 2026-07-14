@@ -556,16 +556,91 @@ Unauthorized responses use the standard error envelope with status 401 and code 
 
 In memory mode, `mode` is `"memory"` and unavailable aggregate fields (`frameBatches`, `engineerEvents`, `aiAuditLogs`) are omitted. The endpoint does NOT report rejection statistics (rejection reasons are not persisted).
 
-## Planned V1 Endpoints
+## Session History And Summary
 
-These endpoints are documented from the reference spec but are not implemented in the scaffold slice yet.
+### List Sessions
 
 ```http
-GET /api/v1/sessions/{sessionId}/live
-GET /api/v1/sessions/{sessionId}/analysis
-GET /api/v1/sessions/{sessionId}/laps/{lapNumber}
-GET /api/v1/sessions/{sessionId}/laps/{lapNumber}/corners
-POST /api/v1/tracks
+GET /api/v1/sessions
 ```
 
-See `docs/flutter-contract.md` for the Phase 6.1 backend/Flutter contract for implemented endpoints and the planned live/analysis response shapes.
+Returns a paginated list of sessions with aggregate frame, batch, and event counts. Available in both memory and Postgres modes.
+
+No auth required. Rejection stats are not included — rejection summaries are not persisted.
+
+#### Query Parameters
+
+| Parameter | Default | Range | Description |
+|---|---|---|---|
+| `limit` | `20` | `1..100` | Number of sessions to return. Out-of-range values are silently clamped. |
+
+#### Response
+
+```json
+{
+  "sessions": [
+    {
+      "id": "session_01j2example",
+      "source": "flutter",
+      "game": "gt7",
+      "platform": "ps5",
+      "driverAlias": "alex",
+      "trackId": "gt7_watkins_glen_international",
+      "status": "finished",
+      "startedAt": "2026-07-14T10:00:00Z",
+      "endedAt": "2026-07-14T12:30:00Z",
+      "durationMs": 9000000,
+      "frameBatches": 5,
+      "persistedFrames": 400,
+      "eventCount": 3,
+      "detectedTrackId": null,
+      "detectedLayoutId": null
+    }
+  ]
+}
+```
+
+In memory mode, `frameBatches` is always `0` because the in-memory frame store does not track batch boundaries. `detectedTrackId` and `detectedLayoutId` are reserved for future per-session detection results and are always omitted in the current implementation.
+
+### Session Summary
+
+```http
+GET /api/v1/sessions/{sessionId}/summary
+```
+
+Returns aggregate counts and derived metrics for a single session. Session must exist; returns `404 session_not_found` otherwise.
+
+#### Response
+
+```json
+{
+  "session": {
+    "id": "session_01j2example",
+    "source": "flutter",
+    "game": "gt7",
+    "platform": "ps5",
+    "driverAlias": "alex",
+    "trackId": "gt7_watkins_glen_international",
+    "status": "finished",
+    "startedAt": "2026-07-14T10:00:00Z",
+    "endedAt": "2026-07-14T12:30:00Z",
+    "durationMs": 9000000,
+    "frameBatches": 5,
+    "persistedFrames": 400,
+    "eventCount": 3
+  },
+  "frameBatches": 5,
+  "persistedFrames": 400,
+  "timeRangeMs": {
+    "from": 1000,
+    "to": 80000
+  },
+  "lapsDetected": 6,
+  "engineerEventCount": 3,
+  "aiAuditLogCount": 1
+}
+```
+
+`timeRangeMs` is present only when at least one frame batch exists. In memory mode, `frameBatches` is `0`, `timeRangeMs` is derived from retained frames (if any), and `aiAuditLogCount` is always `0`.
+
+## Planned V1 Endpoints

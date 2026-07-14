@@ -50,6 +50,7 @@ func runtimeHandler(ctx context.Context, cfg config.Config, logger *slog.Logger)
 	sessionRepo := sessions.NewPostgresRepository(db.Pool)
 	aiSvc := ai.ComposePipelineWithAudit(ai.PipelineConfigFromConfig(cfg), logger, ai.NewPostgresAuditStore(db.Pool))
 	statsRepo := admin.NewPostgresStatsRepo(db.Pool)
+	summaryRepo := sessions.NewPostgresSummaryRepository(db.Pool)
 
-	return routesWithAIAndSessions(cfg, logger, frameStore, catalog, eventStore, sessionRepo, aiSvc, statsRepo), db.Close, nil
+	return routesWithAIAndSessions(cfg, logger, frameStore, catalog, eventStore, sessionRepo, aiSvc, statsRepo, summaryRepo), db.Close, nil
 }
