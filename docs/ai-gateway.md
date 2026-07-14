@@ -335,6 +335,18 @@ Errors:
 
 Clients send structured events (ConsumerInput contract) and receive structured analysis (GatewayResponse). The `Status` field indicates success or one of the fallback conditions (`provider_error`, `budget_limited`, `rate_limited`, `invalid_response`).
 
+### Live Race Engineer Advice Endpoint
+
+`POST /api/v1/sessions/{sessionId}/race-engineer/advice` is the backend-owned live text endpoint for clients that should not build AI input directly. The handler:
+
+1. Validates the route session using the existing session repository semantics.
+2. Strictly decodes an optional body with only `sinceUnixMs` and `maxEvents`.
+3. Lists stored `engineer_events` for the session, filters by `sinceUnixMs`, and selects the newest clamped `maxEvents` (`1..10`, default `5`).
+4. Returns deterministic `status: "no_events"` without calling `AIService` when the selected window is empty.
+5. Builds `GatewayRequest{Mode: "engineer", Input: ConsumerInput{...}}` server-side from selected events only and then calls the composed AI pipeline (`Service` → `FallbackService` → `AuditedService`).
+
+This route does not accept Flutter prompts, provider keys, provider names, model names, `ConsumerInput`, or raw telemetry frames. It reuses the same provider selection and audit path as `/analyze`; the difference is ownership of the AI input: `/analyze` accepts a full gateway request, while live Race Engineer advice constructs one from backend-stored events.
+
 ### Provider Selection
 
 See Phase 7.8: `ComposePipeline()` in `internal/ai/compose.go` selects the provider adapter based on `TELEMETRY_ONE_AI_PROVIDER`:
