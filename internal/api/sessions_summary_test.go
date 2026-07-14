@@ -18,7 +18,7 @@ import (
 	"telemetry-one-backend/internal/tracks"
 )
 
-func TestListSessionsContractEmpty(t *testing.T) {
+func TestListSessionsContractSeededSingle(t *testing.T) {
 	handler := newTestHandler(t)
 
 	recorder := httptest.NewRecorder()

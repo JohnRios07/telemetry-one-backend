@@ -9,11 +9,7 @@ const (
 )
 
 type SummaryFilter struct {
-	Limit    int
-	Status   Status
-	Source   string
-	Game     string
-	Platform string
+	Limit int
 }
 
 type SessionSummaryItem struct {

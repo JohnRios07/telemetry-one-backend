@@ -84,21 +84,13 @@ func (r *MemorySummaryRepository) Summary(ctx context.Context, sessionID string)
 		laps = len(lapSet)
 	}
 
-	eventCount := 0
-	if r.eventRepo != nil {
-		storedEvents, err := r.eventRepo.List(ctx, events.Query{SessionID: sessionID})
-		if err == nil {
-			eventCount = len(storedEvents)
-		}
-	}
-
 	return &SessionDetailSummary{
 		Session:            item,
 		FrameBatches:       fb,
 		PersistedFrames:    pf,
 		TimeRangeMs:        timeRange,
 		LapsDetected:       laps,
-		EngineerEventCount: eventCount,
+		EngineerEventCount: item.EventCount,
 		AIAuditLogCount:    0,
 	}, nil
 }
