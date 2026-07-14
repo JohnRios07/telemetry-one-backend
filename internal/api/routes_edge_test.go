@@ -294,7 +294,7 @@ func TestIngestFramesCreatesDeterministicEngineerEvents(t *testing.T) {
 	if listRecorder.Code != http.StatusOK {
 		t.Fatalf("expected 200 listing events, got %d with body %s", listRecorder.Code, listRecorder.Body.String())
 	}
-	if strings.Count(listRecorder.Body.String(), `"eventId":"session-events-lap-1-lap_time_regression"`) != 1 {
+	if strings.Count(listRecorder.Body.String(), `"eventId":"session-events-lap-1-lap_time_regression-1100-1100"`) != 1 {
 		t.Fatalf("expected one deterministic event, got %s", listRecorder.Body.String())
 	}
 

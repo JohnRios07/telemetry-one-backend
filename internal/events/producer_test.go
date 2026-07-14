@@ -36,14 +36,36 @@ func TestGenerateFrameEventsLapTimeRegressionThreshold(t *testing.T) {
 	if event.Type != TypeLapTimeRegression {
 		t.Fatalf("expected lap time regression event, got %+v", event)
 	}
-	if event.EventID != "session-1-lap-1-lap_time_regression" {
+	if event.EventID != "session-1-lap-1-lap_time_regression-1100-1100" {
 		t.Fatalf("expected deterministic event id, got %q", event.EventID)
 	}
 	if event.Source.RuleID != lapRegressionRuleID || event.Source.RuleVersion != frameRuleVersionV1 {
 		t.Fatalf("expected deterministic source metadata, got %+v", event.Source)
 	}
-	if DedupKey(event) != "session-1|lap_time_regression|lap:1|track:<none>|layout:<none>|corner:<none>|source_kind:deterministic_rule|rule_id:lap_time_regression.v1|rule_version:v1" {
+	if DedupKey(event) != "session-1|lap_time_regression|lap:1|track:<none>|layout:<none>|corner:<none>|source_kind:deterministic_rule|rule_id:lap_time_regression.v1|rule_version:v1|time_range:1100-1100" {
 		t.Fatalf("expected deterministic dedup key, got %q", DedupKey(event))
+	}
+}
+
+func TestGenerateFrameEventsLapTimeRegressionEmitsAllOccurrences(t *testing.T) {
+	events, err := GenerateFrameEvents("session-1", []telemetry.Frame{
+		{TimestampUnixMs: 1000, LapNumber: 2, CurrentLapMs: 100, LastLapMs: ptrInt64(94500), BestLapMs: ptrInt64(90000), IsOnTrack: true},
+		{TimestampUnixMs: 1100, LapNumber: 3, CurrentLapMs: 200, LastLapMs: ptrInt64(94500), BestLapMs: ptrInt64(90000), IsOnTrack: true},
+	})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("expected 2 events, got %+v", events)
+	}
+	if events[0].EventID == events[1].EventID {
+		t.Fatalf("expected distinct event ids, got %+v", events)
+	}
+	if DedupKey(events[0]) == DedupKey(events[1]) {
+		t.Fatalf("expected distinct dedup keys, got %+v", events)
+	}
+	if events[0].EventID != "session-1-lap-1-lap_time_regression-1000-1000" || events[1].EventID != "session-1-lap-2-lap_time_regression-1100-1100" {
+		t.Fatalf("expected stable event ids with time ranges, got %+v", events)
 	}
 }
 
@@ -75,6 +97,38 @@ func TestGenerateFrameEventsOffTrackStintRequiresSustainedDuration(t *testing.T)
 	}
 	if event.TimeRange == nil || event.TimeRange.StartUnixMs != 1200 || event.TimeRange.EndUnixMs != 1800 {
 		t.Fatalf("expected time range to cover the off-track stint, got %+v", event.TimeRange)
+	}
+	if event.EventID != "session-1-lap-1-off_track_stint-1200-1800" {
+		t.Fatalf("expected deterministic event id, got %q", event.EventID)
+	}
+}
+
+func TestGenerateFrameEventsOffTrackStintEmitsAllOccurrences(t *testing.T) {
+	events, err := GenerateFrameEvents("session-1", []telemetry.Frame{
+		{TimestampUnixMs: 1000, LapNumber: 1, CurrentLapMs: 1000, IsOnTrack: true},
+		{TimestampUnixMs: 1200, LapNumber: 1, CurrentLapMs: 1200, IsOnTrack: false},
+		{TimestampUnixMs: 1500, LapNumber: 1, CurrentLapMs: 1500, IsOnTrack: false},
+		{TimestampUnixMs: 1800, LapNumber: 1, CurrentLapMs: 1800, IsOnTrack: false},
+		{TimestampUnixMs: 1900, LapNumber: 1, CurrentLapMs: 1900, IsOnTrack: true},
+		{TimestampUnixMs: 2100, LapNumber: 1, CurrentLapMs: 2100, IsOnTrack: false},
+		{TimestampUnixMs: 2400, LapNumber: 1, CurrentLapMs: 2400, IsOnTrack: false},
+		{TimestampUnixMs: 2700, LapNumber: 1, CurrentLapMs: 2700, IsOnTrack: false},
+		{TimestampUnixMs: 2800, LapNumber: 1, CurrentLapMs: 2800, IsOnTrack: true},
+	})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("expected 2 events, got %+v", events)
+	}
+	if events[0].EventID == events[1].EventID {
+		t.Fatalf("expected distinct event ids, got %+v", events)
+	}
+	if DedupKey(events[0]) == DedupKey(events[1]) {
+		t.Fatalf("expected distinct dedup keys, got %+v", events)
+	}
+	if events[0].EventID != "session-1-lap-1-off_track_stint-1200-1800" || events[1].EventID != "session-1-lap-1-off_track_stint-2100-2700" {
+		t.Fatalf("expected stable event ids with time ranges, got %+v", events)
 	}
 }
 

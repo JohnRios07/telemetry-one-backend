@@ -61,6 +61,26 @@ func TestEventDeduplicatorAcceptsSameCornerDifferentLap(t *testing.T) {
 	assertDedupDecision(t, decisions[1], DedupDecisionAccepted, DedupReasonDifferentContext, "", 0)
 }
 
+func TestEventDeduplicatorAcceptsDifferentTimeRange(t *testing.T) {
+	deduplicator := NewEventDeduplicator(DedupOptions{CooldownWindowMs: 1000})
+	first := dedupEvent(nil)
+	second := dedupEvent(func(event *EngineerEvent) {
+		event.EventID = "event-2"
+		event.TimestampUnixMs = 10200
+		event.TimeRange = &TimeRange{StartUnixMs: 10100, EndUnixMs: 10200}
+	})
+
+	accepted, decisions := deduplicator.Filter([]EngineerEvent{first, second})
+
+	if len(accepted) != 2 {
+		t.Fatalf("expected different time range to be accepted, got %+v", accepted)
+	}
+	assertDedupDecision(t, decisions[1], DedupDecisionAccepted, DedupReasonDifferentContext, "", 0)
+	if decisions[0].Key == decisions[1].Key {
+		t.Fatalf("expected different time ranges to produce different dedup keys, got %q", decisions[0].Key)
+	}
+}
+
 func TestEventDeduplicatorAcceptsAfterCooldownExpiry(t *testing.T) {
 	deduplicator := NewEventDeduplicator(DedupOptions{CooldownWindowMs: 1000})
 	first := dedupEvent(func(event *EngineerEvent) {

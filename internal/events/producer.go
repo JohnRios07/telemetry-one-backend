@@ -45,12 +45,8 @@ func GenerateFrameEventsWithOptions(sessionID string, frames []telemetry.Frame, 
 
 	options = normalizeFrameEventOptions(options)
 	events := make([]EngineerEvent, 0, 2)
-	if event, ok := lapTimeRegressionEvent(sessionID, frames, options); ok {
-		events = append(events, event)
-	}
-	if event, ok := offTrackStintEvent(sessionID, frames, options); ok {
-		events = append(events, event)
-	}
+	events = append(events, lapTimeRegressionEvents(sessionID, frames, options)...)
+	events = append(events, offTrackStintEvents(sessionID, frames, options)...)
 
 	for _, event := range events {
 		if err := event.Validate(); err != nil {
@@ -61,8 +57,9 @@ func GenerateFrameEventsWithOptions(sessionID string, frames []telemetry.Frame, 
 	return events, nil
 }
 
-func lapTimeRegressionEvent(sessionID string, frames []telemetry.Frame, options FrameEventOptions) (EngineerEvent, bool) {
+func lapTimeRegressionEvents(sessionID string, frames []telemetry.Frame, options FrameEventOptions) []EngineerEvent {
 	seen := make(map[int]struct{})
+	events := make([]EngineerEvent, 0, len(frames))
 	for _, frame := range frames {
 		if frame.LapNumber <= 0 || frame.LastLapMs == nil || frame.BestLapMs == nil || *frame.LastLapMs <= 0 || *frame.BestLapMs <= 0 {
 			continue
@@ -88,32 +85,33 @@ func lapTimeRegressionEvent(sessionID string, frames []telemetry.Frame, options 
 
 		seen[completedLapNumber] = struct{}{}
 		severity := severityForInt64(delta, threshold*2, threshold*3)
-		return baseFrameEvent(sessionID, completedLapNumber, frame.TimestampUnixMs, TypeLapTimeRegression, severity, lapRegressionRuleID, []MetricEvidence{
+		events = append(events, baseFrameEvent(sessionID, completedLapNumber, frame.TimestampUnixMs, TypeLapTimeRegression, severity, lapRegressionRuleID, []MetricEvidence{
 			{Name: "lastLapMs", Value: float64(*frame.LastLapMs), Unit: "ms", Status: MetricStatusAvailable, Role: MetricRoleActual},
 			{Name: "bestLapMs", Value: float64(*frame.BestLapMs), Unit: "ms", Status: MetricStatusAvailable, Role: MetricRoleReference},
 			{Name: "lapRegressionDeltaMs", Value: float64(delta), Unit: "ms", Status: MetricStatusAvailable, Role: MetricRoleDelta},
 			{Name: "lapRegressionThresholdMs", Value: float64(threshold), Unit: "ms", Status: MetricStatusAvailable, Role: MetricRoleThreshold},
-		}, timeRange(frame.TimestampUnixMs, frame.TimestampUnixMs)), true
+		}, timeRange(frame.TimestampUnixMs, frame.TimestampUnixMs)))
 	}
 
-	return EngineerEvent{}, false
+	return events
 }
 
-func offTrackStintEvent(sessionID string, frames []telemetry.Frame, options FrameEventOptions) (EngineerEvent, bool) {
+func offTrackStintEvents(sessionID string, frames []telemetry.Frame, options FrameEventOptions) []EngineerEvent {
 	var (
 		streakStart telemetry.Frame
 		streakEnd   telemetry.Frame
 		streakCount int
 		active      bool
 	)
+	events := make([]EngineerEvent, 0, len(frames))
 
-	emit := func() (EngineerEvent, bool) {
+	emit := func() {
 		if !active || streakCount == 0 {
-			return EngineerEvent{}, false
+			return
 		}
 		durationMs := streakEnd.TimestampUnixMs - streakStart.TimestampUnixMs
 		if durationMs < options.OffTrackMinDurationMs {
-			return EngineerEvent{}, false
+			return
 		}
 
 		severity := severityForInt64(durationMs, options.OffTrackMediumDurationMs, options.OffTrackHighDurationMs)
@@ -121,11 +119,11 @@ func offTrackStintEvent(sessionID string, frames []telemetry.Frame, options Fram
 		if lapNumber < 0 {
 			lapNumber = 0
 		}
-		return baseFrameEvent(sessionID, lapNumber, streakEnd.TimestampUnixMs, TypeOffTrackStint, severity, offTrackStintRuleID, []MetricEvidence{
+		events = append(events, baseFrameEvent(sessionID, lapNumber, streakEnd.TimestampUnixMs, TypeOffTrackStint, severity, offTrackStintRuleID, []MetricEvidence{
 			{Name: "offTrackDurationMs", Value: float64(durationMs), Unit: "ms", Status: MetricStatusAvailable, Role: MetricRoleActual},
 			{Name: "offTrackFrameCount", Value: float64(streakCount), Unit: "frames", Status: MetricStatusAvailable, Role: MetricRoleActual},
 			{Name: "offTrackThresholdMs", Value: float64(options.OffTrackMinDurationMs), Unit: "ms", Status: MetricStatusAvailable, Role: MetricRoleThreshold},
-		}, timeRange(streakStart.TimestampUnixMs, streakEnd.TimestampUnixMs)), true
+		}, timeRange(streakStart.TimestampUnixMs, streakEnd.TimestampUnixMs)))
 	}
 
 	for _, frame := range frames {
@@ -140,23 +138,19 @@ func offTrackStintEvent(sessionID string, frames []telemetry.Frame, options Fram
 			continue
 		}
 
-		if event, ok := emit(); ok {
-			return event, true
-		}
+		emit()
 		active = false
 		streakCount = 0
 	}
 
-	if event, ok := emit(); ok {
-		return event, true
-	}
+	emit()
 
-	return EngineerEvent{}, false
+	return events
 }
 
 func baseFrameEvent(sessionID string, lapNumber int, timestampUnixMs int64, eventType EventType, severity Severity, ruleID string, metrics []MetricEvidence, eventRange *TimeRange) EngineerEvent {
 	return EngineerEvent{
-		EventID:         sanitizeID(fmt.Sprintf("%s-lap-%d-%s", sessionID, lapNumber, eventType)),
+		EventID:         frameEventID(sessionID, lapNumber, eventType, eventRange),
 		SessionID:       sessionID,
 		Version:         ContractVersionV1,
 		Type:            eventType,
@@ -168,6 +162,13 @@ func baseFrameEvent(sessionID string, lapNumber int, timestampUnixMs int64, even
 		Metrics:         metrics,
 		Source:          EventSource{Kind: SourceDeterministicRule, RuleID: ruleID, RuleVersion: frameRuleVersionV1},
 	}
+}
+
+func frameEventID(sessionID string, lapNumber int, eventType EventType, eventRange *TimeRange) string {
+	if eventRange != nil {
+		return sanitizeID(fmt.Sprintf("%s-lap-%d-%s-%d-%d", sessionID, lapNumber, eventType, eventRange.StartUnixMs, eventRange.EndUnixMs))
+	}
+	return sanitizeID(fmt.Sprintf("%s-lap-%d-%s", sessionID, lapNumber, eventType))
 }
 
 func normalizeFrameEventOptions(options FrameEventOptions) FrameEventOptions {
