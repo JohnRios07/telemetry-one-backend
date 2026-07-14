@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -47,11 +48,30 @@ func (db *fakeFrameDB) Begin(_ context.Context) (postgresFrameTx, error) {
 	return db.tx, nil
 }
 
+type fakeRow struct {
+	scanErr error
+	endedAt *time.Time
+}
+
+func (r *fakeRow) Scan(dest ...any) error {
+	if r.scanErr != nil {
+		return r.scanErr
+	}
+	for _, d := range dest {
+		if ptr, ok := d.(**time.Time); ok && r.endedAt != nil {
+			*ptr = r.endedAt
+		}
+	}
+	return nil
+}
+
 type fakeFrameTx struct {
-	execs     []frameExecCall
-	execErrs  []error
-	commits   int
-	rollbacks int
+	execs        []frameExecCall
+	execErrs     []error
+	commits      int
+	rollbacks    int
+	queryRowErr  error
+	sessionEnded *time.Time
 }
 
 func (tx *fakeFrameTx) Exec(_ context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
@@ -60,6 +80,10 @@ func (tx *fakeFrameTx) Exec(_ context.Context, sql string, args ...any) (pgconn.
 		return pgconn.CommandTag{}, tx.execErrs[len(tx.execs)-1]
 	}
 	return pgconn.NewCommandTag("INSERT 0 1"), nil
+}
+
+func (tx *fakeFrameTx) QueryRow(_ context.Context, _ string, _ ...any) pgx.Row {
+	return &fakeRow{scanErr: tx.queryRowErr, endedAt: tx.sessionEnded}
 }
 
 func (tx *fakeFrameTx) Commit(_ context.Context) error {
@@ -140,6 +164,37 @@ func TestPostgresStoreAppendRollsBackMultiLapTransactionWhenSecondInsertFails(t 
 	}
 	if tx.rollbacks != 1 {
 		t.Fatalf("expected rollback after insert failure, got %d", tx.rollbacks)
+	}
+}
+
+func TestPostgresStoreAppendRejectsNonexistentSession(t *testing.T) {
+	tx := &fakeFrameTx{queryRowErr: pgx.ErrNoRows}
+	db := &fakeFrameDB{tx: tx}
+	store := &PostgresStore{pool: db, begin: db.Begin, timeout: defaultTestTimeout}
+
+	err := store.Append(context.Background(), "no-session", []Frame{validFrame()})
+
+	if !errors.Is(err, ErrSessionNotFound) {
+		t.Fatalf("expected ErrSessionNotFound, got %v", err)
+	}
+	if tx.commits != 0 {
+		t.Fatalf("expected no commit for nonexistent session, got %d", tx.commits)
+	}
+}
+
+func TestPostgresStoreAppendRejectsFinishedSession(t *testing.T) {
+	now := time.Now()
+	tx := &fakeFrameTx{sessionEnded: &now}
+	db := &fakeFrameDB{tx: tx}
+	store := &PostgresStore{pool: db, begin: db.Begin, timeout: defaultTestTimeout}
+
+	err := store.Append(context.Background(), "finished-session", []Frame{validFrame()})
+
+	if !errors.Is(err, ErrSessionFinished) {
+		t.Fatalf("expected ErrSessionFinished, got %v", err)
+	}
+	if tx.commits != 0 {
+		t.Fatalf("expected no commit for finished session, got %d", tx.commits)
 	}
 }
 

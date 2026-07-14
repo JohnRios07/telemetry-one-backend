@@ -272,7 +272,14 @@ func ingestFramesHandler(frameStore telemetry.Store, sessionRepo sessions.Reposi
 
 		if len(result.Frames) > 0 {
 			if err := frameStore.Append(r.Context(), request.SessionID, result.Frames); err != nil {
-				writeJSON(w, http.StatusInternalServerError, httperror.Envelope(httperror.Internal("frame persistence error")))
+				switch {
+				case errors.Is(err, telemetry.ErrSessionNotFound):
+					writeJSON(w, http.StatusNotFound, httperror.Envelope(httperror.Error{Code: "session_not_found", Message: err.Error()}))
+				case errors.Is(err, telemetry.ErrSessionFinished):
+					writeJSON(w, http.StatusConflict, httperror.Envelope(httperror.Error{Code: "session_finished", Message: err.Error()}))
+				default:
+					writeJSON(w, http.StatusInternalServerError, httperror.Envelope(httperror.Internal("frame persistence error")))
+				}
 				return
 			}
 		}
