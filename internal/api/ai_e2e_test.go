@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"telemetry-one-backend/internal/admin"
 	"telemetry-one-backend/internal/ai"
 	"telemetry-one-backend/internal/config"
 	"telemetry-one-backend/internal/events"
@@ -29,7 +30,8 @@ func testAIHandler(t *testing.T, cfg config.Config, frameStore telemetry.Store, 
 		t.Fatalf("seed session: %v", err)
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return routesWithAIAndSessions(cfg, logger, frameStore, catalog, eventStore, sessionRepo, aiSvc)
+	statsRepo := admin.NewMemoryStatsRepo(sessionRepo, frameStore)
+	return routesWithAIAndSessions(cfg, logger, frameStore, catalog, eventStore, sessionRepo, aiSvc, statsRepo)
 }
 
 func TestAIE2E_OpenRouterSuccessPath(t *testing.T) {

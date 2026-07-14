@@ -39,6 +39,7 @@ type Config struct {
 	ShutdownTimeout          time.Duration
 	RetainedFramesPerSession int
 	DatabaseURL              string
+	AdminToken               string
 
 	AIMaxPromptChars         int
 	AIMaxCompletionTokens    int
@@ -136,6 +137,7 @@ func Load() (Config, error) {
 		AICostPerPromptToken:     aiCostPerPromptToken,
 		AICostPerCompletionToken: aiCostPerCompletionToken,
 		AIModel:                  stringEnv("TELEMETRY_ONE_AI_MODEL", DefaultAIModel),
+		AdminToken:               os.Getenv("TELEMETRY_ONE_ADMIN_TOKEN"),
 
 		AIProvider:            stringEnv("TELEMETRY_ONE_AI_PROVIDER", DefaultAIProvider),
 		OpenRouterAPIKey:      stringEnv("TELEMETRY_ONE_OPENROUTER_API_KEY", ""),

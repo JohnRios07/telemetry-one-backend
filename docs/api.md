@@ -497,6 +497,65 @@ Example unknown response after a completed lap with no catalog match:
 
 The endpoint does not infer official geometry, sectors, corners, or names from telemetry. Names appear only when a provenance-backed catalog layout is matched. The current official seed has no sourced sector boundaries or corner-name catalog, so this endpoint does not emit sector or corner names.
 
+## Admin Ingest Stats
+
+```http
+GET /api/v1/admin/ingest-stats
+```
+
+Returns operational stats about the ingest pipeline. Available in both memory and Postgres modes; Postgres mode returns all aggregate fields, memory mode omits batch, event, and audit stats (marked as absent/null).
+
+### Authorization
+
+If `TELEMETRY_ONE_ADMIN_TOKEN` is set, this endpoint requires `Authorization: Bearer <token>`. If unset, the endpoint is open.
+
+| `TELEMETRY_ONE_ADMIN_TOKEN` | Behavior |
+|---|---|
+| Unset (empty) | Endpoint open — no auth required |
+| Set | Requires `Authorization: Bearer <token>` |
+
+Unauthorized responses use the standard error envelope with status 401 and code `unauthorized`.
+
+### Query Parameters
+
+| Parameter | Default | Range | Description |
+|---|---|---|---|
+| `limit` | `10` | `1..100` | Number of recent sessions to include |
+| `days` | `7` | `1..90` | Number of past days for daily aggregates |
+
+### Response
+
+```json
+{
+  "mode": "postgres",
+  "totals": {
+    "sessions": 42,
+    "activeSessions": 3,
+    "finishedSessions": 39,
+    "frameBatches": 156,
+    "persistedFrames": 12480,
+    "engineerEvents": 28,
+    "aiAuditLogs": 12
+  },
+  "recentSessions": [
+    {
+      "id": "session_abc",
+      "startedAt": "2026-07-14T10:00:00Z",
+      "endedAt": "2026-07-14T12:30:00Z",
+      "durationMs": 9000000,
+      "frameBatches": 5,
+      "persistedFrames": 400,
+      "status": "finished"
+    }
+  ],
+  "daily": [
+    {"date": "2026-07-14", "sessions": 10, "frameBatches": 40, "persistedFrames": 3200}
+  ]
+}
+```
+
+In memory mode, `mode` is `"memory"` and unavailable aggregate fields (`frameBatches`, `engineerEvents`, `aiAuditLogs`) are omitted. The endpoint does NOT report rejection statistics (rejection reasons are not persisted).
+
 ## Planned V1 Endpoints
 
 These endpoints are documented from the reference spec but are not implemented in the scaffold slice yet.

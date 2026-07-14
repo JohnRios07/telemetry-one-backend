@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"telemetry-one-backend/internal/admin"
 	"telemetry-one-backend/internal/ai"
 	"telemetry-one-backend/internal/config"
 	"telemetry-one-backend/internal/events"
@@ -274,5 +275,6 @@ func testAnalyzeHandler(t *testing.T, aiSvc ai.AIService) http.Handler {
 		Platform: "ps5", StartedAt: time.UnixMilli(1720656000000).UTC(),
 	})
 
-	return routesWithAIAndSessions(cfg, logger, frameStore, catalog, eventStore, sessionRepo, aiSvc)
+	statsRepo := admin.NewMemoryStatsRepo(sessionRepo, frameStore)
+	return routesWithAIAndSessions(cfg, logger, frameStore, catalog, eventStore, sessionRepo, aiSvc, statsRepo)
 }

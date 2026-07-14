@@ -9,8 +9,10 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
+	"telemetry-one-backend/internal/admin"
 	"telemetry-one-backend/internal/ai"
 	"telemetry-one-backend/internal/config"
 	"telemetry-one-backend/internal/events"
@@ -33,7 +35,8 @@ func routes(cfg config.Config, logger *slog.Logger) http.Handler {
 	sessionRepo := sessions.NewMemoryRepository()
 	pipeCfg := ai.PipelineConfigFromConfig(cfg)
 	aiSvc := ai.ComposePipeline(pipeCfg, logger)
-	return routesWithAIAndSessions(cfg, logger, frameStore, catalog, eventStore, sessionRepo, aiSvc)
+	statsRepo := admin.NewMemoryStatsRepo(sessionRepo, frameStore)
+	return routesWithAIAndSessions(cfg, logger, frameStore, catalog, eventStore, sessionRepo, aiSvc, statsRepo)
 }
 
 func routesWithFrameStore(cfg config.Config, logger *slog.Logger, frameStore telemetry.Store) http.Handler {
@@ -433,10 +436,12 @@ func analyzeHandler(aiSvc ai.AIService, sessionRepo sessions.Repository) http.Ha
 }
 
 func routesWithAI(cfg config.Config, logger *slog.Logger, frameStore telemetry.Store, catalog tracks.Catalog, eventStore events.Repository, aiSvc ai.AIService) http.Handler {
-	return routesWithAIAndSessions(cfg, logger, frameStore, catalog, eventStore, sessions.NewMemoryRepository(), aiSvc)
+	sessionRepo := sessions.NewMemoryRepository()
+	statsRepo := admin.NewMemoryStatsRepo(sessionRepo, frameStore)
+	return routesWithAIAndSessions(cfg, logger, frameStore, catalog, eventStore, sessionRepo, aiSvc, statsRepo)
 }
 
-func routesWithAIAndSessions(cfg config.Config, logger *slog.Logger, frameStore telemetry.Store, catalog tracks.Catalog, eventStore events.Repository, sessionRepo sessions.Repository, aiSvc ai.AIService) http.Handler {
+func routesWithAIAndSessions(cfg config.Config, logger *slog.Logger, frameStore telemetry.Store, catalog tracks.Catalog, eventStore events.Repository, sessionRepo sessions.Repository, aiSvc ai.AIService, statsRepo admin.StatsRepository) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler(cfg))
 	mux.HandleFunc("GET /api/v1/health", healthHandler(cfg))
@@ -447,6 +452,7 @@ func routesWithAIAndSessions(cfg config.Config, logger *slog.Logger, frameStore 
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/track", detectTrackHandler(frameStore, catalog, sessionRepo))
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/events", listEventsHandler(eventStore, sessionRepo))
 	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/analyze", analyzeHandler(aiSvc, sessionRepo))
+	mux.Handle("GET /api/v1/admin/ingest-stats", adminAuthMiddleware(cfg, ingestStatsHandler(statsRepo)))
 	return loggingMiddleware(logger, mux)
 }
 
@@ -485,6 +491,58 @@ func decodeJSON(r *http.Request, target any) error {
 	}
 
 	return nil
+}
+
+func adminAuthMiddleware(cfg config.Config, next http.Handler) http.Handler {
+	if cfg.AdminToken == "" {
+		return next
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth := r.Header.Get("Authorization")
+		if !strings.HasPrefix(auth, "Bearer ") {
+			writeJSON(w, http.StatusUnauthorized, httperror.Envelope(httperror.Error{Code: "unauthorized", Message: "missing or malformed authorization header"}))
+			return
+		}
+		token := strings.TrimPrefix(auth, "Bearer ")
+		if token != cfg.AdminToken {
+			writeJSON(w, http.StatusUnauthorized, httperror.Envelope(httperror.Error{Code: "unauthorized", Message: "invalid token"}))
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func clampQueryParam(r *http.Request, name string, defaultVal, min, max int) int {
+	raw := r.URL.Query().Get(name)
+	if raw == "" {
+		return defaultVal
+	}
+	val, err := strconv.Atoi(raw)
+	if err != nil {
+		return defaultVal
+	}
+	if val < min {
+		return min
+	}
+	if val > max {
+		return max
+	}
+	return val
+}
+
+func ingestStatsHandler(statsRepo admin.StatsRepository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		limit := clampQueryParam(r, "limit", admin.DefaultLimit, admin.MinLimit, admin.MaxLimit)
+		days := clampQueryParam(r, "days", admin.DefaultDays, admin.MinDays, admin.MaxDays)
+
+		resp, err := statsRepo.Stats(r.Context(), limit, days)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, httperror.Envelope(httperror.Internal("failed to load ingest stats")))
+			return
+		}
+
+		writeJSON(w, http.StatusOK, resp)
+	}
 }
 
 func loggingMiddleware(logger *slog.Logger, next http.Handler) http.Handler {
