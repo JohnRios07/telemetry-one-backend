@@ -37,6 +37,8 @@ const (
 	TypeLateThrottle       EventType = "late_throttle"
 	TypeLowExitSpeed       EventType = "low_exit_speed"
 	TypeInconsistentCorner EventType = "inconsistent_corner"
+	TypeLapTimeRegression  EventType = "lap_time_regression"
+	TypeOffTrackStint      EventType = "off_track_stint"
 
 	SeverityLow    Severity = "low"
 	SeverityMedium Severity = "medium"
@@ -230,7 +232,7 @@ func (s EventSource) Validate() error {
 
 func supportedType(t EventType) bool {
 	switch t {
-	case TypeEarlyBraking, TypeLateBraking, TypeLateThrottle, TypeLowExitSpeed, TypeInconsistentCorner:
+	case TypeEarlyBraking, TypeLateBraking, TypeLateThrottle, TypeLowExitSpeed, TypeInconsistentCorner, TypeLapTimeRegression, TypeOffTrackStint:
 		return true
 	default:
 		return false

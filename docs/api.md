@@ -111,7 +111,7 @@ Client fallback: if `POST /api/v1/sessions/{sessionId}/frames` returns `session_
 POST /api/v1/sessions/{sessionId}/frames
 ```
 
-Accepts normalized frame batches sent by Flutter. The current implementation validates and normalizes the whole batch, stores accepted frames in a bounded in-memory per-session buffer, then returns an acknowledgement without DB-backed frame persistence. Distance/corner processing is deferred to later phases.
+Accepts normalized frame batches sent by Flutter. The current implementation validates and normalizes the whole batch, stores accepted frames in a bounded in-memory per-session buffer, then runs a small deterministic frame-event producer and stores accepted events in the in-memory event repository. Distance/corner processing is still deferred to later phases.
 
 Request:
 
@@ -275,11 +275,11 @@ See `docs/ingest-performance.md` for expected frame rates, batch-size coverage, 
 GET /api/v1/sessions/{sessionId}/events
 ```
 
-Returns structured Engineer events already accepted by the backend for a session. The endpoint validates session existence (see Session Validation above); session must exist but may be finished. The endpoint does not generate events from frames; it exposes events that were created by deterministic code paths, validated against the Engineer event contract, deduplicated, and stored in the MVP in-memory event repository.
+Returns structured Engineer events already accepted by the backend for a session. The endpoint validates session existence (see Session Validation above); session must exist but may be finished. It exposes events that were created by deterministic code paths, validated against the Engineer event contract, deduplicated, and stored in the MVP in-memory event repository.
 
 Engineer events are deterministic facts derived from validated analysis metrics and context. They are not free-form AI messages and they never include raw telemetry frames.
 
-Phase 5.2 adds a pure deterministic rule engine in `internal/events`. It consumes per-corner analysis metrics, optional reference metrics, catalog references, lap/session context, and configurable rule thresholds.
+Phase 5.2 adds a pure deterministic rule engine in `internal/events`. It consumes per-corner analysis metrics, optional reference metrics, catalog references, lap/session context, and configurable rule thresholds. The ingest path also has a small frame-driven producer for lap regression and sustained off-track signals before corner analysis is available.
 
 Phase 5.3 adds deterministic event deduplication/cooldown in `internal/events` before persistence or API exposure. Generated events pass through an explicit `EventDeduplicator` that returns accepted events plus one decision per input event, so suppressed duplicates are traceable and are not dropped silently.
 
@@ -310,6 +310,8 @@ Current MVP event types:
 | `late_throttle` | First throttle reapplication occurred later than a validated reference/threshold. | Derived throttle reapplication timing/distance. |
 | `low_exit_speed` | Corner exit speed was below a validated reference/threshold. | Derived exit-speed metrics. |
 | `inconsistent_corner` | Corner execution varied beyond a validated consistency threshold. | Derived variance/consistency metrics. |
+| `lap_time_regression` | A completed lap was significantly slower than the session best lap. | Derived last-lap, best-lap, and delta metrics. |
+| `off_track_stint` | A sustained off-track stretch exceeded the minimum duration threshold. | Derived off-track duration, frame count, and threshold metrics. |
 
 Reserved ideas such as `weak_corner`, `overdriving`, `line_deviation`, `understeer`, and `oversteer` are intentionally not part of the current MVP contract until the deterministic rule inputs exist.
 

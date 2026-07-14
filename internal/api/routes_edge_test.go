@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -218,6 +219,105 @@ func TestIngestFramesRejectsFinishedSession(t *testing.T) {
 	}
 }
 
+func TestIngestFramesCreatesDeterministicEngineerEvents(t *testing.T) {
+	ctx := context.Background()
+	sessionRepo := sessions.NewMemoryRepository()
+	seedTestSession(t, sessionRepo, "session-events")
+	eventStore := events.NewStore(100, events.DedupOptions{})
+	handler := routesWithSessionRepository(
+		config.Config{Addr: ":0", Env: "test"},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		telemetry.NewFrameStore(100),
+		tracks.OfficialGT7SeedCatalog(),
+		eventStore,
+		sessionRepo,
+	)
+
+	requestBody := telemetry.IngestBatchRequest{
+		SessionID: "session-events",
+		Frames: []telemetry.Frame{
+			{
+				TimestampUnixMs: 1000,
+				SpeedMps:        45,
+				RPM:             5000,
+				Gear:            3,
+				Throttle:        0.6,
+				Brake:           0,
+				Steering:        0,
+				FuelLiters:      30,
+				PositionX:       0,
+				PositionY:       0,
+				PositionZ:       0,
+				LapNumber:       1,
+				CurrentLapMs:    100,
+				IsOnTrack:       true,
+			},
+			{
+				TimestampUnixMs: 1100,
+				SpeedMps:        44,
+				RPM:             4900,
+				Gear:            4,
+				Throttle:        0.55,
+				Brake:           0,
+				Steering:        0,
+				FuelLiters:      29.8,
+				PositionX:       1,
+				PositionY:       0,
+				PositionZ:       0,
+				LapNumber:       2,
+				CurrentLapMs:    200,
+				LastLapMs:       int64Ptr(94500),
+				BestLapMs:       int64Ptr(90000),
+				IsOnTrack:       true,
+			},
+		},
+	}
+
+	body, err := json.Marshal(requestBody)
+	if err != nil {
+		t.Fatalf("marshal ingest request: %v", err)
+	}
+
+	for i := 0; i < 2; i++ {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/session-events/frames", bytes.NewReader(body))
+		handler.ServeHTTP(recorder, request)
+
+		if recorder.Code != http.StatusAccepted {
+			t.Fatalf("expected 202 on ingest attempt %d, got %d with body %s", i+1, recorder.Code, recorder.Body.String())
+		}
+	}
+
+	listRecorder := httptest.NewRecorder()
+	listRequest := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/session-events/events", nil)
+	handler.ServeHTTP(listRecorder, listRequest)
+	if listRecorder.Code != http.StatusOK {
+		t.Fatalf("expected 200 listing events, got %d with body %s", listRecorder.Code, listRecorder.Body.String())
+	}
+	if strings.Count(listRecorder.Body.String(), `"eventId":"session-events-lap-1-lap_time_regression-1100-1100"`) != 1 {
+		t.Fatalf("expected one deterministic event, got %s", listRecorder.Body.String())
+	}
+
+	summaryRecorder := httptest.NewRecorder()
+	summaryRequest := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/session-events/summary", nil)
+	handler.ServeHTTP(summaryRecorder, summaryRequest)
+	if summaryRecorder.Code != http.StatusOK {
+		t.Fatalf("expected 200 summary, got %d with body %s", summaryRecorder.Code, summaryRecorder.Body.String())
+	}
+
+	var summary sessions.SessionDetailSummary
+	if err := json.Unmarshal(summaryRecorder.Body.Bytes(), &summary); err != nil {
+		t.Fatalf("decode summary: %v", err)
+	}
+	if summary.EngineerEventCount != 1 || summary.Session.EventCount != 1 {
+		t.Fatalf("expected summary event count 1, got detail=%d nested=%d", summary.EngineerEventCount, summary.Session.EventCount)
+	}
+
+	if _, err := eventStore.List(ctx, events.Query{SessionID: "session-events"}); err != nil {
+		t.Fatalf("list stored events: %v", err)
+	}
+}
+
 func TestDetectTrackRejectsNonexistentSession(t *testing.T) {
 	sessionRepo := sessions.NewMemoryRepository()
 	handler := routesWithSessionRepository(
@@ -415,4 +515,8 @@ func TestHealthEndpointRejectsWrongMethod(t *testing.T) {
 			}
 		})
 	}
+}
+
+func int64Ptr(value int64) *int64 {
+	return &value
 }

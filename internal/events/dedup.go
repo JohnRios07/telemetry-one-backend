@@ -97,6 +97,9 @@ func DedupKey(event EngineerEvent) string {
 		"rule_id:" + event.Source.RuleID,
 		"rule_version:" + event.Source.RuleVersion,
 	}
+	if event.TimeRange != nil {
+		parts = append(parts, fmt.Sprintf("time_range:%d-%d", event.TimeRange.StartUnixMs, event.TimeRange.EndUnixMs))
+	}
 	return strings.Join(parts, "|")
 }
 
