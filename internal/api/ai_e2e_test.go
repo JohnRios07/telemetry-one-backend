@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -8,13 +9,28 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"telemetry-one-backend/internal/ai"
 	"telemetry-one-backend/internal/config"
 	"telemetry-one-backend/internal/events"
+	"telemetry-one-backend/internal/sessions"
 	"telemetry-one-backend/internal/telemetry"
 	"telemetry-one-backend/internal/tracks"
 )
+
+func testAIHandler(t *testing.T, cfg config.Config, frameStore telemetry.Store, catalog tracks.Catalog, eventStore events.Repository, aiSvc ai.AIService) http.Handler {
+	t.Helper()
+	sessionRepo := sessions.NewMemoryRepository()
+	if _, err := sessionRepo.Create(context.Background(), sessions.Session{
+		ID: "test-session", Source: "test", Game: "gt7",
+		Platform: "ps5", StartedAt: time.UnixMilli(1720656000000).UTC(),
+	}); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	return routesWithAIAndSessions(cfg, logger, frameStore, catalog, eventStore, sessionRepo, aiSvc)
+}
 
 func TestAIE2E_OpenRouterSuccessPath(t *testing.T) {
 	var captured struct {
@@ -76,7 +92,7 @@ func TestAIE2E_OpenRouterSuccessPath(t *testing.T) {
 	}
 	aiSvc := ai.ComposePipeline(pipeCfg, logger)
 
-	handler := routesWithAI(cfg, logger, frameStore, catalog, eventStore, aiSvc)
+	handler := testAIHandler(t, cfg, frameStore, catalog, eventStore, aiSvc)
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/test-session/analyze", strings.NewReader(validAnalyzePayload))
@@ -194,7 +210,7 @@ func TestAIE2E_OpenRouterServerErrorFallback(t *testing.T) {
 	}
 	aiSvc := ai.ComposePipeline(pipeCfg, logger)
 
-	handler := routesWithAI(cfg, logger, frameStore, catalog, eventStore, aiSvc)
+	handler := testAIHandler(t, cfg, frameStore, catalog, eventStore, aiSvc)
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/test-session/analyze", strings.NewReader(validAnalyzePayload))
@@ -263,7 +279,7 @@ func TestAIE2E_OpenRouterRateLimitFallback(t *testing.T) {
 	}
 	aiSvc := ai.ComposePipeline(pipeCfg, logger)
 
-	handler := routesWithAI(cfg, logger, frameStore, catalog, eventStore, aiSvc)
+	handler := testAIHandler(t, cfg, frameStore, catalog, eventStore, aiSvc)
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/test-session/analyze", strings.NewReader(validAnalyzePayload))
@@ -332,7 +348,7 @@ func TestAIE2E_OpenRouterAuthRejectedFallback(t *testing.T) {
 	}
 	aiSvc := ai.ComposePipeline(pipeCfg, logger)
 
-	handler := routesWithAI(cfg, logger, frameStore, catalog, eventStore, aiSvc)
+	handler := testAIHandler(t, cfg, frameStore, catalog, eventStore, aiSvc)
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/test-session/analyze", strings.NewReader(validAnalyzePayload))
@@ -408,7 +424,7 @@ func TestAIE2E_OpenRouterResponseNoRawTelemetryLeak(t *testing.T) {
 	}
 	aiSvc := ai.ComposePipeline(pipeCfg, logger)
 
-	handler := routesWithAI(cfg, logger, frameStore, catalog, eventStore, aiSvc)
+	handler := testAIHandler(t, cfg, frameStore, catalog, eventStore, aiSvc)
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/test-session/analyze", strings.NewReader(validAnalyzePayload))

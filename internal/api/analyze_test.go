@@ -9,10 +9,12 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"telemetry-one-backend/internal/ai"
 	"telemetry-one-backend/internal/config"
 	"telemetry-one-backend/internal/events"
+	"telemetry-one-backend/internal/sessions"
 	"telemetry-one-backend/internal/telemetry"
 	"telemetry-one-backend/internal/tracks"
 )
@@ -266,6 +268,11 @@ func testAnalyzeHandler(t *testing.T, aiSvc ai.AIService) http.Handler {
 	frameStore := telemetry.NewFrameStore(100)
 	catalog := tracks.OfficialGT7SeedCatalog()
 	eventStore := events.NewStore(100, events.DedupOptions{})
+	sessionRepo := sessions.NewMemoryRepository()
+	sessionRepo.Create(context.Background(), sessions.Session{
+		ID: "test-session", Source: "test", Game: "gt7",
+		Platform: "ps5", StartedAt: time.UnixMilli(1720656000000).UTC(),
+	})
 
-	return routesWithAI(cfg, logger, frameStore, catalog, eventStore, aiSvc)
+	return routesWithAIAndSessions(cfg, logger, frameStore, catalog, eventStore, sessionRepo, aiSvc)
 }

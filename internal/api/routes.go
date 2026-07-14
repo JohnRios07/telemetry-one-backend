@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -54,9 +55,9 @@ func routesWithSessionRepository(cfg config.Config, logger *slog.Logger, frameSt
 	mux.HandleFunc("POST /api/v1/sessions", createSessionHandler(sessionRepo, catalog))
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}", getSessionHandler(sessionRepo, frameStore, eventStore))
 	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/finish", finishSessionHandler(sessionRepo, frameStore, eventStore))
-	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/frames", ingestFramesHandler(frameStore, logger))
-	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/track", detectTrackHandler(frameStore, catalog))
-	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/events", listEventsHandler(eventStore))
+	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/frames", ingestFramesHandler(frameStore, sessionRepo, logger))
+	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/track", detectTrackHandler(frameStore, catalog, sessionRepo))
+	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/events", listEventsHandler(eventStore, sessionRepo))
 
 	return loggingMiddleware(logger, mux)
 }
@@ -205,14 +206,30 @@ func writeSessionDTOError(w http.ResponseWriter, err error) {
 func writeSessionError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, sessions.ErrNotFound):
-		writeJSON(w, http.StatusNotFound, httperror.Envelope(httperror.NotFound(err.Error())))
-	case errors.Is(err, sessions.ErrAlreadyFinished), errors.Is(err, sessions.ErrAlreadyExists):
+		writeJSON(w, http.StatusNotFound, httperror.Envelope(httperror.Error{Code: "session_not_found", Message: err.Error()}))
+	case errors.Is(err, sessions.ErrAlreadyFinished):
+		writeJSON(w, http.StatusConflict, httperror.Envelope(httperror.Error{Code: "session_finished", Message: err.Error()}))
+	case errors.Is(err, sessions.ErrAlreadyExists):
 		writeJSON(w, http.StatusConflict, httperror.Envelope(httperror.Conflict(err.Error())))
 	case errors.Is(err, sessions.ErrInvalidEndedAt), errors.Is(err, sessions.ErrMissingID):
-		writeJSON(w, http.StatusBadRequest, httperror.Envelope(httperror.BadRequest(err.Error())))
+		writeJSON(w, http.StatusBadRequest, httperror.Envelope(httperror.Error{Code: "invalid_session_id", Message: err.Error()}))
 	default:
 		writeJSON(w, http.StatusInternalServerError, httperror.Envelope(httperror.Internal("session repository error")))
 	}
+}
+
+func validateSession(ctx context.Context, repo sessions.Repository, sessionID string, requireActive bool) (sessions.Session, error) {
+	if sessionID == "" {
+		return sessions.Session{}, sessions.ErrMissingID
+	}
+	session, err := repo.FindByID(ctx, sessionID)
+	if err != nil {
+		return sessions.Session{}, err
+	}
+	if requireActive && session.Status() == sessions.StatusFinished {
+		return sessions.Session{}, sessions.ErrAlreadyFinished
+	}
+	return session, nil
 }
 
 func catalogHasTrack(catalog tracks.Catalog, trackID string) bool {
@@ -225,8 +242,14 @@ func catalogHasTrack(catalog tracks.Catalog, trackID string) bool {
 	return false
 }
 
-func ingestFramesHandler(frameStore telemetry.Store, logger *slog.Logger) http.HandlerFunc {
+func ingestFramesHandler(frameStore telemetry.Store, sessionRepo sessions.Repository, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		sessionID := r.PathValue("sessionId")
+		if _, err := validateSession(r.Context(), sessionRepo, sessionID, true); err != nil {
+			writeSessionError(w, err)
+			return
+		}
+
 		var request telemetry.IngestBatchRequest
 		if err := decodeJSON(r, &request); err != nil {
 			writeJSON(w, http.StatusBadRequest, httperror.Envelope(httperror.BadRequest("invalid JSON body")))
@@ -234,9 +257,9 @@ func ingestFramesHandler(frameStore telemetry.Store, logger *slog.Logger) http.H
 		}
 
 		if request.SessionID == "" {
-			request.SessionID = r.PathValue("sessionId")
+			request.SessionID = sessionID
 		}
-		if request.SessionID != r.PathValue("sessionId") {
+		if request.SessionID != sessionID {
 			writeTelemetryRejection(w, telemetry.SessionIDMismatchError())
 			return
 		}
@@ -335,11 +358,11 @@ func formatTopReasons(summary *telemetry.RejectionSummary) []string {
 	return result
 }
 
-func detectTrackHandler(frameStore telemetry.Store, catalog tracks.Catalog) http.HandlerFunc {
+func detectTrackHandler(frameStore telemetry.Store, catalog tracks.Catalog, sessionRepo sessions.Repository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sessionID := r.PathValue("sessionId")
-		if sessionID == "" {
-			writeJSON(w, http.StatusBadRequest, httperror.Envelope(httperror.BadRequest(telemetry.ErrMissingSessionID.Error())))
+		if _, err := validateSession(r.Context(), sessionRepo, sessionID, false); err != nil {
+			writeSessionError(w, err)
 			return
 		}
 
@@ -354,8 +377,14 @@ func detectTrackHandler(frameStore telemetry.Store, catalog tracks.Catalog) http
 	}
 }
 
-func listEventsHandler(store events.Repository) http.HandlerFunc {
+func listEventsHandler(store events.Repository, sessionRepo sessions.Repository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		sessionID := r.PathValue("sessionId")
+		if _, err := validateSession(r.Context(), sessionRepo, sessionID, false); err != nil {
+			writeSessionError(w, err)
+			return
+		}
+
 		query, err := eventQuery(r)
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, httperror.Envelope(httperror.BadRequest(err.Error())))
@@ -372,8 +401,14 @@ func listEventsHandler(store events.Repository) http.HandlerFunc {
 	}
 }
 
-func analyzeHandler(aiSvc ai.AIService) http.HandlerFunc {
+func analyzeHandler(aiSvc ai.AIService, sessionRepo sessions.Repository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		sessionID := r.PathValue("sessionId")
+		if _, err := validateSession(r.Context(), sessionRepo, sessionID, false); err != nil {
+			writeSessionError(w, err)
+			return
+		}
+
 		var req ai.GatewayRequest
 		if err := decodeJSON(r, &req); err != nil {
 			writeJSON(w, http.StatusBadRequest, httperror.Envelope(httperror.BadRequest("invalid JSON body")))
@@ -401,10 +436,10 @@ func routesWithAIAndSessions(cfg config.Config, logger *slog.Logger, frameStore 
 	mux.HandleFunc("POST /api/v1/sessions", createSessionHandler(sessionRepo, catalog))
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}", getSessionHandler(sessionRepo, frameStore, eventStore))
 	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/finish", finishSessionHandler(sessionRepo, frameStore, eventStore))
-	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/frames", ingestFramesHandler(frameStore, logger))
-	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/track", detectTrackHandler(frameStore, catalog))
-	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/events", listEventsHandler(eventStore))
-	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/analyze", analyzeHandler(aiSvc))
+	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/frames", ingestFramesHandler(frameStore, sessionRepo, logger))
+	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/track", detectTrackHandler(frameStore, catalog, sessionRepo))
+	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/events", listEventsHandler(eventStore, sessionRepo))
+	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/analyze", analyzeHandler(aiSvc, sessionRepo))
 	return loggingMiddleware(logger, mux)
 }
 

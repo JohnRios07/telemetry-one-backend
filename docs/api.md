@@ -88,6 +88,23 @@ Required fields:
 
 `trackId` is optional because GT7 UDP does not provide authoritative track names. When present, it must come from Telemetry One catalog metadata or explicit user selection, not from raw UDP fields.
 
+### Session Validation
+
+All V2 endpoints validate `{sessionId}` against the backend session repository:
+
+| Endpoint | Active required | Nonexistent | Finished |
+|---|---|---|---|
+| `POST /api/v1/sessions/{sessionId}/frames` | Yes | 404 `session_not_found` | 409 `session_finished` |
+| `GET /api/v1/sessions/{sessionId}/track` | No | 404 `session_not_found` | Allowed |
+| `GET /api/v1/sessions/{sessionId}/events` | No | 404 `session_not_found` | Allowed |
+| `POST /api/v1/sessions/{sessionId}/analyze` | No | 404 `session_not_found` | Allowed |
+
+A missing or empty `sessionId` returns `400 invalid_session_id`.
+
+The backend does NOT auto-create sessions from frame ingest. Auto-creation would weaken session lifecycle invariants by accepting arbitrary local session IDs, bypassing required metadata (`source`, `game`, `platform`, `startedUnixMs`), and making it impossible to distinguish active from finished sessions. Clients MUST call `POST /api/v1/sessions` first and use the returned backend session ID.
+
+Client fallback: if `POST /api/v1/sessions/{sessionId}/frames` returns `session_not_found`, the client should re-establish session alignment by creating a new session and flushing buffered frames under the new ID. Retrying the same local ID indefinitely will not succeed.
+
 ## Telemetry Frames
 
 ```http
@@ -132,6 +149,7 @@ Request:
 
 Validation and ingest behavior:
 
+- Session must exist and be active (see Session Validation above). Returns 404 `session_not_found` if the session does not exist or 409 `session_finished` if the session is already finished.
 - `sessionId` is required and must match `{sessionId}` when included in the body.
 - `frames` must contain at least one frame and no more than 600 frames.
 - `timestampUnixMs` must be greater than zero.
@@ -146,7 +164,7 @@ Validation and ingest behavior:
 - Invalid frames are rejected individually; valid frames in the same batch are still accepted.
 - When all frames are invalid, the batch status is `rejected` and no frames are stored.
 - When some frames are valid and some invalid, the batch status is `partial`: valid frames are accepted and stored, invalid frames are counted and summarized.
-- Batch-level errors (missing session, empty frames, batch too large) still reject the entire batch with the standard error envelope (400) and `rejectionSummary` is absent.
+- Batch-level errors (empty frames, batch too large) still reject the entire batch with the standard error envelope (400) and `rejectionSummary` is absent.
 
 Retention behavior:
 
@@ -257,7 +275,7 @@ See `docs/ingest-performance.md` for expected frame rates, batch-size coverage, 
 GET /api/v1/sessions/{sessionId}/events
 ```
 
-Returns structured Engineer events already accepted by the backend for a session. The endpoint does not generate events from frames; it exposes events that were created by deterministic code paths, validated against the Engineer event contract, deduplicated, and stored in the MVP in-memory event repository.
+Returns structured Engineer events already accepted by the backend for a session. The endpoint validates session existence (see Session Validation above); session must exist but may be finished. The endpoint does not generate events from frames; it exposes events that were created by deterministic code paths, validated against the Engineer event contract, deduplicated, and stored in the MVP in-memory event repository.
 
 Engineer events are deterministic facts derived from validated analysis metrics and context. They are not free-form AI messages and they never include raw telemetry frames.
 
@@ -390,7 +408,7 @@ AI consumers must use structured events and derived metrics only. Raw telemetry 
 GET /api/v1/sessions/{sessionId}/track
 ```
 
-Runs the deterministic track detector over retained frames for the session and the official GT7 seed catalog. The detector is conservative: it only uses observed completed lap length, requires enough retained frames, and returns explicit fallback states when evidence is insufficient, weak, absent from the catalog, or ambiguous.
+Runs the deterministic track detector over retained frames for the session and the official GT7 seed catalog. The endpoint validates session existence (see Session Validation above); session must exist but may be finished. The detector is conservative: it only uses observed completed lap length, requires enough retained frames, and returns explicit fallback states when evidence is insufficient, weak, absent from the catalog, or ambiguous.
 
 Stable statuses:
 
