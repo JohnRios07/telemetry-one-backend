@@ -98,6 +98,7 @@ All V2 endpoints validate `{sessionId}` against the backend session repository:
 | `GET /api/v1/sessions/{sessionId}/track` | No | 404 `session_not_found` | Allowed |
 | `GET /api/v1/sessions/{sessionId}/events` | No | 404 `session_not_found` | Allowed |
 | `POST /api/v1/sessions/{sessionId}/analyze` | No | 404 `session_not_found` | Allowed |
+| `POST /api/v1/sessions/{sessionId}/race-engineer/advice` | No | 404 `session_not_found` | Allowed |
 
 A missing or empty `sessionId` returns `400 invalid_session_id`.
 
@@ -403,6 +404,83 @@ Success response:
 ```
 
 AI consumers must use structured events and derived metrics only. Raw telemetry frame fields such as `positionX`, `positionY`, `positionZ`, `speedMps`, `throttle`, `brake`, `steering`, and wheel speeds are not part of the event or AI contract. The provider-neutral AI input schema is documented in `docs/ai-consumer-contract.md` and implemented by `internal/ai.ConsumerInput`; OpenRouter/network integration is intentionally deferred to Phase 7.
+
+## Live Race Engineer Advice
+
+```http
+POST /api/v1/sessions/{sessionId}/race-engineer/advice
+```
+
+Returns short textual Race Engineer advice for an existing session by selecting stored structured `engineer_events` and building the AI input on the backend. The request never accepts raw telemetry frames, prompt text, provider names, model names, API keys, or provider configuration. Unknown JSON fields are rejected with the standard `400 bad_request` envelope.
+
+Request body is optional:
+
+```json
+{
+  "sinceUnixMs": 1720656000000,
+  "maxEvents": 5
+}
+```
+
+Rules:
+
+- `sinceUnixMs` is optional. When present, it must be greater than zero and filters events with `timestampUnixMs >= sinceUnixMs`.
+- `maxEvents` is optional, defaults to `5`, and is clamped to `1..10`.
+- The endpoint selects the newest matching events up to `maxEvents`, preserving ascending timestamp order for backend AI input.
+- If no events match, the endpoint returns `200 no_events` and does not call the AI provider.
+- If events match, the endpoint calls the existing backend AI pipeline (`FakeProvider` by default, OpenRouter only via server environment) and returns safe provider metadata without secrets.
+
+Success response:
+
+```json
+{
+  "sessionId": "session_01j2example",
+  "status": "success",
+  "message": "Brake earlier into the bus stop and focus on throttle timing on corner exit.",
+  "referencedEvents": ["event_01j2example"],
+  "window": {
+    "sinceUnixMs": 1720656000000,
+    "maxEvents": 5,
+    "selectedEventCount": 1,
+    "fromUnixMs": 1720656012345,
+    "toUnixMs": 1720656012345,
+    "providerCalled": true
+  },
+  "providerInfo": {
+    "model": "gpt-4o-mini",
+    "finishReason": "stop",
+    "usage": {"promptTokens": 10, "completionTokens": 20, "totalTokens": 30}
+  },
+  "generatedAtUnixMs": 1720656020000
+}
+```
+
+No-events response:
+
+```json
+{
+  "sessionId": "session_01j2example",
+  "status": "no_events",
+  "message": "No race engineer events are available for the selected window yet. Keep driving and request advice again after new events are detected.",
+  "referencedEvents": [],
+  "window": {
+    "sinceUnixMs": 1720656000000,
+    "maxEvents": 5,
+    "selectedEventCount": 0,
+    "fromUnixMs": 0,
+    "toUnixMs": 0,
+    "providerCalled": false
+  },
+  "providerInfo": {
+    "model": "",
+    "finishReason": "",
+    "usage": {"promptTokens": 0, "completionTokens": 0, "totalTokens": 0}
+  },
+  "generatedAtUnixMs": 1720656020000
+}
+```
+
+AI failure statuses returned by the existing gateway fallback path (`provider_error`, `budget_limited`, `rate_limited`, `invalid_response`) are surfaced in the same response shape with `providerCalled: true` and deterministic safe message content.
 
 ## Detect Session Track
 

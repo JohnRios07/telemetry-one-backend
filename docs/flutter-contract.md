@@ -10,7 +10,7 @@ The backend remains the source of truth for normalized ingest validation, catalo
 - JSON field names are camelCase.
 - Unknown JSON request fields are rejected by implemented endpoints.
 - All timestamps crossing the HTTP boundary use Unix milliseconds unless a field explicitly says RFC3339.
-- Current implemented endpoints are `POST /api/v1/sessions`, `POST /api/v1/sessions/{sessionId}/frames`, `GET /api/v1/sessions/{sessionId}/track`, `GET /api/v1/sessions/{sessionId}/events`, `GET /api/v1/sessions`, and `GET /api/v1/sessions/{sessionId}/summary`.
+- Current implemented endpoints are `POST /api/v1/sessions`, `POST /api/v1/sessions/{sessionId}/frames`, `GET /api/v1/sessions/{sessionId}/track`, `GET /api/v1/sessions/{sessionId}/events`, `POST /api/v1/sessions/{sessionId}/race-engineer/advice`, `GET /api/v1/sessions`, and `GET /api/v1/sessions/{sessionId}/summary`.
 - `GET /api/v1/sessions/{sessionId}/live` and `GET /api/v1/sessions/{sessionId}/analysis` are planned contracts only in this phase.
 
 ## Error Envelope
@@ -439,6 +439,65 @@ Flutter behavior:
 - Treat empty `events: []` as a valid state.
 - Do not expect raw telemetry fields in event payloads. Fields such as `positionX`, `speedMps`, `throttle`, `brake`, and wheel speeds are intentionally forbidden.
 - Respect `displayStrategy`: `catalog_name` can display `name`, `id_only` can display or debug with `id` only, and `null` means unknown.
+
+### Implemented Live Race Engineer Advice
+
+```http
+POST /api/v1/sessions/{sessionId}/race-engineer/advice
+```
+
+Status in this phase: implemented in the backend only. Flutter UI integration is intentionally deferred.
+
+Request DTO (optional body):
+
+```json
+{
+  "sinceUnixMs": 1720656000000,
+  "maxEvents": 5
+}
+```
+
+Flutter MUST send only optional window fields:
+
+| Field | Required | Rule |
+| --- | --- | --- |
+| `sinceUnixMs` | No | Unix milliseconds lower bound for stored engineer events. Must be greater than zero when present. |
+| `maxEvents` | No | Defaults to `5`; backend clamps to `1..10`. |
+
+Flutter MUST NOT send provider API keys, provider names, model names, prompts, raw telemetry frames, `ConsumerInput`, or AI configuration. The backend validates the session, reads stored `engineer_events`, builds AI input server-side, and calls the configured backend AI pipeline. The default provider remains `fake` unless backend environment configuration selects OpenRouter.
+
+Response DTO:
+
+```json
+{
+  "sessionId": "session_01j2example",
+  "status": "success",
+  "message": "Brake earlier into the bus stop and focus on throttle timing on corner exit.",
+  "referencedEvents": ["event_01j2example"],
+  "window": {
+    "sinceUnixMs": 1720656000000,
+    "maxEvents": 5,
+    "selectedEventCount": 1,
+    "fromUnixMs": 1720656012345,
+    "toUnixMs": 1720656012345,
+    "providerCalled": true
+  },
+  "providerInfo": {
+    "model": "gpt-4o-mini",
+    "finishReason": "stop",
+    "usage": {"promptTokens": 10, "completionTokens": 20, "totalTokens": 30}
+  },
+  "generatedAtUnixMs": 1720656020000
+}
+```
+
+Client behavior:
+
+- `status: "no_events"` is a normal 200 response. Render the deterministic message or wait for more events; do not treat it as a transport error.
+- `referencedEvents` identifies the exact stored events used for advice and can be used to avoid duplicate display across polling windows.
+- `window.providerCalled` is `false` for `no_events`; the backend intentionally skips AI provider invocation in that state.
+- Gateway fallback statuses (`provider_error`, `budget_limited`, `rate_limited`, `invalid_response`) may be returned as 200 responses with safe deterministic text from the backend.
+- Do not store or infer provider secrets on the client. Provider info is observability metadata only.
 
 ## Session History And Summary
 
