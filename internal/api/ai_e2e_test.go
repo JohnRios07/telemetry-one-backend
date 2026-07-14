@@ -31,7 +31,8 @@ func testAIHandler(t *testing.T, cfg config.Config, frameStore telemetry.Store, 
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	statsRepo := admin.NewMemoryStatsRepo(sessionRepo, frameStore)
-	return routesWithAIAndSessions(cfg, logger, frameStore, catalog, eventStore, sessionRepo, aiSvc, statsRepo)
+	summaryRepo := sessions.NewMemorySummaryRepository(sessionRepo, frameStore, eventStore)
+	return routesWithAIAndSessions(cfg, logger, frameStore, catalog, eventStore, sessionRepo, aiSvc, statsRepo, summaryRepo)
 }
 
 func TestAIE2E_OpenRouterSuccessPath(t *testing.T) {

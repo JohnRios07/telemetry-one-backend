@@ -10,7 +10,7 @@ The backend remains the source of truth for normalized ingest validation, catalo
 - JSON field names are camelCase.
 - Unknown JSON request fields are rejected by implemented endpoints.
 - All timestamps crossing the HTTP boundary use Unix milliseconds unless a field explicitly says RFC3339.
-- Current implemented endpoints are `POST /api/v1/sessions`, `POST /api/v1/sessions/{sessionId}/frames`, `GET /api/v1/sessions/{sessionId}/track`, and `GET /api/v1/sessions/{sessionId}/events`.
+- Current implemented endpoints are `POST /api/v1/sessions`, `POST /api/v1/sessions/{sessionId}/frames`, `GET /api/v1/sessions/{sessionId}/track`, `GET /api/v1/sessions/{sessionId}/events`, `GET /api/v1/sessions`, and `GET /api/v1/sessions/{sessionId}/summary`.
 - `GET /api/v1/sessions/{sessionId}/live` and `GET /api/v1/sessions/{sessionId}/analysis` are planned contracts only in this phase.
 
 ## Error Envelope
@@ -439,6 +439,95 @@ Flutter behavior:
 - Treat empty `events: []` as a valid state.
 - Do not expect raw telemetry fields in event payloads. Fields such as `positionX`, `speedMps`, `throttle`, `brake`, and wheel speeds are intentionally forbidden.
 - Respect `displayStrategy`: `catalog_name` can display `name`, `id_only` can display or debug with `id` only, and `null` means unknown.
+
+## Session History And Summary
+
+### List Sessions
+
+```http
+GET /api/v1/sessions?limit=20
+```
+
+Status in this phase: implemented.
+
+Returns recent sessions with aggregate frame, batch, and event counts. No auth required.
+
+| Query parameter | Default | Range | Description |
+|---|---|---|---|
+| `limit` | `20` | `1..100` | Number of recent sessions. Out-of-range values are silently clamped. |
+
+Response DTO:
+
+```json
+{
+  "sessions": [
+    {
+      "id": "session_01j2example",
+      "source": "flutter",
+      "game": "gt7",
+      "platform": "ps5",
+      "driverAlias": "alex",
+      "trackId": "gt7_watkins_glen_international",
+      "status": "finished",
+      "startedAt": "2026-07-14T10:00:00Z",
+      "endedAt": "2026-07-14T12:30:00Z",
+      "durationMs": 9000000,
+      "frameBatches": 5,
+      "persistedFrames": 400,
+      "eventCount": 3,
+      "detectedTrackId": null,
+      "detectedLayoutId": null
+    }
+  ]
+}
+```
+
+In memory mode, `frameBatches` is always `0`. `detectedTrackId` and `detectedLayoutId` are reserved and always omitted in the current implementation.
+
+### Session Summary
+
+```http
+GET /api/v1/sessions/{sessionId}/summary
+```
+
+Status in this phase: implemented.
+
+Returns aggregate counts for a single session. Session must exist; returns `404 session_not_found` otherwise.
+
+Response DTO:
+
+```json
+{
+  "session": {
+    "id": "session_01j2example",
+    "source": "flutter",
+    "game": "gt7",
+    "platform": "ps5",
+    "driverAlias": "alex",
+    "trackId": "gt7_watkins_glen_international",
+    "status": "finished",
+    "startedAt": "2026-07-14T10:00:00Z",
+    "endedAt": "2026-07-14T12:30:00Z",
+    "durationMs": 9000000,
+    "frameBatches": 5,
+    "persistedFrames": 400,
+    "eventCount": 3
+  },
+  "frameBatches": 5,
+  "persistedFrames": 400,
+  "timeRangeMs": {
+    "from": 1000,
+    "to": 80000
+  },
+  "lapsDetected": 6,
+  "engineerEventCount": 3,
+  "aiAuditLogCount": 1
+}
+```
+
+`timeRangeMs` is present only when at least one frame batch exists. In memory mode, `frameBatches` is `0`, `timeRangeMs` is derived from retained frames (if any), and `aiAuditLogCount` is always `0`.
+
+Rejection stats are not included — rejection summaries are not persisted on the backend.
 
 ## Flutter Sync Resilience (Phase 6.3)
 

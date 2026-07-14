@@ -134,7 +134,8 @@ func newAdminTestHandler(t *testing.T, adminToken string, seedSession bool) http
 
 	statsRepo := admin.NewMemoryStatsRepo(sessionRepo, frameStore)
 	aiSvc := &noopAIService{}
-	return routesWithAIAndSessions(cfg, logger, frameStore, catalog, eventStore, sessionRepo, aiSvc, statsRepo)
+	summaryRepo := sessions.NewMemorySummaryRepository(sessionRepo, frameStore, eventStore)
+	return routesWithAIAndSessions(cfg, logger, frameStore, catalog, eventStore, sessionRepo, aiSvc, statsRepo, summaryRepo)
 }
 
 type noopAIService struct{}
