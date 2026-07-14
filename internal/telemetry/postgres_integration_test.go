@@ -1,6 +1,6 @@
 //go:build integration
 
-package telemetry
+package telemetry_test
 
 import (
 	"context"
@@ -13,9 +13,47 @@ import (
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
 
+	telemetry "telemetry-one-backend/internal/telemetry"
 	"telemetry-one-backend/internal/sessions"
 	"telemetry-one-backend/migrations"
 )
+
+func validFrame() telemetry.Frame {
+	return telemetry.Frame{
+		TimestampUnixMs: 1720656000000,
+		SpeedMps:        58.33,
+		RPM:             7100,
+		Gear:            4,
+		Throttle:        0.7,
+		Brake:           0.2,
+		Steering:        -0.12,
+		FuelLiters:      38.4,
+		PositionX:       123.4,
+		PositionY:       5.6,
+		PositionZ:       789.1,
+		YawRadians:      ptrFloat64(1.57),
+		YawRate:         ptrFloat64(0.03),
+		WheelSpeedFL:    ptrFloat64(58.1),
+		WheelSpeedFR:    ptrFloat64(58.2),
+		WheelSpeedRL:    ptrFloat64(58.4),
+		WheelSpeedRR:    ptrFloat64(58.3),
+		LapNumber:       1,
+		CurrentLapMs:    81234,
+		LastLapMs:       ptrInt64(91345),
+		BestLapMs:       ptrInt64(90210),
+		IsOnTrack:       true,
+	}
+}
+
+func withFrame(change func(*telemetry.Frame)) telemetry.Frame {
+	frame := validFrame()
+	change(&frame)
+	return frame
+}
+
+func ptrFloat64(value float64) *float64 { return &value }
+
+func ptrInt64(value int64) *int64 { return &value }
 
 func migrateTestDB(ctx context.Context, pool *pgxpool.Pool) error {
 	if _, err := pool.Exec(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -168,8 +206,8 @@ func TestPostgresIntegration_AppendActiveSession(t *testing.T) {
 		t.Fatalf("create session: %v", err)
 	}
 
-	store := NewPostgresStore(pool)
-	if err := store.Append(ctx, "append-active", []Frame{validFrame()}); err != nil {
+	store := telemetry.NewPostgresStore(pool)
+	if err := store.Append(ctx, "append-active", []telemetry.Frame{validFrame()}); err != nil {
 		t.Fatalf("append frames: %v", err)
 	}
 
@@ -198,13 +236,13 @@ func TestPostgresIntegration_AppendMultiLapActiveSession(t *testing.T) {
 	}
 
 	first := validFrame()
-	second := withFrame(func(frame *Frame) {
+	second := withFrame(func(frame *telemetry.Frame) {
 		frame.TimestampUnixMs++
 		frame.LapNumber = first.LapNumber + 1
 	})
 
-	store := NewPostgresStore(pool)
-	if err := store.Append(ctx, "append-multilap", []Frame{first, second}); err != nil {
+	store := telemetry.NewPostgresStore(pool)
+	if err := store.Append(ctx, "append-multilap", []telemetry.Frame{first, second}); err != nil {
 		t.Fatalf("append frames: %v", err)
 	}
 
@@ -227,12 +265,12 @@ func TestPostgresIntegration_AppendNonexistentSession(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
-	store := NewPostgresStore(pool)
-	err := store.Append(ctx, "no-such-session", []Frame{validFrame()})
+	store := telemetry.NewPostgresStore(pool)
+	err := store.Append(ctx, "no-such-session", []telemetry.Frame{validFrame()})
 	if err == nil {
 		t.Fatal("expected error for nonexistent session")
 	}
-	if !errors.Is(err, ErrSessionNotFound) {
+	if !errors.Is(err, telemetry.ErrSessionNotFound) {
 		t.Fatalf("expected ErrSessionNotFound, got %v", err)
 	}
 
@@ -255,12 +293,12 @@ func TestPostgresIntegration_AppendFinishedSession(t *testing.T) {
 		t.Fatalf("end session: %v", err)
 	}
 
-	store := NewPostgresStore(pool)
-	err := store.Append(ctx, "append-finished", []Frame{validFrame()})
+	store := telemetry.NewPostgresStore(pool)
+	err := store.Append(ctx, "append-finished", []telemetry.Frame{validFrame()})
 	if err == nil {
 		t.Fatal("expected error for finished session")
 	}
-	if !errors.Is(err, ErrSessionFinished) {
+	if !errors.Is(err, telemetry.ErrSessionFinished) {
 		t.Fatalf("expected ErrSessionFinished, got %v", err)
 	}
 
@@ -283,9 +321,9 @@ func TestPostgresIntegration_FinishBeforeAppendNoLeak(t *testing.T) {
 		t.Fatalf("end session: %v", err)
 	}
 
-	store := NewPostgresStore(pool)
-	err := store.Append(ctx, "finish-then-append", []Frame{validFrame()})
-	if !errors.Is(err, ErrSessionFinished) {
+	store := telemetry.NewPostgresStore(pool)
+	err := store.Append(ctx, "finish-then-append", []telemetry.Frame{validFrame()})
+	if !errors.Is(err, telemetry.ErrSessionFinished) {
 		t.Fatalf("expected ErrSessionFinished, got %v", err)
 	}
 
