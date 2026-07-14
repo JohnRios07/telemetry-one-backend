@@ -54,7 +54,7 @@ func routesWithSessionRepository(cfg config.Config, logger *slog.Logger, frameSt
 	mux.HandleFunc("POST /api/v1/sessions", createSessionHandler(sessionRepo, catalog))
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}", getSessionHandler(sessionRepo, frameStore, eventStore))
 	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/finish", finishSessionHandler(sessionRepo, frameStore, eventStore))
-	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/frames", ingestFramesHandler(frameStore))
+	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/frames", ingestFramesHandler(frameStore, logger))
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/track", detectTrackHandler(frameStore, catalog))
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/events", listEventsHandler(eventStore))
 
@@ -225,7 +225,7 @@ func catalogHasTrack(catalog tracks.Catalog, trackID string) bool {
 	return false
 }
 
-func ingestFramesHandler(frameStore telemetry.Store) http.HandlerFunc {
+func ingestFramesHandler(frameStore telemetry.Store, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var request telemetry.IngestBatchRequest
 		if err := decodeJSON(r, &request); err != nil {
@@ -241,27 +241,54 @@ func ingestFramesHandler(frameStore telemetry.Store) http.HandlerFunc {
 			return
 		}
 
-		frames, err := request.Normalize()
+		result, err := request.Normalize()
 		if err != nil {
 			writeTelemetryRejection(w, err)
 			return
 		}
 
-		if err := frameStore.Append(r.Context(), request.SessionID, frames); err != nil {
-			writeJSON(w, http.StatusInternalServerError, httperror.Envelope(httperror.Internal("frame persistence error")))
-			return
+		if len(result.Frames) > 0 {
+			if err := frameStore.Append(r.Context(), request.SessionID, result.Frames); err != nil {
+				writeJSON(w, http.StatusInternalServerError, httperror.Envelope(httperror.Internal("frame persistence error")))
+				return
+			}
 		}
 
-		fromUnixMs, toUnixMs := acceptedTimeRange(frames)
-		writeJSON(w, http.StatusAccepted, telemetry.IngestBatchResponse{
+		fromUnixMs, toUnixMs := acceptedTimeRange(result.Frames)
+		status := "accepted"
+		if len(result.Frames) == 0 {
+			status = "rejected"
+		} else if len(result.Rejections) > 0 {
+			status = "partial"
+		}
+
+		var summary *telemetry.RejectionSummary
+		if len(result.Rejections) > 0 {
+			s := telemetry.BuildRejectionSummary(result.Rejections)
+			summary = &s
+		}
+
+		resp := telemetry.IngestBatchResponse{
 			SessionID:          request.SessionID,
 			ReceivedFrames:     len(request.Frames),
-			AcceptedFrames:     len(frames),
-			RejectedFrames:     0,
+			AcceptedFrames:     len(result.Frames),
+			RejectedFrames:     len(result.Rejections),
 			AcceptedFromUnixMs: fromUnixMs,
 			AcceptedToUnixMs:   toUnixMs,
-			Status:             "accepted",
-		})
+			Status:             status,
+			RejectionSummary:   summary,
+		}
+
+		writeJSON(w, http.StatusAccepted, resp)
+
+		logger.Info("frames ingested",
+			"session_id", resp.SessionID,
+			"received", resp.ReceivedFrames,
+			"accepted", resp.AcceptedFrames,
+			"rejected", resp.RejectedFrames,
+			"status", resp.Status,
+			"top_reasons", formatTopReasons(summary),
+		)
 	}
 }
 
@@ -276,6 +303,9 @@ func writeTelemetryRejection(w http.ResponseWriter, err error) {
 }
 
 func acceptedTimeRange(frames []telemetry.Frame) (int64, int64) {
+	if len(frames) == 0 {
+		return 0, 0
+	}
 	fromUnixMs := frames[0].TimestampUnixMs
 	toUnixMs := frames[0].TimestampUnixMs
 	for _, frame := range frames[1:] {
@@ -288,6 +318,21 @@ func acceptedTimeRange(frames []telemetry.Frame) (int64, int64) {
 	}
 
 	return fromUnixMs, toUnixMs
+}
+
+func formatTopReasons(summary *telemetry.RejectionSummary) []string {
+	if summary == nil || len(summary.Reasons) == 0 {
+		return nil
+	}
+	top := summary.Reasons
+	if len(top) > 3 {
+		top = top[:3]
+	}
+	result := make([]string, len(top))
+	for i, r := range top {
+		result[i] = r.Code
+	}
+	return result
 }
 
 func detectTrackHandler(frameStore telemetry.Store, catalog tracks.Catalog) http.HandlerFunc {
@@ -356,7 +401,7 @@ func routesWithAIAndSessions(cfg config.Config, logger *slog.Logger, frameStore 
 	mux.HandleFunc("POST /api/v1/sessions", createSessionHandler(sessionRepo, catalog))
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}", getSessionHandler(sessionRepo, frameStore, eventStore))
 	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/finish", finishSessionHandler(sessionRepo, frameStore, eventStore))
-	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/frames", ingestFramesHandler(frameStore))
+	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/frames", ingestFramesHandler(frameStore, logger))
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/track", detectTrackHandler(frameStore, catalog))
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/events", listEventsHandler(eventStore))
 	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/analyze", analyzeHandler(aiSvc))

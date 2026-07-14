@@ -55,50 +55,60 @@ func TestFrameValidateRejectsControlRanges(t *testing.T) {
 func TestIngestBatchRequestReturnsTypedRejectionErrors(t *testing.T) {
 	request := IngestBatchRequest{SessionID: "session-1", Frames: []Frame{withFrame(func(frame *Frame) { frame.Throttle = 1.1 })}}
 
-	_, err := request.Normalize()
-	var rejection *RejectionError
-	if !errors.As(err, &rejection) {
-		t.Fatalf("expected RejectionError, got %T %v", err, err)
+	result, err := request.Normalize()
+	if err != nil {
+		t.Fatalf("expected no batch-level error, got %v", err)
 	}
+	if len(result.Frames) != 0 {
+		t.Fatalf("expected 0 accepted frames, got %d", len(result.Frames))
+	}
+	if len(result.Rejections) != 1 {
+		t.Fatalf("expected 1 rejection, got %d", len(result.Rejections))
+	}
+	rejection := result.Rejections[0]
 	if rejection.Code != RejectionCodeInvalidThrottle || rejection.Category != RejectionCategoryFrame || rejection.Field != "throttle" {
 		t.Fatalf("unexpected rejection: %+v", rejection)
 	}
 	if rejection.FrameIndex == nil || *rejection.FrameIndex != 0 {
 		t.Fatalf("expected frame index 0, got %+v", rejection.FrameIndex)
 	}
-	if !errors.Is(err, ErrInvalidThrottle) {
-		t.Fatalf("expected errors.Is to match ErrInvalidThrottle, got %v", err)
+	if !errors.Is(rejection.Err, ErrInvalidThrottle) {
+		t.Fatalf("expected errors.Is to match ErrInvalidThrottle, got %v", rejection.Err)
 	}
 }
 
 func TestIngestBatchRequestRejectsBatchInconsistencies(t *testing.T) {
 	tests := []struct {
-		name    string
-		frames  []Frame
-		wantErr error
-		code    string
-		field   string
+		name       string
+		frames     []Frame
+		wantReject bool
+		code       string
+		field      string
+		wantFrames int
 	}{
 		{
-			name:    "non-monotonic timestamp",
-			frames:  []Frame{validFrame(), withFrame(func(frame *Frame) { frame.TimestampUnixMs = 1720656000000 })},
-			wantErr: ErrNonMonotonicTimestamp,
-			code:    RejectionCodeNonMonotonicTimestamp,
-			field:   "timestampUnixMs",
+			name:       "non-monotonic timestamp",
+			frames:     []Frame{validFrame(), withFrame(func(frame *Frame) { frame.TimestampUnixMs = 1720656000000 })},
+			wantReject: true,
+			code:       RejectionCodeNonMonotonicTimestamp,
+			field:      "timestampUnixMs",
+			wantFrames: 1,
 		},
 		{
-			name:    "lap number regression",
-			frames:  []Frame{withFrame(func(frame *Frame) { frame.LapNumber = 2 }), withFrame(func(frame *Frame) { frame.TimestampUnixMs++; frame.LapNumber = 1 })},
-			wantErr: ErrLapNumberRegressed,
-			code:    RejectionCodeLapNumberRegressed,
-			field:   "lapNumber",
+			name:       "lap number regression",
+			frames:     []Frame{withFrame(func(frame *Frame) { frame.LapNumber = 2 }), withFrame(func(frame *Frame) { frame.TimestampUnixMs++; frame.LapNumber = 1 })},
+			wantReject: true,
+			code:       RejectionCodeLapNumberRegressed,
+			field:      "lapNumber",
+			wantFrames: 1,
 		},
 		{
-			name:    "current lap time regression within same lap",
-			frames:  []Frame{validFrame(), withFrame(func(frame *Frame) { frame.TimestampUnixMs++; frame.CurrentLapMs-- })},
-			wantErr: ErrCurrentLapTimeRegressed,
-			code:    RejectionCodeCurrentLapTimeRegressed,
-			field:   "currentLapMs",
+			name:       "current lap time regression within same lap",
+			frames:     []Frame{validFrame(), withFrame(func(frame *Frame) { frame.TimestampUnixMs++; frame.CurrentLapMs-- })},
+			wantReject: true,
+			code:       RejectionCodeCurrentLapTimeRegressed,
+			field:      "currentLapMs",
+			wantFrames: 1,
 		},
 		{
 			name: "current lap time may reset on next lap",
@@ -106,33 +116,117 @@ func TestIngestBatchRequestRejectsBatchInconsistencies(t *testing.T) {
 				withFrame(func(frame *Frame) { frame.LapNumber = 1; frame.CurrentLapMs = 90000 }),
 				withFrame(func(frame *Frame) { frame.TimestampUnixMs++; frame.LapNumber = 2; frame.CurrentLapMs = 100 }),
 			},
+			wantFrames: 2,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := (IngestBatchRequest{SessionID: "session-1", Frames: tt.frames}).Normalize()
-			if tt.wantErr == nil {
-				if err != nil {
-					t.Fatalf("expected no error, got %v", err)
+			result, err := (IngestBatchRequest{SessionID: "session-1", Frames: tt.frames}).Normalize()
+			if err != nil {
+				t.Fatalf("expected no batch-level error, got %v", err)
+			}
+			if len(result.Frames) != tt.wantFrames {
+				t.Fatalf("expected %d accepted frames, got %d", tt.wantFrames, len(result.Frames))
+			}
+			if !tt.wantReject {
+				if len(result.Rejections) != 0 {
+					t.Fatalf("expected no rejections, got %d", len(result.Rejections))
 				}
 				return
 			}
-
-			if !errors.Is(err, tt.wantErr) {
-				t.Fatalf("expected error %v, got %v", tt.wantErr, err)
+			if len(result.Rejections) != 1 {
+				t.Fatalf("expected 1 rejection, got %d", len(result.Rejections))
 			}
-			var rejection *RejectionError
-			if !errors.As(err, &rejection) {
-				t.Fatalf("expected RejectionError, got %T %v", err, err)
-			}
-			if rejection.Code != tt.code || rejection.Category != RejectionCategoryConsistency || rejection.Field != tt.field {
+			rejection := result.Rejections[0]
+			if rejection.Code != tt.code || rejection.Field != tt.field {
 				t.Fatalf("unexpected rejection: %+v", rejection)
 			}
 			if rejection.FrameIndex == nil || *rejection.FrameIndex != 1 {
 				t.Fatalf("expected frame index 1, got %+v", rejection.FrameIndex)
 			}
 		})
+	}
+}
+
+func TestBuildRejectionSummaryGroupsByCode(t *testing.T) {
+	rejections := []*RejectionError{
+		{Code: "invalid_throttle"},
+		{Code: "invalid_speed"},
+		{Code: "invalid_throttle"},
+	}
+	summary := BuildRejectionSummary(rejections)
+	if len(summary.Reasons) != 2 {
+		t.Fatalf("expected 2 unique reasons, got %d", len(summary.Reasons))
+	}
+	for _, r := range summary.Reasons {
+		switch r.Code {
+		case "invalid_throttle":
+			if r.Count != 2 {
+				t.Fatalf("expected count 2 for invalid_throttle, got %d", r.Count)
+			}
+		case "invalid_speed":
+			if r.Count != 1 {
+				t.Fatalf("expected count 1 for invalid_speed, got %d", r.Count)
+			}
+		default:
+			t.Fatalf("unexpected reason code: %s", r.Code)
+		}
+	}
+}
+
+func TestBuildRejectionSummaryOrdersByCountDescCodeAsc(t *testing.T) {
+	rejections := []*RejectionError{
+		{Code: "invalid_speed"},
+		{Code: "invalid_throttle"},
+		{Code: "invalid_speed"},
+		{Code: "invalid_timestamp"},
+		{Code: "invalid_throttle"},
+		{Code: "invalid_speed"},
+	}
+	summary := BuildRejectionSummary(rejections)
+	expected := []struct {
+		Code  string
+		Count int
+	}{
+		{Code: "invalid_speed", Count: 3},
+		{Code: "invalid_throttle", Count: 2},
+		{Code: "invalid_timestamp", Count: 1},
+	}
+	if len(summary.Reasons) != len(expected) {
+		t.Fatalf("expected %d reasons, got %d: %+v", len(expected), len(summary.Reasons), summary.Reasons)
+	}
+	for i, r := range summary.Reasons {
+		if r.Code != expected[i].Code || r.Count != expected[i].Count {
+			t.Fatalf("reason[%d]: expected %+v, got %+v", i, expected[i], r)
+		}
+	}
+}
+
+func TestBuildRejectionSummaryTiesOrderedByCode(t *testing.T) {
+	rejections := []*RejectionError{
+		{Code: "z_code"},
+		{Code: "a_code"},
+		{Code: "m_code"},
+		{Code: "z_code"},
+		{Code: "a_code"},
+		{Code: "m_code"},
+	}
+	summary := BuildRejectionSummary(rejections)
+	if len(summary.Reasons) != 3 {
+		t.Fatalf("expected 3 reasons, got %d", len(summary.Reasons))
+	}
+	for i := 1; i < len(summary.Reasons); i++ {
+		if summary.Reasons[i].Code < summary.Reasons[i-1].Code {
+			t.Fatalf("reasons not sorted by code asc on tie: %+v", summary.Reasons)
+		}
+	}
+}
+
+func TestBuildRejectionSummaryEmpty(t *testing.T) {
+	summary := BuildRejectionSummary(nil)
+	if len(summary.Reasons) != 0 {
+		t.Fatalf("expected empty summary, got %+v", summary.Reasons)
 	}
 }
 

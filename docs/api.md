@@ -143,8 +143,10 @@ Validation and ingest behavior:
 - Frames must be ordered by strictly increasing `timestampUnixMs` within a batch.
 - `lapNumber` must not decrease within a batch.
 - `currentLapMs` must not decrease while `lapNumber` stays the same. It may reset when `lapNumber` increases.
-- The batch is accepted all-or-nothing. Any invalid frame rejects the request with the standard error envelope.
-- Frame validation errors include the failing frame index, for example `frames[0]: throttle must be between 0 and 1`.
+- Invalid frames are rejected individually; valid frames in the same batch are still accepted.
+- When all frames are invalid, the batch status is `rejected` and no frames are stored.
+- When some frames are valid and some invalid, the batch status is `partial`: valid frames are accepted and stored, invalid frames are counted and summarized.
+- Batch-level errors (missing session, empty frames, batch too large) still reject the entire batch with the standard error envelope (400) and `rejectionSummary` is absent.
 
 Retention behavior:
 
@@ -190,7 +192,7 @@ Flutter `TelemetryData` alignment:
 - `posX`, `posY`, and `posZ` map directly to position fields.
 - Fields not currently present in Flutter's shared `TelemetryData` model, such as yaw and wheel speeds, remain optional in the backend contract because they are required by the reference spec and later deterministic engines. They must be omitted/null until Flutter maps real source values.
 
-Success response (`202 Accepted`):
+Success response (`202 Accepted`) — all frames accepted:
 
 ```json
 {
@@ -204,7 +206,48 @@ Success response (`202 Accepted`):
 }
 ```
 
-The accepted time range is calculated from the accepted batch timestamps. `rejectedFrames` is `0` on success because ingest uses whole-batch rejection instead of partial acceptance.
+Partial acceptance response (`202 Accepted`) — some frames rejected:
+
+```json
+{
+  "sessionId": "session_01j2example",
+  "receivedFrames": 10,
+  "acceptedFrames": 8,
+  "rejectedFrames": 2,
+  "acceptedFromUnixMs": 1720656000123,
+  "acceptedToUnixMs": 1720656001000,
+  "status": "partial",
+  "rejectionSummary": {
+    "reasons": [
+      {"code": "invalid_throttle", "count": 1},
+      {"code": "invalid_speed", "count": 1}
+    ]
+  }
+}
+```
+
+All-rejected response (`202 Accepted`) — every frame in the batch was invalid:
+
+```json
+{
+  "sessionId": "session_01j2example",
+  "receivedFrames": 5,
+  "acceptedFrames": 0,
+  "rejectedFrames": 5,
+  "acceptedFromUnixMs": 0,
+  "acceptedToUnixMs": 0,
+  "status": "rejected",
+  "rejectionSummary": {
+    "reasons": [
+      {"code": "invalid_timestamp", "count": 5}
+    ]
+  }
+}
+```
+
+The accepted time range is calculated from the accepted frame timestamps (zeroed when none accepted). `rejectionSummary` is present only when `rejectedFrames > 0`. Reasons are grouped by stable rejection code with counts; at most all unique codes are returned, ordered by count descending then code ascending for deterministic output.
+
+The response intentionally uses a compact aggregated summary (`rejectionSummary`) rather than per-frame rejection details. This keeps the API response lightweight for production telemetry ingest. Per-frame diagnostics (including `frameIndex`, `category`, `field`) are available through the error envelope (400) for batch-level validation failures such as missing session ID, empty batch, or exceeding the batch size limit. For batch-level failures there is no `rejectionSummary` because the entire request is rejected as a single unit and the specific rejection detail is returned in the error envelope.
 
 See `docs/ingest-performance.md` for expected frame rates, batch-size coverage, retention windows, current ingest benchmark coverage, and MVP limits.
 

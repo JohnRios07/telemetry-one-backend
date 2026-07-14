@@ -26,8 +26,12 @@ func BenchmarkIngestBatchNormalize(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				if _, err := request.Normalize(); err != nil {
+				result, err := request.Normalize()
+				if err != nil {
 					b.Fatal(err)
+				}
+				if len(result.Frames) != size {
+					b.Fatalf("expected %d frames, got %d", size, len(result.Frames))
 				}
 			}
 		})
