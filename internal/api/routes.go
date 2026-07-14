@@ -1,8 +1,8 @@
 package api
 
 import (
-	"encoding/json"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -59,7 +59,7 @@ func routesWithSessionRepository(cfg config.Config, logger *slog.Logger, frameSt
 	mux.HandleFunc("POST /api/v1/sessions", createSessionHandler(sessionRepo, catalog))
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}", getSessionHandler(sessionRepo, frameStore, eventStore))
 	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/finish", finishSessionHandler(sessionRepo, frameStore, eventStore))
-	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/frames", ingestFramesHandler(frameStore, sessionRepo, logger))
+	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/frames", ingestFramesHandler(frameStore, eventStore, sessionRepo, logger))
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/track", detectTrackHandler(frameStore, catalog, sessionRepo))
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/events", listEventsHandler(eventStore, sessionRepo))
 
@@ -250,7 +250,7 @@ func catalogHasTrack(catalog tracks.Catalog, trackID string) bool {
 	return false
 }
 
-func ingestFramesHandler(frameStore telemetry.Store, sessionRepo sessions.Repository, logger *slog.Logger) http.HandlerFunc {
+func ingestFramesHandler(frameStore telemetry.Store, eventStore events.Repository, sessionRepo sessions.Repository, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sessionID := r.PathValue("sessionId")
 		if _, err := validateSession(r.Context(), sessionRepo, sessionID, true); err != nil {
@@ -289,6 +289,22 @@ func ingestFramesHandler(frameStore telemetry.Store, sessionRepo sessions.Reposi
 					writeJSON(w, http.StatusInternalServerError, httperror.Envelope(httperror.Internal("frame persistence error")))
 				}
 				return
+			}
+
+			if eventStore != nil {
+				generated, err := events.GenerateFrameEvents(request.SessionID, result.Frames)
+				if err != nil {
+					writeJSON(w, http.StatusInternalServerError, httperror.Envelope(httperror.Internal("event generation error")))
+					return
+				}
+				for _, event := range generated {
+					if _, accepted, err := eventStore.Append(r.Context(), event); err != nil {
+						writeJSON(w, http.StatusInternalServerError, httperror.Envelope(httperror.Internal("event persistence error")))
+						return
+					} else if !accepted {
+						logger.Info("event deduplicated", "session_id", event.SessionID, "event_id", event.EventID, "type", event.Type, "lap_number", event.LapNumber)
+					}
+				}
 			}
 		}
 
@@ -454,7 +470,7 @@ func routesWithAIAndSessions(cfg config.Config, logger *slog.Logger, frameStore 
 	mux.HandleFunc("POST /api/v1/sessions", createSessionHandler(sessionRepo, catalog))
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}", getSessionHandler(sessionRepo, frameStore, eventStore))
 	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/finish", finishSessionHandler(sessionRepo, frameStore, eventStore))
-	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/frames", ingestFramesHandler(frameStore, sessionRepo, logger))
+	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/frames", ingestFramesHandler(frameStore, eventStore, sessionRepo, logger))
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/track", detectTrackHandler(frameStore, catalog, sessionRepo))
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/events", listEventsHandler(eventStore, sessionRepo))
 	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/analyze", analyzeHandler(aiSvc, sessionRepo))
