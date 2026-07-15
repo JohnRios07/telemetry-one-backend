@@ -26,7 +26,7 @@ Key decisions:
 
 ## Required Secrets
 
-Set these in the GitHub repository → Settings → Secrets and variables → Actions:
+Set these in the GitHub repository → Settings → Secrets and variables → Actions → Secrets:
 
 | Secret | Description |
 |--------|-------------|
@@ -37,6 +37,27 @@ Set these in the GitHub repository → Settings → Secrets and variables → Ac
 | `VPS_POSTGRES_PASSWORD` | Testing Postgres password used for `POSTGRES_PASSWORD` and embedded directly in `TELEMETRY_ONE_DATABASE_URL`; must contain only URL-safe unreserved characters (`A-Z`, `a-z`, `0-9`, `_`, `.`, `~`, `-`). Generate with `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`. |
 
 The `GITHUB_TOKEN` secret is automatically provided by GitHub Actions for `packages: write`. If `VPS_POSTGRES_PASSWORD` is absent or contains URL-unsafe characters, deployment fails before touching Docker so testing never boots with a weak default password or malformed Postgres URL.
+
+## Optional Secrets (AI Provider)
+
+Set these in GitHub Secrets only when you want to enable real OpenRouter AI on the testing VPS:
+
+| Secret | Description |
+|--------|-------------|
+| `TELEMETRY_ONE_OPENROUTER_API_KEY` | OpenRouter API key. Required when `TELEMETRY_ONE_AI_PROVIDER` variable is set to `openrouter`. Ignored when provider is `fake`. Never logged or exposed to clients. |
+
+> **Security**: The API key is passed via `envs:` to the SSH session, written to `.env` (permissions `600`), and never appears in logs. No `set -x` shell tracing is used. The key stays server-side on the VPS — Flutter never receives it.
+
+## Optional Variables (AI Provider)
+
+Set these in GitHub Variables (Settings → Secrets and variables → Actions → Variables) to opt into real AI provider behavior:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TELEMETRY_ONE_AI_PROVIDER` | `fake` | Set to `openrouter` to enable real OpenRouter AI. Unset/empty → workflow enforces `fake` on every deploy. |
+| `TELEMETRY_ONE_AI_MODEL` | `gpt-4o-mini` | Override the model identifier (e.g., `gpt-4o`, `claude-3-haiku`). Must be supported by OpenRouter. When unset, existing `.env` value is preserved (initial default is `gpt-4o-mini`). |
+
+> **Provider opt-in is explicit**: The workflow never switches from `fake` to `openrouter` automatically. You MUST set the `TELEMETRY_ONE_AI_PROVIDER` variable to `openrouter` AND provide the `TELEMETRY_ONE_OPENROUTER_API_KEY` secret. Having a key present without setting the provider keeps the safe `fake` default.
 
 ## VPS Prerequisites
 
@@ -125,6 +146,25 @@ docker compose up -d
 
 Or push a revert commit to `develop` and let CI redeploy.
 
+### Rollback AI Provider
+
+To disable OpenRouter and return to `fake`:
+
+1. Remove or unset the `TELEMETRY_ONE_AI_PROVIDER` GitHub Variable.
+2. Either:
+   - **Wait for next deploy**: The workflow will explicitly set `TELEMETRY_ONE_AI_PROVIDER=fake` (via the `upsert_env` else branch). The stale `TELEMETRY_ONE_OPENROUTER_API_KEY` (if any) is left in `.env` but ignored — the `fake` provider never calls OpenRouter.
+   - **SSH approach** (immediate):
+     ```sh
+     ssh user@host
+     cd /opt/telemetry-one/backend
+     sed -i '/^TELEMETRY_ONE_AI_PROVIDER=/d' .env
+     sed -i '/^TELEMETRY_ONE_OPENROUTER_API_KEY=/d' .env
+     sudo docker compose -f compose.testing.yaml up -d
+     ```
+3. Verify: `curl http://<vps-ip>:8081/health`
+
+The container picks up the new `.env` on restart — no rebuild needed.
+
 ## Logs
 
 ```sh
@@ -142,11 +182,51 @@ curl -fsS http://127.0.0.1:8081/health
 
 The Docker Compose healthcheck runs every 30s against the container's internal `localhost:8080/health`. Docker considers the container healthy after 3 consecutive successful checks.
 
-## Provider Fake / OpenRouter
+## Provider Fake / OpenRouter (Deploy-Time)
 
-The default `.env` sets `TELEMETRY_ONE_AI_PROVIDER=fake`, which returns mock AI responses without any API key. This is safe for the testing environment.
+The default `.env` always starts with `TELEMETRY_ONE_AI_PROVIDER=fake`, which returns mock AI responses without any API key. This is safe for the testing environment by default.
 
-To enable real AI analysis, uncomment the `TELEMETRY_ONE_OPENROUTER_*` vars in `.env` and set a valid OpenRouter API key. The deployment workflow only appends missing Postgres keys; it does not overwrite existing `.env` values. Key management remains your responsibility.
+### How Opt-In Works
+
+1. **Set the Variable**: Create a GitHub Variable `TELEMETRY_ONE_AI_PROVIDER` with value `openrouter`.
+2. **Set the Secret**: Create a GitHub Secret `TELEMETRY_ONE_OPENROUTER_API_KEY` with your OpenRouter key.
+3. **Deploy**: Push to `develop` (or trigger workflow manually).
+
+On every deploy, the workflow checks if these values are set:
+
+- GitHub Variable set → `upsert_env` writes/updates the `.env` entry.
+- GitHub Variable unset/removed → `upsert_env` writes `TELEMETRY_ONE_AI_PROVIDER=fake`, restoring safe default.
+- GitHub Secret present → `upsert_env` writes/updates `TELEMETRY_ONE_OPENROUTER_API_KEY`.
+- GitHub Secret absent → key line stays in `.env` if present (harmless when provider is `fake`).
+- New key added → `.env` gains the new entry.
+- Key updated in GitHub → `.env` gets the new value on next deploy.
+- To fully remove both: SSH into the VPS and delete the lines from `/opt/telemetry-one/backend/.env`, then restart the container.
+
+### Default: `fake` (Safe)
+
+Every deploy enforces `TELEMETRY_ONE_AI_PROVIDER=fake` unless the GitHub Variable explicitly overrides it:
+
+```
+TELEMETRY_ONE_AI_PROVIDER=fake         ← enforced by workflow else-branch
+TELEMETRY_ONE_OPENROUTER_API_KEY=(not set)
+TELEMETRY_ONE_AI_MODEL=gpt-4o-mini     ← initial .env default
+```
+
+### Opt-In: `openrouter`
+
+Requires both (otherwise stays `fake`):
+
+| What | Where | Value |
+|------|-------|-------|
+| Variable | `TELEMETRY_ONE_AI_PROVIDER` | `openrouter` |
+| Secret | `TELEMETRY_ONE_OPENROUTER_API_KEY` | `sk-or-v1-...` |
+| Variable (optional) | `TELEMETRY_ONE_AI_MODEL` | Any OpenRouter model |
+
+### Why Not Auto-Switch on Key Presence?
+
+If a key is set but the provider variable is not, the workflow actively enforces `TELEMETRY_ONE_AI_PROVIDER=fake` via its else branch. This prevents accidental OpenRouter usage (and cost) if someone adds a key for future use without intending to switch. The switch is intentional and explicit.
+
+Conversely, if the provider variable is later removed, the workflow re-enforces `fake` automatically — no manual `.env` editing required unless you also want to clean up the stale API key line.
 
 ## Why No Repo Clone?
 
