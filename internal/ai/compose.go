@@ -83,9 +83,35 @@ func ComposePipeline(pipeCfg PipelineConfig, logger *slog.Logger) AIService {
 	return ComposePipelineWithAudit(pipeCfg, logger, NewMemoryAuditStore())
 }
 
+type ConfigWarning struct {
+	Field   string
+	Message string
+}
+
+func (c ConfigWarning) Error() string {
+	return c.Message
+}
+
+func (p PipelineConfig) Validate() []ConfigWarning {
+	var warnings []ConfigWarning
+	if p.AIProvider == "openrouter" && p.OpenRouterAPIKey == "" {
+		warnings = append(warnings, ConfigWarning{
+			Field:   "OpenRouterAPIKey",
+			Message: "AI provider is openrouter but no API key is configured; requests will fail with 401/403",
+		})
+	}
+	return warnings
+}
+
 func ComposePipelineWithAudit(pipeCfg PipelineConfig, logger *slog.Logger, auditStore AuditLogger) AIService {
 	if auditStore == nil {
 		auditStore = NewMemoryAuditStore()
+	}
+
+	for _, w := range pipeCfg.Validate() {
+		if logger != nil {
+			logger.Warn("ai pipeline config", "field", w.Field, "message", w.Message)
+		}
 	}
 
 	budget := TokenBudget{

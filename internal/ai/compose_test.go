@@ -221,6 +221,48 @@ func TestFakeProviderSatisfiesProviderAdapter(t *testing.T) {
 	}
 }
 
+func TestPipelineConfigValidateOpenRouterWithoutKey(t *testing.T) {
+	cfg := PipelineConfig{
+		AIProvider: "openrouter",
+	}
+	warnings := cfg.Validate()
+	if len(warnings) == 0 {
+		t.Fatal("expected validation warning for openrouter without API key")
+	}
+	if warnings[0].Field != "OpenRouterAPIKey" {
+		t.Fatalf("expected field OpenRouterAPIKey, got %q", warnings[0].Field)
+	}
+}
+
+func TestPipelineConfigValidateOpenRouterWithKey(t *testing.T) {
+	cfg := PipelineConfig{
+		AIProvider:       "openrouter",
+		OpenRouterAPIKey: "sk-or-v1-test",
+	}
+	warnings := cfg.Validate()
+	if len(warnings) != 0 {
+		t.Fatalf("expected no warnings for openrouter with key, got %v", warnings)
+	}
+}
+
+func TestPipelineConfigValidateFakeProvider(t *testing.T) {
+	cfg := PipelineConfig{
+		AIProvider: "fake",
+	}
+	warnings := cfg.Validate()
+	if len(warnings) != 0 {
+		t.Fatalf("expected no warnings for fake provider, got %v", warnings)
+	}
+}
+
+func TestPipelineConfigValidateEmptyProvider(t *testing.T) {
+	cfg := PipelineConfig{}
+	warnings := cfg.Validate()
+	if len(warnings) != 0 {
+		t.Fatalf("expected no warnings for empty provider, got %v", warnings)
+	}
+}
+
 func validConfigForPipeline() config.Config {
 	return config.Config{}
 }
