@@ -196,12 +196,12 @@ func previousLapRegressionEvents(sessionID string, accumulatedFrames []telemetry
 		}
 
 		severity := severityForInt64(delta, threshold*2, threshold*3)
-		events = append(events, baseFrameEvent(sessionID, completion.LapNumber, completion.TimestampUnixMs, TypeLapTimeRegression, severity, previousLapRegressionRuleID, []MetricEvidence{
+		events = append(events, basePreviousLapRegressionEvent(sessionID, completion.LapNumber, completion.TimestampUnixMs, severity, []MetricEvidence{
 			{Name: "completedLapMs", Value: float64(completion.CompletedLapMs), Unit: "ms", Status: MetricStatusAvailable, Role: MetricRoleActual},
 			{Name: "previousCompletedLapMs", Value: float64(previousCompletion.CompletedLapMs), Unit: "ms", Status: MetricStatusAvailable, Role: MetricRoleReference},
 			{Name: "lapPaceDropDeltaMs", Value: float64(delta), Unit: "ms", Status: MetricStatusAvailable, Role: MetricRoleDelta},
 			{Name: "lapPaceDropThresholdMs", Value: float64(threshold), Unit: "ms", Status: MetricStatusAvailable, Role: MetricRoleThreshold},
-		}, timeRange(completion.TimestampUnixMs, completion.TimestampUnixMs)))
+		}))
 	}
 
 	return events
@@ -259,6 +259,12 @@ func offTrackStintEvents(sessionID string, frames []telemetry.Frame, options Fra
 	return events
 }
 
+func basePreviousLapRegressionEvent(sessionID string, lapNumber int, timestampUnixMs int64, severity Severity, metrics []MetricEvidence) EngineerEvent {
+	event := baseFrameEvent(sessionID, lapNumber, timestampUnixMs, TypeLapTimeRegression, severity, previousLapRegressionRuleID, metrics, nil)
+	event.EventID = frameRuleEventID(sessionID, lapNumber, TypeLapTimeRegression, previousLapRegressionRuleID)
+	return event
+}
+
 func baseFrameEvent(sessionID string, lapNumber int, timestampUnixMs int64, eventType EventType, severity Severity, ruleID string, metrics []MetricEvidence, eventRange *TimeRange) EngineerEvent {
 	return EngineerEvent{
 		EventID:         frameEventID(sessionID, lapNumber, eventType, eventRange),
@@ -280,6 +286,10 @@ func frameEventID(sessionID string, lapNumber int, eventType EventType, eventRan
 		return sanitizeID(fmt.Sprintf("%s-lap-%d-%s-%d-%d", sessionID, lapNumber, eventType, eventRange.StartUnixMs, eventRange.EndUnixMs))
 	}
 	return sanitizeID(fmt.Sprintf("%s-lap-%d-%s", sessionID, lapNumber, eventType))
+}
+
+func frameRuleEventID(sessionID string, lapNumber int, eventType EventType, ruleID string) string {
+	return sanitizeID(fmt.Sprintf("%s-lap-%d-%s-%s", sessionID, lapNumber, eventType, ruleID))
 }
 
 func normalizeFrameEventOptions(options FrameEventOptions) FrameEventOptions {

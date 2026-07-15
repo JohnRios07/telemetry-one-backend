@@ -401,8 +401,42 @@ func TestIngestFramesCreatesPreviousLapRegressionAcrossBatches(t *testing.T) {
 	if event.Type != events.TypeLapTimeRegression || event.Source.RuleID != "lap_time_regression.previous_lap.v1" || event.LapNumber != 2 {
 		t.Fatalf("expected previous-lap regression for lap 2, got %+v", event)
 	}
-	if event.EventID != "session-previous-lap-lap-2-lap_time_regression-2000-2000" {
+	if event.EventID != "session-previous-lap-lap-2-lap_time_regression-lap_time_regression-previous_lap-v1" {
 		t.Fatalf("expected stable previous-lap event id, got %q", event.EventID)
+	}
+
+	postBatch([]telemetry.Frame{{
+		TimestampUnixMs: 2500,
+		SpeedMps:        44,
+		RPM:             4900,
+		Gear:            4,
+		Throttle:        0.55,
+		Brake:           0,
+		Steering:        0,
+		FuelLiters:      29.7,
+		PositionX:       2,
+		PositionY:       0,
+		PositionZ:       0,
+		LapNumber:       3,
+		CurrentLapMs:    700,
+		LastLapMs:       int64Ptr(41500),
+		BestLapMs:       int64Ptr(41500),
+		IsOnTrack:       true,
+	}})
+
+	eventsRecorder := httptest.NewRecorder()
+	eventsRequest := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/session-previous-lap/events?type=lap_time_regression", nil)
+	handler.ServeHTTP(eventsRecorder, eventsRequest)
+	if eventsRecorder.Code != http.StatusOK {
+		t.Fatalf("expected 200 events list, got %d with body %s", eventsRecorder.Code, eventsRecorder.Body.String())
+	}
+
+	var eventsResponse events.ListResponse
+	if err := json.Unmarshal(eventsRecorder.Body.Bytes(), &eventsResponse); err != nil {
+		t.Fatalf("decode events response: %v", err)
+	}
+	if len(eventsResponse.Events) != 1 {
+		t.Fatalf("expected /events to expose one deduplicated previous-lap event, got %+v", eventsResponse.Events)
 	}
 }
 

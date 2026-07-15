@@ -192,6 +192,9 @@ func TestGenerateFrameEventsForAppendPreviousLapRegression(t *testing.T) {
 			if event.LapNumber != 5 {
 				t.Fatalf("expected completed lap 5, got %d", event.LapNumber)
 			}
+			if event.TimeRange != nil {
+				t.Fatalf("expected previous-lap regression identity not to depend on evidence time range, got %+v", event.TimeRange)
+			}
 			assertFrameMetric(t, event, "completedLapMs", float64(tt.completedLapMs))
 			assertFrameMetric(t, event, "previousCompletedLapMs", float64(tt.previousLapMs))
 			assertFrameMetric(t, event, "lapPaceDropDeltaMs", tt.wantDeltaMs)
@@ -215,8 +218,39 @@ func TestGenerateFrameEventsForAppendPreviousLapRegressionDeduplicatesRepeatedEv
 	if len(events) != 1 {
 		t.Fatalf("expected one deduped previous-lap event, got %+v", events)
 	}
-	if events[0].Source.RuleID != previousLapRegressionRuleID || events[0].EventID != "session-1-lap-2-lap_time_regression-2000-2000" {
+	if events[0].Source.RuleID != previousLapRegressionRuleID || events[0].EventID != "session-1-lap-2-lap_time_regression-lap_time_regression-previous_lap-v1" {
 		t.Fatalf("expected stable previous-lap event, got %+v", events[0])
+	}
+}
+
+func TestGenerateFrameEventsForAppendPreviousLapRegressionUsesStableIdentityAcrossRepeatedEvidence(t *testing.T) {
+	firstAccumulated := []telemetry.Frame{
+		{TimestampUnixMs: 1000, LapNumber: 2, CurrentLapMs: 100, LastLapMs: ptrInt64(40000), IsOnTrack: true},
+		{TimestampUnixMs: 2000, LapNumber: 3, CurrentLapMs: 100, LastLapMs: ptrInt64(41500), IsOnTrack: true},
+	}
+	secondAccumulated := append([]telemetry.Frame{}, firstAccumulated...)
+	secondAccumulated = append(secondAccumulated, telemetry.Frame{TimestampUnixMs: 2500, LapNumber: 3, CurrentLapMs: 600, LastLapMs: ptrInt64(41500), IsOnTrack: true})
+
+	firstEvents, err := GenerateFrameEventsForAppend("session-1", firstAccumulated, firstAccumulated[1:])
+	if err != nil {
+		t.Fatalf("expected no error from first generation, got %v", err)
+	}
+	secondEvents, err := GenerateFrameEventsForAppend("session-1", secondAccumulated, secondAccumulated[2:])
+	if err != nil {
+		t.Fatalf("expected no error from second generation, got %v", err)
+	}
+
+	if len(firstEvents) != 1 || len(secondEvents) != 1 {
+		t.Fatalf("expected one previous-lap event from each generation, got first=%+v second=%+v", firstEvents, secondEvents)
+	}
+	if firstEvents[0].TimestampUnixMs == secondEvents[0].TimestampUnixMs {
+		t.Fatalf("test setup should use distinct evidence timestamps, got %d", firstEvents[0].TimestampUnixMs)
+	}
+	if firstEvents[0].EventID != secondEvents[0].EventID {
+		t.Fatalf("expected repeated evidence for same completed lap to keep event id stable, got %q and %q", firstEvents[0].EventID, secondEvents[0].EventID)
+	}
+	if DedupKey(firstEvents[0]) != DedupKey(secondEvents[0]) {
+		t.Fatalf("expected repeated evidence for same completed lap to keep dedup key stable, got %q and %q", DedupKey(firstEvents[0]), DedupKey(secondEvents[0]))
 	}
 }
 
