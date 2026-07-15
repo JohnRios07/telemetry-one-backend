@@ -292,7 +292,13 @@ func ingestFramesHandler(frameStore telemetry.Store, eventStore events.Repositor
 			}
 
 			if eventStore != nil {
-				generated, err := events.GenerateFrameEvents(request.SessionID, result.Frames)
+				accumulatedFrames, err := frameStore.Frames(r.Context(), request.SessionID)
+				if err != nil {
+					writeJSON(w, http.StatusInternalServerError, httperror.Envelope(httperror.Internal("frame persistence error")))
+					return
+				}
+
+				generated, err := events.GenerateFrameEventsForAppend(request.SessionID, accumulatedFrames, result.Frames)
 				if err != nil {
 					writeJSON(w, http.StatusInternalServerError, httperror.Envelope(httperror.Internal("event generation error")))
 					return

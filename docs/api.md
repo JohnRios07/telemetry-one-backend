@@ -311,7 +311,7 @@ Current MVP event types:
 | `late_throttle` | First throttle reapplication occurred later than a validated reference/threshold. | Derived throttle reapplication timing/distance. |
 | `low_exit_speed` | Corner exit speed was below a validated reference/threshold. | Derived exit-speed metrics. |
 | `inconsistent_corner` | Corner execution varied beyond a validated consistency threshold. | Derived variance/consistency metrics. |
-| `lap_time_regression` | A completed lap was significantly slower than the session best lap. | Derived last-lap, best-lap, and delta metrics. |
+| `lap_time_regression` | A completed lap was significantly slower than the session best lap or immediately previous completed lap. | Derived last-lap/best-lap metrics, or previous-lap pace-drop delta and threshold metrics. |
 | `off_track_stint` | A sustained off-track stretch exceeded the minimum duration threshold. | Derived off-track duration, frame count, and threshold metrics. |
 
 Reserved ideas such as `weak_corner`, `overdriving`, `line_deviation`, `understeer`, and `oversteer` are intentionally not part of the current MVP contract until the deterministic rule inputs exist.

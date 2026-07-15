@@ -146,6 +146,127 @@ func TestGenerateFrameEventsOffTrackStintBelowThresholdIsIgnored(t *testing.T) {
 	}
 }
 
+func TestGenerateFrameEventsForAppendPreviousLapRegression(t *testing.T) {
+	tests := []struct {
+		name            string
+		previousLapMs   int64
+		completedLapMs  int64
+		wantEvent       bool
+		wantThresholdMs float64
+		wantDeltaMs     float64
+	}{
+		{name: "emits at three percent threshold", previousLapMs: 100000, completedLapMs: 103000, wantEvent: true, wantThresholdMs: 3000, wantDeltaMs: 3000},
+		{name: "emits at floor threshold", previousLapMs: 40000, completedLapMs: 41500, wantEvent: true, wantThresholdMs: 1500, wantDeltaMs: 1500},
+		{name: "does not emit below threshold", previousLapMs: 100000, completedLapMs: 102999, wantEvent: false},
+		{name: "does not emit for equal lap", previousLapMs: 100000, completedLapMs: 100000, wantEvent: false},
+		{name: "does not emit for faster lap", previousLapMs: 100000, completedLapMs: 98000, wantEvent: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			accumulated := []telemetry.Frame{
+				{TimestampUnixMs: 1000, LapNumber: 5, CurrentLapMs: 100, LastLapMs: ptrInt64(tt.previousLapMs), BestLapMs: ptrInt64(tt.previousLapMs), IsOnTrack: true},
+				{TimestampUnixMs: 2000, LapNumber: 6, CurrentLapMs: 100, LastLapMs: ptrInt64(tt.completedLapMs), BestLapMs: ptrInt64(tt.completedLapMs), IsOnTrack: true},
+			}
+			appended := accumulated[1:]
+
+			events, err := GenerateFrameEventsForAppend("session-1", accumulated, appended)
+			if err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+
+			if !tt.wantEvent {
+				if len(events) != 0 {
+					t.Fatalf("expected no events, got %+v", events)
+				}
+				return
+			}
+
+			if len(events) != 1 {
+				t.Fatalf("expected 1 event, got %+v", events)
+			}
+			event := events[0]
+			if event.Type != TypeLapTimeRegression || event.Source.RuleID != previousLapRegressionRuleID {
+				t.Fatalf("expected previous-lap regression event, got %+v", event)
+			}
+			if event.LapNumber != 5 {
+				t.Fatalf("expected completed lap 5, got %d", event.LapNumber)
+			}
+			assertFrameMetric(t, event, "completedLapMs", float64(tt.completedLapMs))
+			assertFrameMetric(t, event, "previousCompletedLapMs", float64(tt.previousLapMs))
+			assertFrameMetric(t, event, "lapPaceDropDeltaMs", tt.wantDeltaMs)
+			assertFrameMetric(t, event, "lapPaceDropThresholdMs", tt.wantThresholdMs)
+		})
+	}
+}
+
+func TestGenerateFrameEventsForAppendPreviousLapRegressionDeduplicatesRepeatedEvidence(t *testing.T) {
+	accumulated := []telemetry.Frame{
+		{TimestampUnixMs: 1000, LapNumber: 2, CurrentLapMs: 100, LastLapMs: ptrInt64(40000), IsOnTrack: true},
+		{TimestampUnixMs: 2000, LapNumber: 3, CurrentLapMs: 100, LastLapMs: ptrInt64(41500), IsOnTrack: true},
+		{TimestampUnixMs: 2100, LapNumber: 3, CurrentLapMs: 200, LastLapMs: ptrInt64(41500), IsOnTrack: true},
+	}
+	appended := accumulated[1:]
+
+	events, err := GenerateFrameEventsForAppend("session-1", accumulated, appended)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected one deduped previous-lap event, got %+v", events)
+	}
+	if events[0].Source.RuleID != previousLapRegressionRuleID || events[0].EventID != "session-1-lap-2-lap_time_regression-2000-2000" {
+		t.Fatalf("expected stable previous-lap event, got %+v", events[0])
+	}
+}
+
+func TestGenerateFrameEventsForAppendPreviousLapRegressionRequiresAppendedBoundary(t *testing.T) {
+	accumulated := []telemetry.Frame{
+		{TimestampUnixMs: 1000, LapNumber: 8, CurrentLapMs: 100, LastLapMs: ptrInt64(100000), IsOnTrack: true},
+		{TimestampUnixMs: 2000, LapNumber: 9, CurrentLapMs: 100, LastLapMs: ptrInt64(103000), IsOnTrack: true},
+	}
+	appended := []telemetry.Frame{{TimestampUnixMs: 2500, LapNumber: 9, CurrentLapMs: 500, IsOnTrack: true}}
+
+	events, err := GenerateFrameEventsForAppend("session-1", accumulated, appended)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(events) != 0 {
+		t.Fatalf("expected historical regression not to re-emit without appended boundary, got %+v", events)
+	}
+}
+
+func TestGenerateFrameEventsForAppendPreservesBestLapAndOffTrackBehavior(t *testing.T) {
+	accumulated := []telemetry.Frame{
+		{TimestampUnixMs: 1000, LapNumber: 2, CurrentLapMs: 100, LastLapMs: ptrInt64(94500), BestLapMs: ptrInt64(90000), IsOnTrack: false},
+		{TimestampUnixMs: 1600, LapNumber: 2, CurrentLapMs: 700, IsOnTrack: false},
+	}
+
+	events, err := GenerateFrameEventsForAppend("session-1", accumulated, accumulated)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("expected best-lap regression and off-track events, got %+v", events)
+	}
+	if events[0].Source.RuleID != lapRegressionRuleID || events[1].Source.RuleID != offTrackStintRuleID {
+		t.Fatalf("expected existing rules to remain unchanged, got %+v", events)
+	}
+}
+
 func ptrInt64(value int64) *int64 {
 	return &value
+}
+
+func assertFrameMetric(t *testing.T, event EngineerEvent, name string, want float64) {
+	t.Helper()
+	for _, metric := range event.Metrics {
+		if metric.Name == name {
+			if metric.Value != want {
+				t.Fatalf("metric %s = %v, want %v", name, metric.Value, want)
+			}
+			return
+		}
+	}
+	t.Fatalf("metric %s not found in %+v", name, event.Metrics)
 }
