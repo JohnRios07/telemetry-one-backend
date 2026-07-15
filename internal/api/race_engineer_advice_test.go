@@ -301,6 +301,42 @@ func TestRaceEngineerAdviceDirectAIErrorUsesBadRequestEnvelope(t *testing.T) {
 	}
 }
 
+func TestRaceEngineerAdviceListFailureUsesInternalServerError(t *testing.T) {
+	aiSvc := &spyAdviceAIService{}
+	handler := testRaceEngineerAdviceHandler(t, failingEventStore{}, aiSvc, "session-1")
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/session-1/race-engineer/advice", strings.NewReader(`{}`))
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("expected status %d, got %d body %s", http.StatusInternalServerError, recorder.Code, recorder.Body.String())
+	}
+	if aiSvc.calls != 0 {
+		t.Fatalf("expected AI service not called when event listing fails, got %d", aiSvc.calls)
+	}
+	if !strings.Contains(recorder.Body.String(), "internal_error") {
+		t.Fatalf("expected internal_error envelope, got %s", recorder.Body.String())
+	}
+}
+
+func TestBuildRaceEngineerAdviceGatewayRequestUsesFirstAvailableSessionRefs(t *testing.T) {
+	track := &events.CatalogRef{ID: apiStringPtr("track-1"), Name: apiStringPtr("Trial Mountain"), DisplayStrategy: events.DisplayStrategyCatalogName}
+	layout := &events.CatalogRef{ID: apiStringPtr("layout-1"), Name: apiStringPtr("Forward"), DisplayStrategy: events.DisplayStrategyCatalogName}
+
+	req := buildRaceEngineerAdviceGatewayRequest("session-1", []events.EngineerEvent{
+		{EventID: "event-1", SessionID: "session-1"},
+		{EventID: "event-2", SessionID: "session-1", Track: track, Layout: layout},
+	})
+
+	if req.Input.Session.Track != track {
+		t.Fatalf("expected session track from first available selected event, got %+v", req.Input.Session.Track)
+	}
+	if req.Input.Session.Layout != layout {
+		t.Fatalf("expected session layout from first available selected event, got %+v", req.Input.Session.Layout)
+	}
+}
+
 func testRaceEngineerAdviceHandler(t *testing.T, eventStore events.Repository, aiSvc ai.AIService, sessionIDs ...string) http.Handler {
 	t.Helper()
 	cfg := config.Config{Addr: ":0", Env: "test"}

@@ -67,7 +67,7 @@ func raceEngineerAdviceHandler(aiSvc ai.AIService, eventStore events.Repository,
 
 		storedEvents, err := eventStore.List(r.Context(), events.Query{SessionID: sessionID})
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, httperror.Envelope(httperror.BadRequest(err.Error())))
+			writeJSON(w, http.StatusInternalServerError, httperror.Envelope(httperror.Internal("failed to list race engineer events")))
 			return
 		}
 
@@ -191,9 +191,16 @@ func buildRaceEngineerAdviceGatewayRequest(sessionID string, selectedEvents []ev
 
 	var track *events.CatalogRef
 	var layout *events.CatalogRef
-	if len(selectedEvents) > 0 {
-		track = selectedEvents[0].Track
-		layout = selectedEvents[0].Layout
+	for _, event := range selectedEvents {
+		if track == nil {
+			track = event.Track
+		}
+		if layout == nil {
+			layout = event.Layout
+		}
+		if track != nil && layout != nil {
+			break
+		}
 	}
 
 	return ai.GatewayRequest{
