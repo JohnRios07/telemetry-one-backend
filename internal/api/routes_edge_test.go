@@ -318,6 +318,128 @@ func TestIngestFramesCreatesDeterministicEngineerEvents(t *testing.T) {
 	}
 }
 
+func TestIngestFramesCreatesPreviousLapRegressionAcrossBatches(t *testing.T) {
+	ctx := context.Background()
+	sessionRepo := sessions.NewMemoryRepository()
+	seedTestSession(t, sessionRepo, "session-previous-lap")
+	eventStore := events.NewStore(100, events.DedupOptions{})
+	handler := routesWithSessionRepository(
+		config.Config{Addr: ":0", Env: "test"},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		telemetry.NewFrameStore(100),
+		tracks.OfficialGT7SeedCatalog(),
+		eventStore,
+		sessionRepo,
+	)
+
+	postBatch := func(frames []telemetry.Frame) {
+		t.Helper()
+		body, err := json.Marshal(telemetry.IngestBatchRequest{SessionID: "session-previous-lap", Frames: frames})
+		if err != nil {
+			t.Fatalf("marshal ingest request: %v", err)
+		}
+
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/session-previous-lap/frames", bytes.NewReader(body))
+		handler.ServeHTTP(recorder, request)
+		if recorder.Code != http.StatusAccepted {
+			t.Fatalf("expected 202 ingest, got %d with body %s", recorder.Code, recorder.Body.String())
+		}
+	}
+
+	postBatch([]telemetry.Frame{{
+		TimestampUnixMs: 1000,
+		SpeedMps:        45,
+		RPM:             5000,
+		Gear:            3,
+		Throttle:        0.6,
+		Brake:           0,
+		Steering:        0,
+		FuelLiters:      30,
+		PositionX:       0,
+		PositionY:       0,
+		PositionZ:       0,
+		LapNumber:       2,
+		CurrentLapMs:    100,
+		LastLapMs:       int64Ptr(40000),
+		BestLapMs:       int64Ptr(40000),
+		IsOnTrack:       true,
+	}})
+	if storedEvents, err := eventStore.List(ctx, events.Query{SessionID: "session-previous-lap"}); err != nil {
+		t.Fatalf("list stored events after first batch: %v", err)
+	} else if len(storedEvents) != 0 {
+		t.Fatalf("expected no event after first completed lap, got %+v", storedEvents)
+	}
+
+	postBatch([]telemetry.Frame{{
+		TimestampUnixMs: 2000,
+		SpeedMps:        44,
+		RPM:             4900,
+		Gear:            4,
+		Throttle:        0.55,
+		Brake:           0,
+		Steering:        0,
+		FuelLiters:      29.8,
+		PositionX:       1,
+		PositionY:       0,
+		PositionZ:       0,
+		LapNumber:       3,
+		CurrentLapMs:    200,
+		LastLapMs:       int64Ptr(41500),
+		BestLapMs:       int64Ptr(41500),
+		IsOnTrack:       true,
+	}})
+
+	storedEvents, err := eventStore.List(ctx, events.Query{SessionID: "session-previous-lap"})
+	if err != nil {
+		t.Fatalf("list stored events after second batch: %v", err)
+	}
+	if len(storedEvents) != 1 {
+		t.Fatalf("expected one previous-lap regression event, got %+v", storedEvents)
+	}
+	event := storedEvents[0]
+	if event.Type != events.TypeLapTimeRegression || event.Source.RuleID != "lap_time_regression.previous_lap.v1" || event.LapNumber != 2 {
+		t.Fatalf("expected previous-lap regression for lap 2, got %+v", event)
+	}
+	if event.EventID != "session-previous-lap-lap-2-lap_time_regression-lap_time_regression-previous_lap-v1" {
+		t.Fatalf("expected stable previous-lap event id, got %q", event.EventID)
+	}
+
+	postBatch([]telemetry.Frame{{
+		TimestampUnixMs: 2500,
+		SpeedMps:        44,
+		RPM:             4900,
+		Gear:            4,
+		Throttle:        0.55,
+		Brake:           0,
+		Steering:        0,
+		FuelLiters:      29.7,
+		PositionX:       2,
+		PositionY:       0,
+		PositionZ:       0,
+		LapNumber:       3,
+		CurrentLapMs:    700,
+		LastLapMs:       int64Ptr(41500),
+		BestLapMs:       int64Ptr(41500),
+		IsOnTrack:       true,
+	}})
+
+	eventsRecorder := httptest.NewRecorder()
+	eventsRequest := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/session-previous-lap/events?type=lap_time_regression", nil)
+	handler.ServeHTTP(eventsRecorder, eventsRequest)
+	if eventsRecorder.Code != http.StatusOK {
+		t.Fatalf("expected 200 events list, got %d with body %s", eventsRecorder.Code, eventsRecorder.Body.String())
+	}
+
+	var eventsResponse events.ListResponse
+	if err := json.Unmarshal(eventsRecorder.Body.Bytes(), &eventsResponse); err != nil {
+		t.Fatalf("decode events response: %v", err)
+	}
+	if len(eventsResponse.Events) != 1 {
+		t.Fatalf("expected /events to expose one deduplicated previous-lap event, got %+v", eventsResponse.Events)
+	}
+}
+
 func TestDetectTrackRejectsNonexistentSession(t *testing.T) {
 	sessionRepo := sessions.NewMemoryRepository()
 	handler := routesWithSessionRepository(
