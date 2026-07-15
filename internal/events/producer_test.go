@@ -270,6 +270,36 @@ func TestGenerateFrameEventsForAppendPreviousLapRegressionRequiresAppendedBounda
 	}
 }
 
+func TestGenerateFrameEventsForAppendOffTrackStreakAcrossBatches(t *testing.T) {
+	accumulated := []telemetry.Frame{
+		{TimestampUnixMs: 1000, LapNumber: 1, CurrentLapMs: 1000, IsOnTrack: true},
+		{TimestampUnixMs: 1200, LapNumber: 1, CurrentLapMs: 1200, IsOnTrack: false},
+		{TimestampUnixMs: 1500, LapNumber: 1, CurrentLapMs: 1500, IsOnTrack: false},
+	}
+	appended := []telemetry.Frame{
+		{TimestampUnixMs: 1800, LapNumber: 1, CurrentLapMs: 1800, IsOnTrack: false},
+		{TimestampUnixMs: 2000, LapNumber: 1, CurrentLapMs: 2000, IsOnTrack: true},
+	}
+
+	events, err := GenerateFrameEventsForAppend("session-1", accumulated, appended)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected 1 off-track event, got %d: %+v", len(events), events)
+	}
+	event := events[0]
+	if event.Type != TypeOffTrackStint {
+		t.Fatalf("expected off_track_stint event, got %s", event.Type)
+	}
+	if event.TimeRange == nil || event.TimeRange.StartUnixMs != 1200 || event.TimeRange.EndUnixMs != 1800 {
+		t.Fatalf("expected time range 1200-1800 covering full off-track streak, got %+v", event.TimeRange)
+	}
+	if event.LapNumber != 1 {
+		t.Fatalf("expected lap 1, got %d", event.LapNumber)
+	}
+}
+
 func TestGenerateFrameEventsForAppendPreservesBestLapAndOffTrackBehavior(t *testing.T) {
 	accumulated := []telemetry.Frame{
 		{TimestampUnixMs: 1000, LapNumber: 2, CurrentLapMs: 100, LastLapMs: ptrInt64(94500), BestLapMs: ptrInt64(90000), IsOnTrack: false},

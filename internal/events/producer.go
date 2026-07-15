@@ -69,7 +69,8 @@ func GenerateFrameEventsForAppend(sessionID string, accumulatedFrames []telemetr
 	events := make([]EngineerEvent, 0, 2)
 	events = append(events, lapTimeRegressionEvents(sessionID, appendedFrames, options)...)
 	events = append(events, previousLapRegressionEvents(sessionID, accumulatedFrames, appendedFrames)...)
-	events = append(events, offTrackStintEvents(sessionID, appendedFrames, options)...)
+	offTrackInput := appendOffTrackTail(accumulatedFrames, appendedFrames)
+	events = append(events, offTrackStintEvents(sessionID, offTrackInput, options)...)
 
 	for _, event := range events {
 		if err := event.Validate(); err != nil {
@@ -242,6 +243,48 @@ func offTrackStintEvents(sessionID string, frames []telemetry.Frame, options Fra
 	emit()
 
 	return events
+}
+
+func appendOffTrackTail(accumulated []telemetry.Frame, appended []telemetry.Frame) []telemetry.Frame {
+	if len(accumulated) == 0 {
+		return appended
+	}
+	if accumulated[len(accumulated)-1].IsOnTrack {
+		return appended
+	}
+
+	// accumulated may already include appended at the end (frames stored before
+	// event generation). Trim to only the portion before appended starts.
+	prefix := accumulated
+	if len(appended) > 0 {
+		firstTs := appended[0].TimestampUnixMs
+		end := len(accumulated)
+		for i := len(accumulated) - 1; i >= 0; i-- {
+			if accumulated[i].TimestampUnixMs < firstTs {
+				end = i + 1
+				break
+			}
+		}
+		if end == 0 {
+			return appended
+		}
+		prefix = accumulated[:end]
+		if prefix[len(prefix)-1].IsOnTrack {
+			return appended
+		}
+	}
+
+	start := len(prefix) - 1
+	for start > 0 && !prefix[start-1].IsOnTrack {
+		start--
+	}
+
+	tail := make([]telemetry.Frame, len(prefix[start:]))
+	copy(tail, prefix[start:])
+	result := make([]telemetry.Frame, 0, len(tail)+len(appended))
+	result = append(result, tail...)
+	result = append(result, appended...)
+	return result
 }
 
 func basePreviousLapRegressionEvent(sessionID string, lapNumber int, timestampUnixMs int64, severity Severity, metrics []MetricEvidence) EngineerEvent {
