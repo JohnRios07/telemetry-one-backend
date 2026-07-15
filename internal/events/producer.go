@@ -67,9 +67,8 @@ func GenerateFrameEventsForAppend(sessionID string, accumulatedFrames []telemetr
 
 	options := DefaultFrameEventOptions()
 	events := make([]EngineerEvent, 0, 2)
-	bestLapRegressionEvents := lapTimeRegressionEvents(sessionID, appendedFrames, options)
-	events = append(events, bestLapRegressionEvents...)
-	events = append(events, previousLapRegressionEvents(sessionID, accumulatedFrames, appendedFrames, completedLapEventSet(bestLapRegressionEvents))...)
+	events = append(events, lapTimeRegressionEvents(sessionID, appendedFrames, options)...)
+	events = append(events, previousLapRegressionEvents(sessionID, accumulatedFrames, appendedFrames)...)
 	events = append(events, offTrackStintEvents(sessionID, appendedFrames, options)...)
 
 	for _, event := range events {
@@ -153,17 +152,7 @@ func completedLaps(frames []telemetry.Frame) []lapCompletion {
 	return completions
 }
 
-func completedLapEventSet(events []EngineerEvent) map[int]struct{} {
-	seen := make(map[int]struct{}, len(events))
-	for _, event := range events {
-		if event.Type == TypeLapTimeRegression {
-			seen[event.LapNumber] = struct{}{}
-		}
-	}
-	return seen
-}
-
-func previousLapRegressionEvents(sessionID string, accumulatedFrames []telemetry.Frame, appendedFrames []telemetry.Frame, skippedLaps map[int]struct{}) []EngineerEvent {
+func previousLapRegressionEvents(sessionID string, accumulatedFrames []telemetry.Frame, appendedFrames []telemetry.Frame) []EngineerEvent {
 	appendedCompletions := completedLaps(appendedFrames)
 	if len(appendedCompletions) == 0 {
 		return nil
@@ -176,10 +165,6 @@ func previousLapRegressionEvents(sessionID string, accumulatedFrames []telemetry
 
 	events := make([]EngineerEvent, 0, len(appendedCompletions))
 	for _, completion := range appendedCompletions {
-		if _, ok := skippedLaps[completion.LapNumber]; ok {
-			continue
-		}
-
 		previousCompletion, ok := completionByLap[completion.LapNumber-1]
 		if !ok || previousCompletion.CompletedLapMs <= 0 {
 			continue
