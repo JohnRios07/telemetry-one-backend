@@ -440,6 +440,99 @@ func TestIngestFramesCreatesPreviousLapRegressionAcrossBatches(t *testing.T) {
 	}
 }
 
+func TestIngestFramesEmitsBothBestLapAndPreviousLapRegressionForSameCompletedLap(t *testing.T) {
+	ctx := context.Background()
+	sessionRepo := sessions.NewMemoryRepository()
+	seedTestSession(t, sessionRepo, "session-both-regression")
+	eventStore := events.NewStore(100, events.DedupOptions{})
+	handler := routesWithSessionRepository(
+		config.Config{Addr: ":0", Env: "test"},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		telemetry.NewFrameStore(100),
+		tracks.OfficialGT7SeedCatalog(),
+		eventStore,
+		sessionRepo,
+	)
+
+	postBatch := func(frames []telemetry.Frame) {
+		t.Helper()
+		body, err := json.Marshal(telemetry.IngestBatchRequest{SessionID: "session-both-regression", Frames: frames})
+		if err != nil {
+			t.Fatalf("marshal ingest request: %v", err)
+		}
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/session-both-regression/frames", bytes.NewReader(body))
+		handler.ServeHTTP(recorder, request)
+		if recorder.Code != http.StatusAccepted {
+			t.Fatalf("expected 202 ingest, got %d with body %s", recorder.Code, recorder.Body.String())
+		}
+	}
+
+	// Batch 1: Lap 2 with lastLapMs=40000, bestLapMs=40000 (both equal, no best-lap regression)
+	postBatch([]telemetry.Frame{{
+		TimestampUnixMs: 1000, SpeedMps: 45, RPM: 5000, Gear: 3,
+		Throttle: 0.6, Brake: 0, Steering: 0, FuelLiters: 30,
+		PositionX: 0, PositionY: 0, PositionZ: 0,
+		LapNumber: 2, CurrentLapMs: 100, LastLapMs: int64Ptr(40000), BestLapMs: int64Ptr(40000), IsOnTrack: true,
+	}})
+
+	// Batch 2: Lap 3 with lastLapMs=42000, bestLapMs=40000
+	// Both best-lap and previous-lap regression should fire for completed lap 2
+	postBatch([]telemetry.Frame{{
+		TimestampUnixMs: 2000, SpeedMps: 44, RPM: 4900, Gear: 4,
+		Throttle: 0.55, Brake: 0, Steering: 0, FuelLiters: 29.8,
+		PositionX: 1, PositionY: 0, PositionZ: 0,
+		LapNumber: 3, CurrentLapMs: 200, LastLapMs: int64Ptr(42000), BestLapMs: int64Ptr(40000), IsOnTrack: true,
+	}})
+
+	storedEvents, err := eventStore.List(ctx, events.Query{SessionID: "session-both-regression"})
+	if err != nil {
+		t.Fatalf("list stored events: %v", err)
+	}
+	if len(storedEvents) != 2 {
+		t.Fatalf("expected 2 events (best-lap + previous-lap), got %d: %+v", len(storedEvents), storedEvents)
+	}
+
+	var bestLapEvent, previousLapEvent bool
+	for _, e := range storedEvents {
+		switch e.Source.RuleID {
+		case "lap_time_regression.v1":
+			bestLapEvent = true
+		case "lap_time_regression.previous_lap.v1":
+			previousLapEvent = true
+		}
+	}
+	if !bestLapEvent {
+		t.Fatal("expected best-lap regression event")
+	}
+	if !previousLapEvent {
+		t.Fatal("expected previous-lap regression event")
+	}
+
+	// Batch 3: Repeated Lap 3 evidence — must not create duplicate events
+	postBatch([]telemetry.Frame{{
+		TimestampUnixMs: 2500, SpeedMps: 44, RPM: 4900, Gear: 4,
+		Throttle: 0.55, Brake: 0, Steering: 0, FuelLiters: 29.7,
+		PositionX: 2, PositionY: 0, PositionZ: 0,
+		LapNumber: 3, CurrentLapMs: 700, LastLapMs: int64Ptr(42000), BestLapMs: int64Ptr(40000), IsOnTrack: true,
+	}})
+
+	finalEvents, err := eventStore.List(ctx, events.Query{SessionID: "session-both-regression", Type: events.TypeLapTimeRegression})
+	if err != nil {
+		t.Fatalf("list stored events after repeat evidence: %v", err)
+	}
+
+	var previousLapCount int
+	for _, e := range finalEvents {
+		if e.Source.RuleID == "lap_time_regression.previous_lap.v1" {
+			previousLapCount++
+		}
+	}
+	if previousLapCount != 1 {
+		t.Fatalf("expected exactly 1 previous-lap event after repeat evidence, got %d: %+v", previousLapCount, finalEvents)
+	}
+}
+
 func TestDetectTrackRejectsNonexistentSession(t *testing.T) {
 	sessionRepo := sessions.NewMemoryRepository()
 	handler := routesWithSessionRepository(

@@ -288,6 +288,51 @@ func TestGenerateFrameEventsForAppendPreservesBestLapAndOffTrackBehavior(t *test
 	}
 }
 
+func TestGenerateFrameEventsForAppendEmitsBothBestLapAndPreviousLapRegression(t *testing.T) {
+	accumulated := []telemetry.Frame{
+		{TimestampUnixMs: 1000, LapNumber: 2, CurrentLapMs: 100, LastLapMs: ptrInt64(40000), BestLapMs: ptrInt64(40000), IsOnTrack: true},
+	}
+	appended := []telemetry.Frame{
+		{TimestampUnixMs: 2000, LapNumber: 3, CurrentLapMs: 100, LastLapMs: ptrInt64(42000), BestLapMs: ptrInt64(40000), IsOnTrack: true},
+	}
+	fullAccumulated := append(accumulated, appended...)
+
+	events, err := GenerateFrameEventsForAppend("session-1", fullAccumulated, appended)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("expected 2 events (best-lap + previous-lap), got %+v", events)
+	}
+
+	var bestLapEvent, previousLapEvent *EngineerEvent
+	for i := range events {
+		switch events[i].Source.RuleID {
+		case lapRegressionRuleID:
+			bestLapEvent = &events[i]
+		case previousLapRegressionRuleID:
+			previousLapEvent = &events[i]
+		}
+	}
+	if bestLapEvent == nil {
+		t.Fatal("expected best-lap regression event")
+	}
+	if previousLapEvent == nil {
+		t.Fatal("expected previous-lap regression event")
+	}
+
+	if bestLapEvent.LapNumber != 2 || previousLapEvent.LapNumber != 2 {
+		t.Fatalf("both events should reference completed lap 2, got best-lap lap=%d previous-lap lap=%d", bestLapEvent.LapNumber, previousLapEvent.LapNumber)
+	}
+	if DedupKey(*bestLapEvent) == DedupKey(*previousLapEvent) {
+		t.Fatalf("expected distinct dedup keys for best-lap and previous-lap events")
+	}
+	assertFrameMetric(t, *bestLapEvent, "lastLapMs", 42000)
+	assertFrameMetric(t, *bestLapEvent, "bestLapMs", 40000)
+	assertFrameMetric(t, *previousLapEvent, "completedLapMs", 42000)
+	assertFrameMetric(t, *previousLapEvent, "previousCompletedLapMs", 40000)
+}
+
 func ptrInt64(value int64) *int64 {
 	return &value
 }
