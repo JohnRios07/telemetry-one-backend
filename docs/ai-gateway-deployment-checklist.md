@@ -21,6 +21,8 @@ All configuration is via environment variables loaded in `internal/config/config
 |----------|---------|----------|-------|
 | `TELEMETRY_ONE_AI_PROVIDER` | `fake` | No | `"fake"` or `"openrouter"`. Fake returns deterministic responses with no API key. OpenRouter requires `TELEMETRY_ONE_OPENROUTER_API_KEY`. |
 
+> **Deploy-time override**: In the GitHub Actions `deploy-testing.yml` workflow, `fake` is enforced on every deploy via the `upsert_env` else branch. To opt into OpenRouter on the testing VPS, set the GitHub Variable `TELEMETRY_ONE_AI_PROVIDER=openrouter` and the GitHub Secret `TELEMETRY_ONE_OPENROUTER_API_KEY`. The variable is passed as an env var to the SSH deployment script, which writes it to the VPS `.env` via `upsert_env()`. See [`docs/testing-deployment.md`](testing-deployment.md) for details.
+
 ### OpenRouter (only when provider = `"openrouter"`)
 
 | Variable | Default | Required | Notes |
