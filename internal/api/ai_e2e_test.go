@@ -105,8 +105,8 @@ func TestAIE2E_OpenRouterSuccessPath(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", recorder.Code, recorder.Body.String())
 	}
 
-	if captured.reqPath != "/api/v1/chat/completions" {
-		t.Fatalf("expected /api/v1/chat/completions, got %q", captured.reqPath)
+	if captured.reqPath != "/chat/completions" {
+		t.Fatalf("expected /chat/completions, got %q", captured.reqPath)
 	}
 	if captured.authHeader != "Bearer sk-e2e-test-key" {
 		t.Fatalf("expected Bearer sk-e2e-test-key, got %q", captured.authHeader)
