@@ -91,13 +91,13 @@ func (a *OpenRouterAdapter) Analyze(ctx context.Context, req ProviderRequest) (P
 	}
 	defer httpResp.Body.Close()
 
-	if err := a.mapHTTPError(httpResp.StatusCode); err != nil {
-		return ProviderResponse{}, err
-	}
-
 	respBody, err := io.ReadAll(httpResp.Body)
 	if err != nil {
 		return ProviderResponse{}, fmt.Errorf("%w: read response: %v", ErrProviderNotAvailable, err)
+	}
+
+	if httpResp.StatusCode != http.StatusOK {
+		return ProviderResponse{}, a.mapHTTPError(httpResp.StatusCode, respBody, req.Model)
 	}
 
 	var openResp openRouterResponse
@@ -132,14 +132,14 @@ func (a *OpenRouterAdapter) chatEndpoint() string {
 	return base + openRouterChatPath
 }
 
-func (a *OpenRouterAdapter) mapHTTPError(statusCode int) error {
+func (a *OpenRouterAdapter) mapHTTPError(statusCode int, body []byte, model string) error {
 	switch {
 	case statusCode == http.StatusUnauthorized || statusCode == http.StatusForbidden:
 		return ErrProviderRejected
 	case statusCode == http.StatusBadRequest:
 		return ErrProviderRejected
 	case statusCode == http.StatusTooManyRequests:
-		return ErrProviderNotAvailable
+		return a.parseRateLimitError(body, model)
 	case statusCode >= 500:
 		return ErrProviderNotAvailable
 	case statusCode < 200 || statusCode >= 300:
@@ -147,6 +147,40 @@ func (a *OpenRouterAdapter) mapHTTPError(statusCode int) error {
 	default:
 		return nil
 	}
+}
+
+func (a *OpenRouterAdapter) parseRateLimitError(body []byte, model string) error {
+	rateLimitErr := &ProviderRateLimitError{
+		Err:   ErrProviderNotAvailable,
+		Model: model,
+	}
+
+	var errBody openRouterErrorBody
+	if err := json.Unmarshal(body, &errBody); err == nil {
+		if errBody.Error.Metadata.RetryAfterSeconds > 0 {
+			rateLimitErr.RetryAfterSeconds = &errBody.Error.Metadata.RetryAfterSeconds
+		}
+		if errBody.Error.Metadata.ProviderName != "" {
+			rateLimitErr.ProviderName = errBody.Error.Metadata.ProviderName
+		}
+	}
+
+	return rateLimitErr
+}
+
+type openRouterErrorBody struct {
+	Error openRouterErrorDetail `json:"error"`
+}
+
+type openRouterErrorDetail struct {
+	Code     int                      `json:"code"`
+	Message  string                   `json:"message"`
+	Metadata openRouterErrorMetadata `json:"metadata"`
+}
+
+type openRouterErrorMetadata struct {
+	RetryAfterSeconds int    `json:"retry_after_seconds"`
+	ProviderName      string `json:"provider_name"`
 }
 
 type openRouterRequest struct {

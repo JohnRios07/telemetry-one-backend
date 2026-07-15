@@ -253,7 +253,11 @@ func TestAIE2E_OpenRouterRateLimitFallback(t *testing.T) {
 		callCount++
 		w.WriteHeader(http.StatusTooManyRequests)
 		json.NewEncoder(w).Encode(map[string]any{
-			"error": map[string]any{"message": "Rate limited"},
+			"error": map[string]any{
+				"message":  "Free model rate limit exceeded",
+				"code":     429,
+				"metadata": map[string]any{"retry_after_seconds": 5, "provider_name": "Tencent"},
+			},
 		})
 	}))
 	defer mockOR.Close()
@@ -299,8 +303,8 @@ func TestAIE2E_OpenRouterRateLimitFallback(t *testing.T) {
 	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
 	}
-	if response.Status != ai.StatusProviderError {
-		t.Fatalf("expected provider_error, got %q", response.Status)
+	if response.Status != ai.StatusRateLimited {
+		t.Fatalf("expected rate_limited, got %q", response.Status)
 	}
 	if !strings.Contains(response.Summary, "AI analysis is currently unavailable") {
 		t.Fatalf("expected fallback summary, got %q", response.Summary)
@@ -313,6 +317,12 @@ func TestAIE2E_OpenRouterRateLimitFallback(t *testing.T) {
 	}
 	if len(response.ReferencedEvents) == 0 {
 		t.Fatal("expected referenced events on fallback")
+	}
+	if response.ProviderInfo.RetryAfterSeconds == nil || *response.ProviderInfo.RetryAfterSeconds != 5 {
+		t.Fatalf("expected retryAfterSeconds 5 in response, got %v", response.ProviderInfo.RetryAfterSeconds)
+	}
+	if response.ProviderInfo.ProviderName != "Tencent" {
+		t.Fatalf("expected providerName Tencent in response, got %q", response.ProviderInfo.ProviderName)
 	}
 }
 

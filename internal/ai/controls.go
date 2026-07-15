@@ -15,6 +15,25 @@ var (
 	ErrRetryExhausted = errors.New("AI gateway retry attempts exhausted")
 )
 
+type ProviderRateLimitError struct {
+	RetryAfterSeconds *int
+	ProviderName      string
+	Model             string
+	Err               error
+}
+
+func (e *ProviderRateLimitError) Error() string {
+	msg := "AI provider rate limited"
+	if e.ProviderName != "" {
+		msg += " by " + e.ProviderName
+	}
+	return msg
+}
+
+func (e *ProviderRateLimitError) Unwrap() error {
+	return e.Err
+}
+
 type TokenBudget struct {
 	MaxPromptChars      int
 	MaxCompletionTokens int
@@ -308,7 +327,7 @@ func (c *Controller) ExecuteWithRetries(ctx context.Context, sessionID string, f
 			return ProviderResponse{}, err
 		}
 	}
-	return ProviderResponse{}, fmt.Errorf("%w after %d attempts: %v", ErrRetryExhausted, maxAttempts, lastErr)
+	return ProviderResponse{}, fmt.Errorf("%w after %d attempts: %w", ErrRetryExhausted, maxAttempts, lastErr)
 }
 
 func (c *Controller) RecordResult(ctx context.Context, sessionID string, mode string, duration time.Duration, resp *ProviderResponse, err error) {

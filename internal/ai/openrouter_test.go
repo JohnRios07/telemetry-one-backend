@@ -306,6 +306,91 @@ func TestOpenRouterAdapterClassifies429AsRetryable(t *testing.T) {
 	}
 }
 
+func TestOpenRouterAdapter429ParsesMetadata(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+		fmt.Fprint(w, `{"error":{"message":"Free model rate limit exceeded","code":429,"metadata":{"retry_after_seconds":5,"provider_name":"Tencent"}}}`)
+	}))
+	defer server.Close()
+
+	adapter := NewOpenRouterAdapter(OpenRouterConfig{
+		APIKey:  "sk-test",
+		BaseURL: server.URL,
+	})
+
+	_, err := adapter.Analyze(context.Background(), validProviderRequest())
+	if err == nil {
+		t.Fatal("expected error for 429")
+	}
+
+	var rateLimitErr *ProviderRateLimitError
+	if !errors.As(err, &rateLimitErr) {
+		t.Fatalf("expected ProviderRateLimitError, got %T: %v", err, err)
+	}
+	if rateLimitErr.RetryAfterSeconds == nil || *rateLimitErr.RetryAfterSeconds != 5 {
+		t.Fatalf("expected retry_after_seconds 5, got %v", rateLimitErr.RetryAfterSeconds)
+	}
+	if rateLimitErr.ProviderName != "Tencent" {
+		t.Fatalf("expected provider_name Tencent, got %q", rateLimitErr.ProviderName)
+	}
+	if rateLimitErr.Model != "gpt-4o-mini" {
+		t.Fatalf("expected model gpt-4o-mini, got %q", rateLimitErr.Model)
+	}
+}
+
+func TestOpenRouterAdapter429NoMetadata(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+		fmt.Fprint(w, `{"error":{"message":"Rate limited","code":429}}`)
+	}))
+	defer server.Close()
+
+	adapter := NewOpenRouterAdapter(OpenRouterConfig{
+		APIKey:  "sk-test",
+		BaseURL: server.URL,
+	})
+
+	_, err := adapter.Analyze(context.Background(), validProviderRequest())
+	var rateLimitErr *ProviderRateLimitError
+	if !errors.As(err, &rateLimitErr) {
+		t.Fatalf("expected ProviderRateLimitError for 429, got %T: %v", err, err)
+	}
+	if rateLimitErr.RetryAfterSeconds != nil {
+		t.Fatalf("expected nil retryAfterSeconds when metadata omitted, got %v", *rateLimitErr.RetryAfterSeconds)
+	}
+	if rateLimitErr.ProviderName != "" {
+		t.Fatalf("expected empty providerName when metadata omitted, got %q", rateLimitErr.ProviderName)
+	}
+}
+
+func TestOpenRouterAdapter429MalformedBody(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+		fmt.Fprint(w, `not json`)
+	}))
+	defer server.Close()
+
+	adapter := NewOpenRouterAdapter(OpenRouterConfig{
+		APIKey:  "sk-test",
+		BaseURL: server.URL,
+	})
+
+	_, err := adapter.Analyze(context.Background(), validProviderRequest())
+	var rateLimitErr *ProviderRateLimitError
+	if !errors.As(err, &rateLimitErr) {
+		t.Fatalf("expected ProviderRateLimitError for malformed 429 body, got %T: %v", err, err)
+	}
+	if !errors.Is(err, ErrProviderNotAvailable) {
+		t.Fatalf("expected ErrProviderNotAvailable to remain wrapped, got %T: %v", err, err)
+	}
+	if rateLimitErr.RetryAfterSeconds != nil {
+		t.Fatalf("expected nil retryAfterSeconds for malformed body, got %v", *rateLimitErr.RetryAfterSeconds)
+	}
+	if rateLimitErr.ProviderName != "" {
+		t.Fatalf("expected empty providerName for malformed body, got %q", rateLimitErr.ProviderName)
+	}
+}
+
 func TestOpenRouterAdapterClassifies5xxAsRetryable(t *testing.T) {
 	for _, code := range []int{http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout} {
 		t.Run(http.StatusText(code), func(t *testing.T) {

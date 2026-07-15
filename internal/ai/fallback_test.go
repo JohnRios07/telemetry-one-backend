@@ -211,6 +211,88 @@ func TestFallbackServiceRateLimitedFallback(t *testing.T) {
 	}
 }
 
+func TestFallbackServiceProviderRateLimitMetadata(t *testing.T) {
+	retryAfter := 5
+	inner := &fallbackTestAIService{err: &ProviderRateLimitError{
+		RetryAfterSeconds: &retryAfter,
+		ProviderName:      "Tencent",
+		Model:             "gpt-4o-mini",
+		Err:               ErrProviderNotAvailable,
+	}}
+	svc := NewFallbackService(inner)
+	req := validGatewayRequest(t, GatewayModeEngineer)
+
+	resp, err := svc.Analyze(context.Background(), req)
+	if err != nil {
+		t.Fatalf("expected fallback response, not error: %v", err)
+	}
+	if resp.Status != StatusRateLimited {
+		t.Fatalf("expected rate_limited status, got %s", resp.Status)
+	}
+	if resp.ProviderInfo.RetryAfterSeconds == nil || *resp.ProviderInfo.RetryAfterSeconds != 5 {
+		t.Fatalf("expected retryAfterSeconds 5, got %v", resp.ProviderInfo.RetryAfterSeconds)
+	}
+	if resp.ProviderInfo.ProviderName != "Tencent" {
+		t.Fatalf("expected providerName Tencent, got %q", resp.ProviderInfo.ProviderName)
+	}
+	if resp.ProviderInfo.Model != "gpt-4o-mini" {
+		t.Fatalf("expected model gpt-4o-mini, got %q", resp.ProviderInfo.Model)
+	}
+	if !strings.Contains(resp.Error, "Tencent") {
+		t.Fatalf("expected error to mention provider name, got %q", resp.Error)
+	}
+}
+
+func TestFallbackServiceProviderRateLimitMetadataRetryExhausted(t *testing.T) {
+	retryAfter := 10
+	rateLimitErr := &ProviderRateLimitError{
+		RetryAfterSeconds: &retryAfter,
+		ProviderName:      "DeepInfra",
+		Model:             "tencent/hy3:free",
+		Err:               ErrProviderNotAvailable,
+	}
+	inner := &fallbackTestAIService{err: fmt.Errorf("%w after 2 attempts: %w", ErrRetryExhausted, rateLimitErr)}
+	svc := NewFallbackService(inner)
+	req := validGatewayRequest(t, GatewayModeEngineer)
+
+	resp, err := svc.Analyze(context.Background(), req)
+	if err != nil {
+		t.Fatalf("expected fallback response, not error: %v", err)
+	}
+	if resp.Status != StatusRateLimited {
+		t.Fatalf("expected rate_limited status after retry exhaustion, got %s", resp.Status)
+	}
+	if resp.ProviderInfo.RetryAfterSeconds == nil || *resp.ProviderInfo.RetryAfterSeconds != 10 {
+		t.Fatalf("expected retryAfterSeconds 10 through retry chain, got %v", resp.ProviderInfo.RetryAfterSeconds)
+	}
+	if resp.ProviderInfo.ProviderName != "DeepInfra" {
+		t.Fatalf("expected providerName DeepInfra through retry chain, got %q", resp.ProviderInfo.ProviderName)
+	}
+	if resp.ProviderInfo.Model != "tencent/hy3:free" {
+		t.Fatalf("expected model tencent/hy3:free through retry chain, got %q", resp.ProviderInfo.Model)
+	}
+}
+
+func TestFallbackServiceProviderRateLimitAfterRetryExhausted(t *testing.T) {
+	retryAfter := 3
+	rateLimitErr := &ProviderRateLimitError{
+		RetryAfterSeconds: &retryAfter,
+		ProviderName:      "Together",
+		Err:               ErrProviderNotAvailable,
+	}
+	inner := &fallbackTestAIService{err: fmt.Errorf("%w after 3 attempts: %w", ErrRetryExhausted, rateLimitErr)}
+	svc := NewFallbackService(inner)
+	req := validGatewayRequest(t, GatewayModeEngineer)
+
+	resp, err := svc.Analyze(context.Background(), req)
+	if err != nil {
+		t.Fatalf("expected fallback response, not error: %v", err)
+	}
+	if resp.Status != StatusRateLimited {
+		t.Fatalf("expected rate_limited, got %s", resp.Status)
+	}
+}
+
 func TestFallbackServiceContainsSourceEventIDs(t *testing.T) {
 	inner := &fallbackTestAIService{err: ErrProviderNotAvailable}
 	svc := NewFallbackService(inner)
