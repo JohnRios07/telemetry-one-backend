@@ -13,7 +13,7 @@ import (
 
 const (
 	DefaultOpenRouterBaseURL = "https://openrouter.ai/api/v1"
-	openRouterChatPath       = "/api/v1/chat/completions"
+	openRouterChatPath       = "/chat/completions"
 	openRouterRequestTimeout = 30 * time.Second
 )
 

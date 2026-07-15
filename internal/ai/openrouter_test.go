@@ -368,7 +368,7 @@ func TestOpenRouterAdapterEmptyChoices(t *testing.T) {
 
 func TestOpenRouterAdapterDefaultBaseURL(t *testing.T) {
 	adapter := NewOpenRouterAdapter(OpenRouterConfig{APIKey: "sk-test"})
-	expected := "https://openrouter.ai/api/v1/api/v1/chat/completions"
+	expected := "https://openrouter.ai/api/v1/chat/completions"
 	got := adapter.chatEndpoint()
 	if got != expected {
 		t.Fatalf("expected endpoint %q, got %q", expected, got)
@@ -380,7 +380,7 @@ func TestOpenRouterAdapterCustomBaseURL(t *testing.T) {
 		APIKey:  "sk-test",
 		BaseURL: "https://custom.openrouter.ai",
 	})
-	expected := "https://custom.openrouter.ai/api/v1/chat/completions"
+	expected := "https://custom.openrouter.ai/chat/completions"
 	got := adapter.chatEndpoint()
 	if got != expected {
 		t.Fatalf("expected endpoint %q, got %q", expected, got)
