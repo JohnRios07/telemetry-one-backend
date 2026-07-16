@@ -6,6 +6,26 @@ Phase 3.1 defines the versioned metadata format used as Telemetry One's source o
 
 The MVP catalog uses `catalogVersion: "telemetry-one.track-catalog.v1"`. Unknown versions are rejected until an explicit migration path exists.
 
+## Provenance Policy
+
+Telemetry One treats track data sources as provenance, not interchangeable truth.
+
+- `GT7Tracks` `track_list.csv` is allowed as catalog metadata for `ID`, `Name`, `Country`, `Category`, `Length`, `LongestStraight`, `ElevationDiff`, `Altitude`, `LayoutNumber`, `IsReverse`, `PitLaneDelta`, `IsOval`, `NumCorners`, and `NoRain`.
+- `GT7Tracks` raw `x/z/y` dumps are fixture-only. They may support dev/test scenarios, but they are not production geometry and must not be used for corner names, sector boundaries, apexes, or centerlines.
+- `gt7info` `course.csv` is allowed as a secondary catalog seed for layout `ID`, `Name`, `Length`, `NumCorners`, and other summary fields.
+- The official Gran Turismo 7 tracklist page/assets are allowed as a factual reference for layout `ID`, `Name`, base, `Length`, `cornerCount`, `straight`, `elevation`, and `country`.
+- The official page/assets are provenance references, not mirrored open data. They do not provide an explicit open-data license, so Telemetry One should not present them as redistributable source data.
+- No source means no emitted name.
+- `NumCorners` may only produce ordinal labels `Corner 1` through `Corner N`.
+- Never infer named corners, sectors, apexes, or centerlines from raw telemetry dumps or from length-only matching.
+- Every imported track, layout, sector, and corner must carry `sources[]` when its display name may be emitted.
+
+Safe vs unsafe data types:
+
+- Safe: track/layout identity, lengths, countries, `NumCorners`, and provenance notes from the sources above.
+- Safe: ordinal corner labels generated from a sourced `NumCorners` value.
+- Unsafe: named corners inferred from telemetry, sector cuts inferred from dumps, apex positions inferred from `NumCorners`, and centerlines fabricated from raw dumps.
+
 ## Shape
 
 ```json
@@ -21,7 +41,7 @@ The MVP catalog uses `catalogVersion: "telemetry-one.track-catalog.v1"`. Unknown
       "sources": [
         {
           "url": "https://www.gran-turismo.com/us/gt7/tracklist/",
-          "sourceType": "official_gran_turismo_tracklist",
+          "sourceType": "official_gran_turismo_tracklist_asset",
           "retrievedAt": "2026-07-12",
           "note": "official Gran Turismo source"
         }
@@ -68,6 +88,7 @@ The machine-readable schema is in `docs/track-catalog.schema.json`.
 - Track, layout, sector, and corner names are required because downstream APIs must not source these names from UDP telemetry.
 - Corner `definitionMode` is required. In the MVP, usable corner ranges must be `catalog_manual`. `catalog_enumerated` is allowed only for ordinal `Corner 1`..`Corner N` entries generated from a sourced corner count; those entries must not carry `startMeters`, `apexMeters`, or `endMeters` ranges. `auto_detected_future` is reserved documentation for a later automatic-detection contract and is rejected by the current Go validator.
 - `sources` is optional for synthetic/dev fixtures, but any declared source must include `url`, `sourceType`, and `retrievedAt`.
+- When source data comes from GT7Tracks, gt7info, or the official GT7 tracklist, the source entry must identify that provenance explicitly instead of using a generic placeholder.
 - Layout `lengthMeters` must be greater than zero.
 - Sector ranges must satisfy `0 <= startMeters < endMeters <= lengthMeters`.
 - Manual corner ranges normally satisfy `0 <= startMeters < apexMeters < endMeters <= lengthMeters`.
