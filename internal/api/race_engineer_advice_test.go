@@ -398,7 +398,7 @@ func TestBuildRaceEngineerAdviceGatewayRequestDoesNotDetectBeforeLapOne(t *testi
 			Version: events.ContractVersionV1, Type: events.TypeLapTimeRegression,
 			Severity: events.SeverityMedium, Confidence: 0.85,
 			LapNumber: 0, TimestampUnixMs: 1720656000000,
-			Source: events.EventSource{Kind: events.SourceDeterministicRule, RuleID: "test.v1", RuleVersion: "v1"},
+			Source:  events.EventSource{Kind: events.SourceDeterministicRule, RuleID: "test.v1", RuleVersion: "v1"},
 			Metrics: []events.MetricEvidence{{Name: "testMetric", Value: 1, Status: events.MetricStatusAvailable, Role: events.MetricRoleActual}},
 		},
 	}
@@ -429,7 +429,7 @@ func TestBuildRaceEngineerAdviceGatewayRequestFallsBackToDetectionWhenEventsLack
 			Version: events.ContractVersionV1, Type: events.TypeLapTimeRegression,
 			Severity: events.SeverityMedium, Confidence: 0.85,
 			LapNumber: 2, TimestampUnixMs: 1720656000000,
-			Source: events.EventSource{Kind: events.SourceDeterministicRule, RuleID: "test.v1", RuleVersion: "v1"},
+			Source:  events.EventSource{Kind: events.SourceDeterministicRule, RuleID: "test.v1", RuleVersion: "v1"},
 			Metrics: []events.MetricEvidence{{Name: "testMetric", Value: 1, Status: events.MetricStatusAvailable, Role: events.MetricRoleActual}},
 		},
 	}
@@ -496,22 +496,43 @@ func TestBuildRaceEngineerAdviceGatewayRequestFallsBackToDetectionWhenPersistedR
 	catalog := tracks.OfficialGT7SeedCatalog()
 
 	tests := []struct {
-		name    string
-		session sessions.Session
+		name                  string
+		session               sessions.Session
+		wantPersistedTrackID  string
+		wantPersistedLayoutID string
+		wantDetectedTrackID   string
+		wantDetectedLayoutID  string
 	}{
-		{name: "missing layout id", session: sessions.Session{ID: "session-persisted-fallback", DetectedTrackID: "gt7_watkins_glen_international"}},
-		{name: "unresolvable ids", session: sessions.Session{ID: "session-persisted-fallback", DetectedTrackID: "unknown-track", DetectedLayoutID: "unknown-layout"}},
+		{name: "missing layout id", session: sessions.Session{ID: "session-persisted-fallback", DetectedTrackID: "gt7_trial_mountain_circuit"}, wantPersistedTrackID: "gt7_trial_mountain_circuit", wantPersistedLayoutID: "gt7_layout_1024", wantDetectedTrackID: "gt7_watkins_glen_international", wantDetectedLayoutID: "gt7_layout_1240"},
+		{name: "missing track id", session: sessions.Session{ID: "session-persisted-fallback", DetectedLayoutID: "gt7_layout_1024"}, wantPersistedTrackID: "gt7_trial_mountain_circuit", wantPersistedLayoutID: "gt7_layout_1024", wantDetectedTrackID: "gt7_watkins_glen_international", wantDetectedLayoutID: "gt7_layout_1240"},
+		{name: "unresolvable ids", session: sessions.Session{ID: "session-persisted-fallback", DetectedTrackID: "unknown-track", DetectedLayoutID: "unknown-layout"}, wantDetectedTrackID: "gt7_watkins_glen_international", wantDetectedLayoutID: "gt7_layout_1240"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			req := buildRaceEngineerAdviceGatewayRequest(context.Background(), tt.session, []events.EngineerEvent{{EventID: "event-no-refs", SessionID: tt.session.ID, LapNumber: 2, TimestampUnixMs: 1720656000000, Version: events.ContractVersionV1, Type: events.TypeLapTimeRegression, Severity: events.SeverityMedium, Confidence: 0.85, Source: events.EventSource{Kind: events.SourceDeterministicRule, RuleID: "test.v1", RuleVersion: "v1"}, Metrics: []events.MetricEvidence{{Name: "testMetric", Value: 1, Status: events.MetricStatusAvailable, Role: events.MetricRoleActual}}}}, frameStore, catalog)
 
-			if req.Input.Session.Track == nil || *req.Input.Session.Track.ID != "gt7_watkins_glen_international" {
-				t.Fatalf("expected fallback track detection to find Watkins Glen, got %+v", req.Input.Session.Track)
+			if req.Input.Session.Track == nil || req.Input.Session.Layout == nil {
+				t.Fatalf("expected fallback to resolve a complete track/layout pair, got %+v", req.Input.Session)
 			}
-			if req.Input.Session.Layout == nil || *req.Input.Session.Layout.ID != "gt7_layout_1240" {
-				t.Fatalf("expected fallback layout detection to find Long Course, got %+v", req.Input.Session.Layout)
+
+			gotTrackID := *req.Input.Session.Track.ID
+			gotLayoutID := *req.Input.Session.Layout.ID
+
+			if tt.wantPersistedTrackID != "" && tt.wantPersistedLayoutID != "" {
+				if gotTrackID == tt.wantPersistedTrackID && gotLayoutID == tt.wantDetectedLayoutID {
+					t.Fatalf("unexpected hybrid refs: persisted track %s with detected layout %s", gotTrackID, gotLayoutID)
+				}
+				if gotTrackID == tt.wantDetectedTrackID && gotLayoutID == tt.wantPersistedLayoutID {
+					t.Fatalf("unexpected hybrid refs: detected track %s with persisted layout %s", gotTrackID, gotLayoutID)
+				}
+			}
+
+			switch {
+			case gotTrackID == tt.wantPersistedTrackID && gotLayoutID == tt.wantPersistedLayoutID:
+			case gotTrackID == tt.wantDetectedTrackID && gotLayoutID == tt.wantDetectedLayoutID:
+			default:
+				t.Fatalf("expected complete persisted pair %s/%s or complete detected pair %s/%s, got track=%+v layout=%+v", tt.wantPersistedTrackID, tt.wantPersistedLayoutID, tt.wantDetectedTrackID, tt.wantDetectedLayoutID, req.Input.Session.Track, req.Input.Session.Layout)
 			}
 		})
 	}
