@@ -755,6 +755,144 @@ func seedTestSession(t *testing.T, repo sessions.Repository, id string) sessions
 	return s
 }
 
+func TestIngestFramesAttachesTrackLayoutToGeneratedEvents(t *testing.T) {
+	store := telemetry.NewFrameStore(64)
+	eventStore := events.NewStore(100, events.DedupOptions{})
+	catalog := tracks.OfficialGT7SeedCatalog()
+	sessionRepo := sessions.NewMemoryRepository()
+	seedTestSession(t, sessionRepo, "session-1")
+	handler := routesWithSessionRepository(
+		config.Config{Addr: ":0", Env: "test"},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		store, catalog, eventStore, sessionRepo,
+	)
+
+	const lengthMeters = 5423.0
+	const count = 34
+	body := ingestFrameBatchBody(lengthMeters, count)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/session-1/frames", bytes.NewReader(body))
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("expected status %d, got %d body %s", http.StatusAccepted, recorder.Code, recorder.Body.String())
+	}
+
+	storedEvents, err := eventStore.List(context.Background(), events.Query{SessionID: "session-1"})
+	if err != nil {
+		t.Fatalf("list events: %v", err)
+	}
+	if len(storedEvents) == 0 {
+		t.Fatalf("expected at least one generated event after ingest")
+	}
+
+	var seenTrack, seenLayout bool
+	for _, e := range storedEvents {
+		if e.Track != nil && *e.Track.ID == "gt7_watkins_glen_international" {
+			seenTrack = true
+		}
+		if e.Layout != nil && *e.Layout.ID == "gt7_layout_1240" {
+			seenLayout = true
+		}
+		if e.Corner != nil {
+			t.Fatalf("expected Corner to remain nil on frame events, got %+v", e.Corner)
+		}
+	}
+	if !seenTrack {
+		t.Fatalf("expected generated events to have Watkins Glen track ref, stored events: %+v", storedEvents)
+	}
+	if !seenLayout {
+		t.Fatalf("expected generated events to have Watkins Glen Long Course layout ref, stored events: %+v", storedEvents)
+	}
+}
+
+func TestIngestFramesDoesNotAttachRefsForPendingDetection(t *testing.T) {
+	store := telemetry.NewFrameStore(64)
+	eventStore := events.NewStore(100, events.DedupOptions{})
+	catalog := tracks.OfficialGT7SeedCatalog()
+	sessionRepo := sessions.NewMemoryRepository()
+	seedTestSession(t, sessionRepo, "session-pending")
+	handler := routesWithSessionRepository(
+		config.Config{Addr: ":0", Env: "test"},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		store, catalog, eventStore, sessionRepo,
+	)
+
+	frames := []telemetry.Frame{
+		{TimestampUnixMs: 1000, LapNumber: 1, CurrentLapMs: 1000, IsOnTrack: true},
+	}
+	body, err := json.Marshal(telemetry.IngestBatchRequest{
+		SessionID: "session-pending",
+		Frames:    frames,
+	})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/session-pending/frames", bytes.NewReader(body))
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("expected status %d, got %d body %s", http.StatusAccepted, recorder.Code, recorder.Body.String())
+	}
+
+	storedEvents, err := eventStore.List(context.Background(), events.Query{SessionID: "session-pending"})
+	if err != nil {
+		t.Fatalf("list events: %v", err)
+	}
+	for _, e := range storedEvents {
+		if e.Track != nil {
+			t.Fatalf("expected nil track for pending detection, got %+v", e.Track)
+		}
+		if e.Layout != nil {
+			t.Fatalf("expected nil layout for pending detection, got %+v", e.Layout)
+		}
+	}
+}
+
+func ingestFrameBatchBody(lengthMeters float64, count int) []byte {
+	frames := make([]telemetry.Frame, count)
+	lastIndex := count - 1
+	for i := 0; i < count; i++ {
+		lapNumber := 1
+		if i == lastIndex {
+			lapNumber = 2
+		}
+		frames[i] = telemetry.Frame{
+			TimestampUnixMs: int64(i + 1),
+			PositionX:       lengthMeters * float64(i) / float64(lastIndex),
+			LapNumber:       lapNumber,
+			IsOnTrack:       true,
+			SpeedMps:        58.33,
+			RPM:             7100,
+			Gear:            4,
+			Throttle:        0.7,
+			Brake:           0,
+			Steering:        -0.1,
+			FuelLiters:      38.4,
+			PositionY:       5.6,
+			PositionZ:       789.1,
+			CurrentLapMs:    81234,
+		}
+		if i == lastIndex {
+			bestLapMs := int64(84000)
+			frames[i].LastLapMs = &bestLapMs
+			frames[i].BestLapMs = &bestLapMs
+		} else {
+			lastLapMs := int64(92000)
+			bestLapMs := int64(84000)
+			frames[i].LastLapMs = &lastLapMs
+			frames[i].BestLapMs = &bestLapMs
+		}
+	}
+	body, _ := json.Marshal(telemetry.IngestBatchRequest{
+		Frames: frames,
+	})
+	return body
+}
+
 func newTestHandler(t *testing.T) http.Handler {
 	t.Helper()
 	sessionRepo := sessions.NewMemoryRepository()

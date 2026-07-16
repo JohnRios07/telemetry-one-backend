@@ -323,17 +323,53 @@ func TestRaceEngineerAdviceListFailureUsesInternalServerError(t *testing.T) {
 func TestBuildRaceEngineerAdviceGatewayRequestUsesFirstAvailableSessionRefs(t *testing.T) {
 	track := &events.CatalogRef{ID: apiStringPtr("track-1"), Name: apiStringPtr("Trial Mountain"), DisplayStrategy: events.DisplayStrategyCatalogName}
 	layout := &events.CatalogRef{ID: apiStringPtr("layout-1"), Name: apiStringPtr("Forward"), DisplayStrategy: events.DisplayStrategyCatalogName}
+	frameStore := telemetry.NewFrameStore(100)
+	catalog := tracks.OfficialGT7SeedCatalog()
 
 	req := buildRaceEngineerAdviceGatewayRequest("session-1", []events.EngineerEvent{
 		{EventID: "event-1", SessionID: "session-1"},
 		{EventID: "event-2", SessionID: "session-1", Track: track, Layout: layout},
-	})
+	}, frameStore, catalog)
 
 	if req.Input.Session.Track != track {
 		t.Fatalf("expected session track from first available selected event, got %+v", req.Input.Session.Track)
 	}
 	if req.Input.Session.Layout != layout {
 		t.Fatalf("expected session layout from first available selected event, got %+v", req.Input.Session.Layout)
+	}
+}
+
+func TestBuildRaceEngineerAdviceGatewayRequestFallsBackToDetectionWhenEventsLackRefs(t *testing.T) {
+	const lengthMeters = 5423.0
+	const count = 34
+	frames := apiStraightCompletedLapFrames(lengthMeters, count)
+	frameStore := telemetry.NewFrameStore(100)
+	if err := frameStore.Append(context.Background(), "session-detect-fallback", frames); err != nil {
+		t.Fatalf("append frames: %v", err)
+	}
+	catalog := tracks.OfficialGT7SeedCatalog()
+
+	inputEvents := []events.EngineerEvent{
+		{
+			EventID: "event-no-refs", SessionID: "session-detect-fallback",
+			Version: events.ContractVersionV1, Type: events.TypeLapTimeRegression,
+			Severity: events.SeverityMedium, Confidence: 0.85,
+			LapNumber: 2, TimestampUnixMs: 1720656000000,
+			Source: events.EventSource{Kind: events.SourceDeterministicRule, RuleID: "test.v1", RuleVersion: "v1"},
+			Metrics: []events.MetricEvidence{{Name: "testMetric", Value: 1, Status: events.MetricStatusAvailable, Role: events.MetricRoleActual}},
+		},
+	}
+
+	req := buildRaceEngineerAdviceGatewayRequest("session-detect-fallback", inputEvents, frameStore, catalog)
+
+	if req.Input.Session.Track == nil || *req.Input.Session.Track.ID != "gt7_watkins_glen_international" {
+		t.Fatalf("expected fallback track detection to find Watkins Glen, got %+v", req.Input.Session.Track)
+	}
+	if req.Input.Session.Layout == nil || *req.Input.Session.Layout.ID != "gt7_layout_1240" {
+		t.Fatalf("expected fallback layout detection to find Long Course, got %+v", req.Input.Session.Layout)
+	}
+	if req.Input.Session.Track.DisplayStrategy != events.DisplayStrategyCatalogName {
+		t.Fatalf("expected catalog_name display strategy for fallback track ref, got %s", req.Input.Session.Track.DisplayStrategy)
 	}
 }
 

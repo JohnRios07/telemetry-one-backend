@@ -363,6 +363,94 @@ func TestGenerateFrameEventsForAppendEmitsBothBestLapAndPreviousLapRegression(t 
 	assertFrameMetric(t, *previousLapEvent, "previousCompletedLapMs", 40000)
 }
 
+func TestGenerateFrameEventsCarriesTrackLayoutWhenProvided(t *testing.T) {
+	track := &CatalogRef{ID: ptrString("gt7_watkins_glen_international"), Name: ptrString("Watkins Glen International"), DisplayStrategy: DisplayStrategyCatalogName}
+	layout := &CatalogRef{ID: ptrString("gt7_layout_1240"), Name: ptrString("Watkins Glen Long Course"), DisplayStrategy: DisplayStrategyCatalogName}
+
+	opts := DefaultFrameEventOptions()
+	opts.Track = track
+	opts.Layout = layout
+
+	frames := []telemetry.Frame{
+		{TimestampUnixMs: 1000, LapNumber: 2, CurrentLapMs: 100, LastLapMs: ptrInt64(94500), BestLapMs: ptrInt64(90000), IsOnTrack: true},
+	}
+
+	events, err := GenerateFrameEventsWithOptions("session-1", frames, opts)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %+v", events)
+	}
+	event := events[0]
+	if event.Track != track {
+		t.Fatalf("expected track ref on event, got %+v", event.Track)
+	}
+	if event.Layout != layout {
+		t.Fatalf("expected layout ref on event, got %+v", event.Layout)
+	}
+	if event.Corner != nil {
+		t.Fatalf("expected Corner to remain nil for frame events, got %+v", event.Corner)
+	}
+}
+
+func TestGenerateFrameEventsLeavesTrackLayoutNilWhenNotProvided(t *testing.T) {
+	frames := []telemetry.Frame{
+		{TimestampUnixMs: 1000, LapNumber: 2, CurrentLapMs: 100, LastLapMs: ptrInt64(94500), BestLapMs: ptrInt64(90000), IsOnTrack: true},
+	}
+
+	events, err := GenerateFrameEvents("session-1", frames)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %+v", events)
+	}
+	event := events[0]
+	if event.Track != nil {
+		t.Fatalf("expected nil track when not provided, got %+v", event.Track)
+	}
+	if event.Layout != nil {
+		t.Fatalf("expected nil layout when not provided, got %+v", event.Layout)
+	}
+}
+
+func TestGenerateFrameEventsForAppendWithRefsCarriesTrackLayout(t *testing.T) {
+	track := &CatalogRef{ID: ptrString("gt7_watkins_glen_international"), Name: ptrString("Watkins Glen International"), DisplayStrategy: DisplayStrategyCatalogName}
+	layout := &CatalogRef{ID: ptrString("gt7_layout_1240"), Name: ptrString("Watkins Glen Long Course"), DisplayStrategy: DisplayStrategyCatalogName}
+
+	accumulated := []telemetry.Frame{
+		{TimestampUnixMs: 1000, LapNumber: 2, CurrentLapMs: 100, LastLapMs: ptrInt64(40000), BestLapMs: ptrInt64(40000), IsOnTrack: true},
+	}
+	appended := []telemetry.Frame{
+		{TimestampUnixMs: 2000, LapNumber: 3, CurrentLapMs: 100, LastLapMs: ptrInt64(42000), BestLapMs: ptrInt64(40000), IsOnTrack: true},
+	}
+	fullAccumulated := append(accumulated, appended...)
+
+	events, err := GenerateFrameEventsForAppendWithRefs("session-1", fullAccumulated, appended, track, layout)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(events) == 0 {
+		t.Fatalf("expected at least 1 event, got none")
+	}
+	for _, event := range events {
+		if event.Track != track {
+			t.Fatalf("expected track ref on event, got %+v", event.Track)
+		}
+		if event.Layout != layout {
+			t.Fatalf("expected layout ref on event, got %+v", event.Layout)
+		}
+		if event.Corner != nil {
+			t.Fatalf("expected Corner to remain nil for frame events, got %+v", event.Corner)
+		}
+	}
+}
+
+func ptrString(value string) *string {
+	return &value
+}
+
 func ptrInt64(value int64) *int64 {
 	return &value
 }
