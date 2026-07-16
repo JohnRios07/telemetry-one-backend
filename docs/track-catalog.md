@@ -41,7 +41,7 @@ Safe vs unsafe data types:
       "sources": [
         {
           "url": "https://www.gran-turismo.com/us/gt7/tracklist/",
-          "sourceType": "official_gran_turismo_tracklist",
+          "sourceType": "official_gran_turismo_tracklist_asset",
           "retrievedAt": "2026-07-12",
           "note": "official Gran Turismo source"
         }
