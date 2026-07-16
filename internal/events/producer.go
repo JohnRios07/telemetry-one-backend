@@ -24,6 +24,8 @@ type FrameEventOptions struct {
 	OffTrackLowDurationMs    int64
 	OffTrackMediumDurationMs int64
 	OffTrackHighDurationMs   int64
+	Track                    *CatalogRef
+	Layout                   *CatalogRef
 }
 
 func DefaultFrameEventOptions() FrameEventOptions {
@@ -61,14 +63,20 @@ func GenerateFrameEventsWithOptions(sessionID string, frames []telemetry.Frame, 
 }
 
 func GenerateFrameEventsForAppend(sessionID string, accumulatedFrames []telemetry.Frame, appendedFrames []telemetry.Frame) ([]EngineerEvent, error) {
+	return GenerateFrameEventsForAppendWithRefs(sessionID, accumulatedFrames, appendedFrames, nil, nil)
+}
+
+func GenerateFrameEventsForAppendWithRefs(sessionID string, accumulatedFrames []telemetry.Frame, appendedFrames []telemetry.Frame, track *CatalogRef, layout *CatalogRef) ([]EngineerEvent, error) {
 	if sessionID == "" {
 		return nil, ErrMissingSessionID
 	}
 
 	options := DefaultFrameEventOptions()
+	options.Track = track
+	options.Layout = layout
 	events := make([]EngineerEvent, 0, 2)
 	events = append(events, lapTimeRegressionEvents(sessionID, appendedFrames, options)...)
-	events = append(events, previousLapRegressionEvents(sessionID, accumulatedFrames, appendedFrames)...)
+	events = append(events, previousLapRegressionEvents(sessionID, accumulatedFrames, appendedFrames, track, layout)...)
 	offTrackInput := appendOffTrackTail(accumulatedFrames, appendedFrames)
 	events = append(events, offTrackStintEvents(sessionID, offTrackInput, options)...)
 
@@ -114,7 +122,7 @@ func lapTimeRegressionEvents(sessionID string, frames []telemetry.Frame, options
 			{Name: "bestLapMs", Value: float64(*frame.BestLapMs), Unit: "ms", Status: MetricStatusAvailable, Role: MetricRoleReference},
 			{Name: "lapRegressionDeltaMs", Value: float64(delta), Unit: "ms", Status: MetricStatusAvailable, Role: MetricRoleDelta},
 			{Name: "lapRegressionThresholdMs", Value: float64(threshold), Unit: "ms", Status: MetricStatusAvailable, Role: MetricRoleThreshold},
-		}, timeRange(frame.TimestampUnixMs, frame.TimestampUnixMs)))
+		}, timeRange(frame.TimestampUnixMs, frame.TimestampUnixMs), options.Track, options.Layout))
 	}
 
 	return events
@@ -153,7 +161,7 @@ func completedLaps(frames []telemetry.Frame) []lapCompletion {
 	return completions
 }
 
-func previousLapRegressionEvents(sessionID string, accumulatedFrames []telemetry.Frame, appendedFrames []telemetry.Frame) []EngineerEvent {
+func previousLapRegressionEvents(sessionID string, accumulatedFrames []telemetry.Frame, appendedFrames []telemetry.Frame, track *CatalogRef, layout *CatalogRef) []EngineerEvent {
 	appendedCompletions := completedLaps(appendedFrames)
 	if len(appendedCompletions) == 0 {
 		return nil
@@ -187,7 +195,7 @@ func previousLapRegressionEvents(sessionID string, accumulatedFrames []telemetry
 			{Name: "previousCompletedLapMs", Value: float64(previousCompletion.CompletedLapMs), Unit: "ms", Status: MetricStatusAvailable, Role: MetricRoleReference},
 			{Name: "lapPaceDropDeltaMs", Value: float64(delta), Unit: "ms", Status: MetricStatusAvailable, Role: MetricRoleDelta},
 			{Name: "lapPaceDropThresholdMs", Value: float64(threshold), Unit: "ms", Status: MetricStatusAvailable, Role: MetricRoleThreshold},
-		}))
+		}, track, layout))
 	}
 
 	return events
@@ -220,7 +228,7 @@ func offTrackStintEvents(sessionID string, frames []telemetry.Frame, options Fra
 			{Name: "offTrackDurationMs", Value: float64(durationMs), Unit: "ms", Status: MetricStatusAvailable, Role: MetricRoleActual},
 			{Name: "offTrackFrameCount", Value: float64(streakCount), Unit: "frames", Status: MetricStatusAvailable, Role: MetricRoleActual},
 			{Name: "offTrackThresholdMs", Value: float64(options.OffTrackMinDurationMs), Unit: "ms", Status: MetricStatusAvailable, Role: MetricRoleThreshold},
-		}, timeRange(streakStart.TimestampUnixMs, streakEnd.TimestampUnixMs)))
+		}, timeRange(streakStart.TimestampUnixMs, streakEnd.TimestampUnixMs), options.Track, options.Layout))
 	}
 
 	for _, frame := range frames {
@@ -287,13 +295,13 @@ func appendOffTrackTail(accumulated []telemetry.Frame, appended []telemetry.Fram
 	return result
 }
 
-func basePreviousLapRegressionEvent(sessionID string, lapNumber int, timestampUnixMs int64, severity Severity, metrics []MetricEvidence) EngineerEvent {
-	event := baseFrameEvent(sessionID, lapNumber, timestampUnixMs, TypeLapTimeRegression, severity, previousLapRegressionRuleID, metrics, nil)
+func basePreviousLapRegressionEvent(sessionID string, lapNumber int, timestampUnixMs int64, severity Severity, metrics []MetricEvidence, track *CatalogRef, layout *CatalogRef) EngineerEvent {
+	event := baseFrameEvent(sessionID, lapNumber, timestampUnixMs, TypeLapTimeRegression, severity, previousLapRegressionRuleID, metrics, nil, track, layout)
 	event.EventID = frameRuleEventID(sessionID, lapNumber, TypeLapTimeRegression, previousLapRegressionRuleID)
 	return event
 }
 
-func baseFrameEvent(sessionID string, lapNumber int, timestampUnixMs int64, eventType EventType, severity Severity, ruleID string, metrics []MetricEvidence, eventRange *TimeRange) EngineerEvent {
+func baseFrameEvent(sessionID string, lapNumber int, timestampUnixMs int64, eventType EventType, severity Severity, ruleID string, metrics []MetricEvidence, eventRange *TimeRange, track *CatalogRef, layout *CatalogRef) EngineerEvent {
 	return EngineerEvent{
 		EventID:         frameEventID(sessionID, lapNumber, eventType, eventRange),
 		SessionID:       sessionID,
@@ -304,6 +312,8 @@ func baseFrameEvent(sessionID string, lapNumber int, timestampUnixMs int64, even
 		TimestampUnixMs: timestampUnixMs,
 		TimeRange:       eventRange,
 		LapNumber:       lapNumber,
+		Track:           track,
+		Layout:          layout,
 		Metrics:         metrics,
 		Source:          EventSource{Kind: SourceDeterministicRule, RuleID: ruleID, RuleVersion: frameRuleVersionV1},
 	}

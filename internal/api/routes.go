@@ -59,7 +59,7 @@ func routesWithSessionRepository(cfg config.Config, logger *slog.Logger, frameSt
 	mux.HandleFunc("POST /api/v1/sessions", createSessionHandler(sessionRepo, catalog))
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}", getSessionHandler(sessionRepo, frameStore, eventStore))
 	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/finish", finishSessionHandler(sessionRepo, frameStore, eventStore))
-	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/frames", ingestFramesHandler(frameStore, eventStore, sessionRepo, logger))
+	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/frames", ingestFramesHandler(frameStore, eventStore, sessionRepo, catalog, logger))
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/track", detectTrackHandler(frameStore, catalog, sessionRepo))
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/events", listEventsHandler(eventStore, sessionRepo))
 
@@ -250,7 +250,7 @@ func catalogHasTrack(catalog tracks.Catalog, trackID string) bool {
 	return false
 }
 
-func ingestFramesHandler(frameStore telemetry.Store, eventStore events.Repository, sessionRepo sessions.Repository, logger *slog.Logger) http.HandlerFunc {
+func ingestFramesHandler(frameStore telemetry.Store, eventStore events.Repository, sessionRepo sessions.Repository, catalog tracks.Catalog, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sessionID := r.PathValue("sessionId")
 		if _, err := validateSession(r.Context(), sessionRepo, sessionID, true); err != nil {
@@ -298,7 +298,26 @@ func ingestFramesHandler(frameStore telemetry.Store, eventStore events.Repositor
 					return
 				}
 
-				generated, err := events.GenerateFrameEventsForAppend(request.SessionID, accumulatedFrames, result.Frames)
+				var trackRef, layoutRef *events.CatalogRef
+				if hasLapOneBegan(accumulatedFrames) {
+					detectResult := tracks.DetectTrack(accumulatedFrames, catalog, tracks.DetectionOptions{})
+					if detectResult.Status == tracks.DetectionStatusDetected &&
+						detectResult.TrackID != nil && detectResult.TrackName != nil &&
+						detectResult.LayoutID != nil && detectResult.LayoutName != nil {
+						trackRef = &events.CatalogRef{
+							ID:              detectResult.TrackID,
+							Name:            detectResult.TrackName,
+							DisplayStrategy: events.DisplayStrategyCatalogName,
+						}
+						layoutRef = &events.CatalogRef{
+							ID:              detectResult.LayoutID,
+							Name:            detectResult.LayoutName,
+							DisplayStrategy: events.DisplayStrategyCatalogName,
+						}
+					}
+				}
+
+				generated, err := events.GenerateFrameEventsForAppendWithRefs(request.SessionID, accumulatedFrames, result.Frames, trackRef, layoutRef)
 				if err != nil {
 					writeJSON(w, http.StatusInternalServerError, httperror.Envelope(httperror.Internal("event generation error")))
 					return
@@ -476,11 +495,11 @@ func routesWithAIAndSessions(cfg config.Config, logger *slog.Logger, frameStore 
 	mux.HandleFunc("POST /api/v1/sessions", createSessionHandler(sessionRepo, catalog))
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}", getSessionHandler(sessionRepo, frameStore, eventStore))
 	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/finish", finishSessionHandler(sessionRepo, frameStore, eventStore))
-	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/frames", ingestFramesHandler(frameStore, eventStore, sessionRepo, logger))
+	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/frames", ingestFramesHandler(frameStore, eventStore, sessionRepo, catalog, logger))
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/track", detectTrackHandler(frameStore, catalog, sessionRepo))
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/events", listEventsHandler(eventStore, sessionRepo))
 	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/analyze", analyzeHandler(aiSvc, sessionRepo))
-	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/race-engineer/advice", raceEngineerAdviceHandler(aiSvc, eventStore, sessionRepo))
+	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/race-engineer/advice", raceEngineerAdviceHandler(aiSvc, eventStore, sessionRepo, frameStore, catalog))
 	mux.Handle("GET /api/v1/admin/ingest-stats", adminAuthMiddleware(cfg, ingestStatsHandler(statsRepo)))
 	mux.HandleFunc("GET /api/v1/sessions", listSessionsHandler(summaryRepo))
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/summary", sessionSummaryHandler(summaryRepo))
