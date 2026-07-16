@@ -471,6 +471,30 @@ func TestBuildRaceEngineerAdviceGatewayRequestUsesPersistedSessionRefsWhenEvents
 	}
 }
 
+func TestBuildRaceEngineerAdviceGatewayRequestFallsBackToManualTrackWhenLayoutUnknown(t *testing.T) {
+	frameStore := telemetry.NewFrameStore(100)
+	catalog := tracks.OfficialGT7SeedCatalog()
+	session := sessions.Session{ID: "session-manual-track", TrackID: "gt7_watkins_glen_international"}
+
+	req := buildRaceEngineerAdviceGatewayRequest(context.Background(), session, []events.EngineerEvent{{EventID: "event-no-refs", SessionID: session.ID}}, frameStore, catalog)
+
+	if req.Input.Session.Track == nil {
+		t.Fatalf("expected manual track ref to populate session track, got %+v", req.Input.Session)
+	}
+	if got := *req.Input.Session.Track.ID; got != session.TrackID {
+		t.Fatalf("expected manual track id %s, got %s", session.TrackID, got)
+	}
+	if got := *req.Input.Session.Track.Name; got != "Watkins Glen International" {
+		t.Fatalf("expected manual track name from catalog, got %s", got)
+	}
+	if req.Input.Session.Layout != nil {
+		t.Fatalf("expected layout to remain unknown for manual track-only session, got %+v", req.Input.Session.Layout)
+	}
+	if req.Input.Session.Track.DisplayStrategy != events.DisplayStrategyCatalogName {
+		t.Fatalf("expected catalog_name display strategy for manual track ref, got %s", req.Input.Session.Track.DisplayStrategy)
+	}
+}
+
 func TestBuildRaceEngineerAdviceGatewayRequestPrefersAtomicEventRefsOverPersistedSessionRefs(t *testing.T) {
 	frameStore := telemetry.NewFrameStore(100)
 	catalog := tracks.OfficialGT7SeedCatalog()
@@ -482,6 +506,30 @@ func TestBuildRaceEngineerAdviceGatewayRequestPrefersAtomicEventRefsOverPersiste
 
 	if req.Input.Session.Track != eventTrack || req.Input.Session.Layout != eventLayout {
 		t.Fatalf("expected selected event refs to win over persisted session refs, got track=%+v layout=%+v", req.Input.Session.Track, req.Input.Session.Layout)
+	}
+}
+
+func TestBuildRaceEngineerAdviceGatewayRequestPrefersDetectedPairOverManualTrackOnly(t *testing.T) {
+	const lengthMeters = 5423.0
+	const count = 34
+	frames := apiStraightCompletedLapFrames(lengthMeters, count)
+	frameStore := telemetry.NewFrameStore(100)
+	if err := frameStore.Append(context.Background(), "session-manual-track-detectable", frames); err != nil {
+		t.Fatalf("append frames: %v", err)
+	}
+	catalog := tracks.OfficialGT7SeedCatalog()
+	session := sessions.Session{ID: "session-manual-track-detectable", TrackID: "gt7_watkins_glen_international"}
+
+	req := buildRaceEngineerAdviceGatewayRequest(context.Background(), session, []events.EngineerEvent{{EventID: "event-no-refs", SessionID: session.ID, LapNumber: 2, TimestampUnixMs: 1720656000000, Version: events.ContractVersionV1, Type: events.TypeLapTimeRegression, Severity: events.SeverityMedium, Confidence: 0.85, Source: events.EventSource{Kind: events.SourceDeterministicRule, RuleID: "test.v1", RuleVersion: "v1"}, Metrics: []events.MetricEvidence{{Name: "testMetric", Value: 1, Status: events.MetricStatusAvailable, Role: events.MetricRoleActual}}}}, frameStore, catalog)
+
+	if req.Input.Session.Track == nil || req.Input.Session.Layout == nil {
+		t.Fatalf("expected detected pair to win over manual track-only fallback, got %+v", req.Input.Session)
+	}
+	if got := *req.Input.Session.Track.ID; got != "gt7_watkins_glen_international" {
+		t.Fatalf("expected detected track id, got %s", got)
+	}
+	if got := *req.Input.Session.Layout.ID; got != "gt7_layout_1240" {
+		t.Fatalf("expected detected layout id, got %s", got)
 	}
 }
 

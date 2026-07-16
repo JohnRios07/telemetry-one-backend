@@ -63,6 +63,21 @@ func TestContextBuilderBuildPromptSummaryFormatsNicely(t *testing.T) {
 	}
 }
 
+func TestContextBuilderBuildPromptSummaryRendersUnknownLayoutCleanly(t *testing.T) {
+	builder := NewContextBuilder()
+	input := validConsumerInput()
+	input.Session.Layout = nil
+
+	promptSummary := builder.BuildPromptSummary(input)
+
+	if !strings.Contains(promptSummary, "Track: Watkins Glen International") {
+		t.Fatalf("expected track name in prompt summary")
+	}
+	if !strings.Contains(promptSummary, "Layout: unknown") {
+		t.Fatalf("expected unknown layout in prompt summary, got %q", promptSummary)
+	}
+}
+
 func TestContextBuilderBuildIncludesMetricEvidence(t *testing.T) {
 	builder := NewContextBuilder()
 	input := validConsumerInput()
