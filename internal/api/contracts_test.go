@@ -878,8 +878,44 @@ func TestIngestFramesDoesNotAttachRefsForPendingDetection(t *testing.T) {
 		store, catalog, eventStore, sessionRepo,
 	)
 
-	frames := []telemetry.Frame{
-		{TimestampUnixMs: 1000, LapNumber: 1, CurrentLapMs: 1000, IsOnTrack: true},
+	frames := make([]telemetry.Frame, 5)
+	for i := 0; i < 4; i++ {
+		frames[i] = telemetry.Frame{
+			TimestampUnixMs: int64(i+1) * 1000,
+			LapNumber:       1,
+			CurrentLapMs:    int64(i+1) * 1000,
+			IsOnTrack:       true,
+			PositionX:       float64(i) * 100,
+			PositionY:       5.6,
+			PositionZ:       789.1,
+			SpeedMps:        58.33,
+			RPM:             7100,
+			Gear:            4,
+			Throttle:        0.7,
+			Brake:           0,
+			Steering:        -0.1,
+			FuelLiters:      38.4,
+		}
+	}
+	lastLapMs := int64(95000)
+	bestLapMs := int64(90000)
+	frames[4] = telemetry.Frame{
+		TimestampUnixMs: 5000,
+		LapNumber:       2,
+		CurrentLapMs:    100,
+		LastLapMs:       &lastLapMs,
+		BestLapMs:       &bestLapMs,
+		IsOnTrack:       true,
+		PositionX:       400,
+		PositionY:       5.6,
+		PositionZ:       789.1,
+		SpeedMps:        58.33,
+		RPM:             7100,
+		Gear:            4,
+		Throttle:        0.7,
+		Brake:           0,
+		Steering:        -0.1,
+		FuelLiters:      38.4,
 	}
 	body, err := json.Marshal(telemetry.IngestBatchRequest{
 		SessionID: "session-pending",
@@ -900,6 +936,9 @@ func TestIngestFramesDoesNotAttachRefsForPendingDetection(t *testing.T) {
 	storedEvents, err := eventStore.List(context.Background(), events.Query{SessionID: "session-pending"})
 	if err != nil {
 		t.Fatalf("list events: %v", err)
+	}
+	if len(storedEvents) == 0 {
+		t.Fatalf("expected at least one generated event while detection is pending, got none")
 	}
 	for _, e := range storedEvents {
 		if e.Track != nil {

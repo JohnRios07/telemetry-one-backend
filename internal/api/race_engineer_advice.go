@@ -91,7 +91,7 @@ func raceEngineerAdviceHandler(aiSvc ai.AIService, eventStore events.Repository,
 			return
 		}
 
-		gatewayReq := buildRaceEngineerAdviceGatewayRequest(sessionID, selectedEvents, frameStore, catalog)
+		gatewayReq := buildRaceEngineerAdviceGatewayRequest(r.Context(), sessionID, selectedEvents, frameStore, catalog)
 		gatewayResp, err := aiSvc.Analyze(r.Context(), gatewayReq)
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, httperror.Envelope(httperror.BadRequest(err.Error())))
@@ -186,7 +186,7 @@ func buildRaceEngineerAdviceWindow(sinceUnixMs *int64, maxEvents int, selectedEv
 	return window
 }
 
-func buildRaceEngineerAdviceGatewayRequest(sessionID string, selectedEvents []events.EngineerEvent, frameStore telemetry.Store, catalog tracks.Catalog) ai.GatewayRequest {
+func buildRaceEngineerAdviceGatewayRequest(ctx context.Context, sessionID string, selectedEvents []events.EngineerEvent, frameStore telemetry.Store, catalog tracks.Catalog) ai.GatewayRequest {
 	inputEvents := make([]ai.EventEnvelope, len(selectedEvents))
 	for i, event := range selectedEvents {
 		inputEvents[i] = ai.EventEnvelope{Event: event}
@@ -207,13 +207,7 @@ func buildRaceEngineerAdviceGatewayRequest(sessionID string, selectedEvents []ev
 	}
 
 	if track == nil || layout == nil {
-		detectTrack, detectLayout := detectTrackLayoutFromFrames(sessionID, frameStore, catalog)
-		if track == nil {
-			track = detectTrack
-		}
-		if layout == nil {
-			layout = detectLayout
-		}
+		track, layout = detectTrackLayoutFromFrames(ctx, sessionID, frameStore, catalog)
 	}
 
 	return ai.GatewayRequest{
@@ -262,8 +256,8 @@ func hasLapOneBegan(frames []telemetry.Frame) bool {
 	return false
 }
 
-func detectTrackLayoutFromFrames(sessionID string, frameStore telemetry.Store, catalog tracks.Catalog) (*events.CatalogRef, *events.CatalogRef) {
-	frames, err := frameStore.Frames(context.Background(), sessionID)
+func detectTrackLayoutFromFrames(ctx context.Context, sessionID string, frameStore telemetry.Store, catalog tracks.Catalog) (*events.CatalogRef, *events.CatalogRef) {
+	frames, err := frameStore.Frames(ctx, sessionID)
 	if err != nil || len(frames) == 0 {
 		return nil, nil
 	}

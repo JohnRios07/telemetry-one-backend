@@ -301,20 +301,18 @@ func ingestFramesHandler(frameStore telemetry.Store, eventStore events.Repositor
 				var trackRef, layoutRef *events.CatalogRef
 				if hasLapOneBegan(accumulatedFrames) {
 					detectResult := tracks.DetectTrack(accumulatedFrames, catalog, tracks.DetectionOptions{})
-					if detectResult.Status == tracks.DetectionStatusDetected {
-						if detectResult.TrackID != nil && detectResult.TrackName != nil {
-							trackRef = &events.CatalogRef{
-								ID:              detectResult.TrackID,
-								Name:            detectResult.TrackName,
-								DisplayStrategy: events.DisplayStrategyCatalogName,
-							}
+					if detectResult.Status == tracks.DetectionStatusDetected &&
+						detectResult.TrackID != nil && detectResult.TrackName != nil &&
+						detectResult.LayoutID != nil && detectResult.LayoutName != nil {
+						trackRef = &events.CatalogRef{
+							ID:              detectResult.TrackID,
+							Name:            detectResult.TrackName,
+							DisplayStrategy: events.DisplayStrategyCatalogName,
 						}
-						if detectResult.LayoutID != nil && detectResult.LayoutName != nil {
-							layoutRef = &events.CatalogRef{
-								ID:              detectResult.LayoutID,
-								Name:            detectResult.LayoutName,
-								DisplayStrategy: events.DisplayStrategyCatalogName,
-							}
+						layoutRef = &events.CatalogRef{
+							ID:              detectResult.LayoutID,
+							Name:            detectResult.LayoutName,
+							DisplayStrategy: events.DisplayStrategyCatalogName,
 						}
 					}
 				}

@@ -326,7 +326,7 @@ func TestBuildRaceEngineerAdviceGatewayRequestUsesFirstAvailableSessionRefs(t *t
 	frameStore := telemetry.NewFrameStore(100)
 	catalog := tracks.OfficialGT7SeedCatalog()
 
-	req := buildRaceEngineerAdviceGatewayRequest("session-1", []events.EngineerEvent{
+	req := buildRaceEngineerAdviceGatewayRequest(context.Background(), "session-1", []events.EngineerEvent{
 		{EventID: "event-1", SessionID: "session-1"},
 		{EventID: "event-2", SessionID: "session-1", Track: track, Layout: layout},
 	}, frameStore, catalog)
@@ -403,7 +403,7 @@ func TestBuildRaceEngineerAdviceGatewayRequestDoesNotDetectBeforeLapOne(t *testi
 		},
 	}
 
-	req := buildRaceEngineerAdviceGatewayRequest("session-prerace", inputEvents, frameStore, catalog)
+	req := buildRaceEngineerAdviceGatewayRequest(context.Background(), "session-prerace", inputEvents, frameStore, catalog)
 
 	if req.Input.Session.Track != nil {
 		t.Fatalf("expected nil track before lap 1 begins, got %+v", req.Input.Session.Track)
@@ -434,7 +434,7 @@ func TestBuildRaceEngineerAdviceGatewayRequestFallsBackToDetectionWhenEventsLack
 		},
 	}
 
-	req := buildRaceEngineerAdviceGatewayRequest("session-detect-fallback", inputEvents, frameStore, catalog)
+	req := buildRaceEngineerAdviceGatewayRequest(context.Background(), "session-detect-fallback", inputEvents, frameStore, catalog)
 
 	if req.Input.Session.Track == nil || *req.Input.Session.Track.ID != "gt7_watkins_glen_international" {
 		t.Fatalf("expected fallback track detection to find Watkins Glen, got %+v", req.Input.Session.Track)
