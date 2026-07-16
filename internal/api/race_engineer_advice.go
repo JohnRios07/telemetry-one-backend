@@ -200,7 +200,14 @@ func buildRaceEngineerAdviceGatewayRequest(ctx context.Context, session sessions
 	}
 
 	if track == nil || layout == nil {
-		track, layout = detectTrackLayoutFromFrames(ctx, session.ID, frameStore, catalog)
+		detectedTrack, detectedLayout := detectTrackLayoutFromFrames(ctx, session.ID, frameStore, catalog)
+		if detectedTrack != nil && detectedLayout != nil {
+			track, layout = detectedTrack, detectedLayout
+		}
+	}
+
+	if track == nil {
+		track = resolveManualSessionTrackRef(session, catalog)
 	}
 
 	return ai.GatewayRequest{
@@ -265,6 +272,24 @@ func resolvePersistedSessionCatalogRefs(session sessions.Session, catalog tracks
 	}
 
 	return nil, nil
+}
+
+func resolveManualSessionTrackRef(session sessions.Session, catalog tracks.Catalog) *events.CatalogRef {
+	if session.TrackID == "" {
+		return nil
+	}
+
+	for _, track := range catalog.Tracks {
+		if track.ID != session.TrackID {
+			continue
+		}
+
+		trackID := track.ID
+		trackName := track.Name
+		return &events.CatalogRef{ID: &trackID, Name: &trackName, DisplayStrategy: events.DisplayStrategyCatalogName}
+	}
+
+	return nil
 }
 
 func referencedEventIDs(selectedEvents []events.EngineerEvent) []string {
