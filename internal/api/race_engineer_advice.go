@@ -51,7 +51,8 @@ type raceEngineerAdviceWindow struct {
 func raceEngineerAdviceHandler(aiSvc ai.AIService, eventStore events.Repository, sessionRepo sessions.Repository, frameStore telemetry.Store, catalog tracks.Catalog) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sessionID := r.PathValue("sessionId")
-		if _, err := validateSession(r.Context(), sessionRepo, sessionID, false); err != nil {
+		session, err := validateSession(r.Context(), sessionRepo, sessionID, false)
+		if err != nil {
 			writeSessionError(w, err)
 			return
 		}
@@ -91,7 +92,7 @@ func raceEngineerAdviceHandler(aiSvc ai.AIService, eventStore events.Repository,
 			return
 		}
 
-		gatewayReq := buildRaceEngineerAdviceGatewayRequest(r.Context(), sessionID, selectedEvents, frameStore, catalog)
+		gatewayReq := buildRaceEngineerAdviceGatewayRequest(r.Context(), session, selectedEvents, frameStore, catalog)
 		gatewayResp, err := aiSvc.Analyze(r.Context(), gatewayReq)
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, httperror.Envelope(httperror.BadRequest(err.Error())))
@@ -186,28 +187,20 @@ func buildRaceEngineerAdviceWindow(sinceUnixMs *int64, maxEvents int, selectedEv
 	return window
 }
 
-func buildRaceEngineerAdviceGatewayRequest(ctx context.Context, sessionID string, selectedEvents []events.EngineerEvent, frameStore telemetry.Store, catalog tracks.Catalog) ai.GatewayRequest {
+func buildRaceEngineerAdviceGatewayRequest(ctx context.Context, session sessions.Session, selectedEvents []events.EngineerEvent, frameStore telemetry.Store, catalog tracks.Catalog) ai.GatewayRequest {
 	inputEvents := make([]ai.EventEnvelope, len(selectedEvents))
 	for i, event := range selectedEvents {
 		inputEvents[i] = ai.EventEnvelope{Event: event}
 	}
 
-	var track *events.CatalogRef
-	var layout *events.CatalogRef
-	for _, event := range selectedEvents {
-		if track == nil {
-			track = event.Track
-		}
-		if layout == nil {
-			layout = event.Layout
-		}
-		if track != nil && layout != nil {
-			break
-		}
+	track, layout := selectAdviceEventCatalogRefs(selectedEvents)
+
+	if track == nil || layout == nil {
+		track, layout = resolvePersistedSessionCatalogRefs(session, catalog)
 	}
 
 	if track == nil || layout == nil {
-		track, layout = detectTrackLayoutFromFrames(ctx, sessionID, frameStore, catalog)
+		track, layout = detectTrackLayoutFromFrames(ctx, session.ID, frameStore, catalog)
 	}
 
 	return ai.GatewayRequest{
@@ -215,7 +208,7 @@ func buildRaceEngineerAdviceGatewayRequest(ctx context.Context, sessionID string
 		Input: ai.ConsumerInput{
 			ContractVersion: ai.ContractVersionV1,
 			Session: ai.SessionContext{
-				SessionID: sessionID,
+				SessionID: session.ID,
 				Track:     track,
 				Layout:    layout,
 			},
@@ -237,6 +230,41 @@ func buildRaceEngineerAdviceGatewayRequest(ctx context.Context, sessionID string
 			},
 		},
 	}
+}
+
+func selectAdviceEventCatalogRefs(selectedEvents []events.EngineerEvent) (*events.CatalogRef, *events.CatalogRef) {
+	for _, event := range selectedEvents {
+		if event.Track != nil && event.Layout != nil {
+			return event.Track, event.Layout
+		}
+	}
+
+	return nil, nil
+}
+
+func resolvePersistedSessionCatalogRefs(session sessions.Session, catalog tracks.Catalog) (*events.CatalogRef, *events.CatalogRef) {
+	if session.DetectedTrackID == "" || session.DetectedLayoutID == "" {
+		return nil, nil
+	}
+
+	for _, track := range catalog.Tracks {
+		if track.ID != session.DetectedTrackID {
+			continue
+		}
+		for _, layout := range track.Layouts {
+			if layout.ID != session.DetectedLayoutID {
+				continue
+			}
+
+			trackID := track.ID
+			trackName := track.Name
+			layoutID := layout.ID
+			layoutName := layout.Name
+			return &events.CatalogRef{ID: &trackID, Name: &trackName, DisplayStrategy: events.DisplayStrategyCatalogName}, &events.CatalogRef{ID: &layoutID, Name: &layoutName, DisplayStrategy: events.DisplayStrategyCatalogName}
+		}
+	}
+
+	return nil, nil
 }
 
 func referencedEventIDs(selectedEvents []events.EngineerEvent) []string {

@@ -320,13 +320,13 @@ func TestRaceEngineerAdviceListFailureUsesInternalServerError(t *testing.T) {
 	}
 }
 
-func TestBuildRaceEngineerAdviceGatewayRequestUsesFirstAvailableSessionRefs(t *testing.T) {
+func TestBuildRaceEngineerAdviceGatewayRequestUsesAtomicEventRefs(t *testing.T) {
 	track := &events.CatalogRef{ID: apiStringPtr("track-1"), Name: apiStringPtr("Trial Mountain"), DisplayStrategy: events.DisplayStrategyCatalogName}
 	layout := &events.CatalogRef{ID: apiStringPtr("layout-1"), Name: apiStringPtr("Forward"), DisplayStrategy: events.DisplayStrategyCatalogName}
 	frameStore := telemetry.NewFrameStore(100)
 	catalog := tracks.OfficialGT7SeedCatalog()
 
-	req := buildRaceEngineerAdviceGatewayRequest(context.Background(), "session-1", []events.EngineerEvent{
+	req := buildRaceEngineerAdviceGatewayRequest(context.Background(), sessions.Session{ID: "session-1"}, []events.EngineerEvent{
 		{EventID: "event-1", SessionID: "session-1"},
 		{EventID: "event-2", SessionID: "session-1", Track: track, Layout: layout},
 	}, frameStore, catalog)
@@ -403,7 +403,7 @@ func TestBuildRaceEngineerAdviceGatewayRequestDoesNotDetectBeforeLapOne(t *testi
 		},
 	}
 
-	req := buildRaceEngineerAdviceGatewayRequest(context.Background(), "session-prerace", inputEvents, frameStore, catalog)
+	req := buildRaceEngineerAdviceGatewayRequest(context.Background(), sessions.Session{ID: "session-prerace"}, inputEvents, frameStore, catalog)
 
 	if req.Input.Session.Track != nil {
 		t.Fatalf("expected nil track before lap 1 begins, got %+v", req.Input.Session.Track)
@@ -434,7 +434,7 @@ func TestBuildRaceEngineerAdviceGatewayRequestFallsBackToDetectionWhenEventsLack
 		},
 	}
 
-	req := buildRaceEngineerAdviceGatewayRequest(context.Background(), "session-detect-fallback", inputEvents, frameStore, catalog)
+	req := buildRaceEngineerAdviceGatewayRequest(context.Background(), sessions.Session{ID: "session-detect-fallback"}, inputEvents, frameStore, catalog)
 
 	if req.Input.Session.Track == nil || *req.Input.Session.Track.ID != "gt7_watkins_glen_international" {
 		t.Fatalf("expected fallback track detection to find Watkins Glen, got %+v", req.Input.Session.Track)
@@ -444,6 +444,76 @@ func TestBuildRaceEngineerAdviceGatewayRequestFallsBackToDetectionWhenEventsLack
 	}
 	if req.Input.Session.Track.DisplayStrategy != events.DisplayStrategyCatalogName {
 		t.Fatalf("expected catalog_name display strategy for fallback track ref, got %s", req.Input.Session.Track.DisplayStrategy)
+	}
+}
+
+func TestBuildRaceEngineerAdviceGatewayRequestUsesPersistedSessionRefsWhenEventsLackRefs(t *testing.T) {
+	frameStore := telemetry.NewFrameStore(100)
+	catalog := tracks.OfficialGT7SeedCatalog()
+	session := sessions.Session{ID: "session-persisted", DetectedTrackID: "gt7_watkins_glen_international", DetectedLayoutID: "gt7_layout_1240"}
+
+	req := buildRaceEngineerAdviceGatewayRequest(context.Background(), session, []events.EngineerEvent{{EventID: "event-no-refs", SessionID: session.ID}}, frameStore, catalog)
+
+	if req.Input.Session.Track == nil || req.Input.Session.Layout == nil {
+		t.Fatalf("expected persisted session refs to populate track and layout, got %+v", req.Input.Session)
+	}
+	if got := *req.Input.Session.Track.ID; got != session.DetectedTrackID {
+		t.Fatalf("expected persisted track id %s, got %s", session.DetectedTrackID, got)
+	}
+	if got := *req.Input.Session.Layout.ID; got != session.DetectedLayoutID {
+		t.Fatalf("expected persisted layout id %s, got %s", session.DetectedLayoutID, got)
+	}
+	if got := *req.Input.Session.Track.Name; got != "Watkins Glen International" {
+		t.Fatalf("expected resolved track name from catalog, got %s", got)
+	}
+	if got := *req.Input.Session.Layout.Name; got != "Watkins Glen Long Course" {
+		t.Fatalf("expected resolved layout name from catalog, got %s", got)
+	}
+}
+
+func TestBuildRaceEngineerAdviceGatewayRequestPrefersAtomicEventRefsOverPersistedSessionRefs(t *testing.T) {
+	frameStore := telemetry.NewFrameStore(100)
+	catalog := tracks.OfficialGT7SeedCatalog()
+	session := sessions.Session{ID: "session-event-priority", DetectedTrackID: "gt7_trial_mountain_circuit", DetectedLayoutID: "gt7_layout_1024"}
+	eventTrack := &events.CatalogRef{ID: apiStringPtr("gt7_watkins_glen_international"), Name: apiStringPtr("Watkins Glen International"), DisplayStrategy: events.DisplayStrategyCatalogName}
+	eventLayout := &events.CatalogRef{ID: apiStringPtr("gt7_layout_1240"), Name: apiStringPtr("Watkins Glen Long Course"), DisplayStrategy: events.DisplayStrategyCatalogName}
+
+	req := buildRaceEngineerAdviceGatewayRequest(context.Background(), session, []events.EngineerEvent{{EventID: "event-with-refs", SessionID: session.ID, Track: eventTrack, Layout: eventLayout}}, frameStore, catalog)
+
+	if req.Input.Session.Track != eventTrack || req.Input.Session.Layout != eventLayout {
+		t.Fatalf("expected selected event refs to win over persisted session refs, got track=%+v layout=%+v", req.Input.Session.Track, req.Input.Session.Layout)
+	}
+}
+
+func TestBuildRaceEngineerAdviceGatewayRequestFallsBackToDetectionWhenPersistedRefsMissingOrUnresolvable(t *testing.T) {
+	const lengthMeters = 5423.0
+	const count = 34
+	frames := apiStraightCompletedLapFrames(lengthMeters, count)
+	frameStore := telemetry.NewFrameStore(100)
+	if err := frameStore.Append(context.Background(), "session-persisted-fallback", frames); err != nil {
+		t.Fatalf("append frames: %v", err)
+	}
+	catalog := tracks.OfficialGT7SeedCatalog()
+
+	tests := []struct {
+		name    string
+		session sessions.Session
+	}{
+		{name: "missing layout id", session: sessions.Session{ID: "session-persisted-fallback", DetectedTrackID: "gt7_watkins_glen_international"}},
+		{name: "unresolvable ids", session: sessions.Session{ID: "session-persisted-fallback", DetectedTrackID: "unknown-track", DetectedLayoutID: "unknown-layout"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := buildRaceEngineerAdviceGatewayRequest(context.Background(), tt.session, []events.EngineerEvent{{EventID: "event-no-refs", SessionID: tt.session.ID, LapNumber: 2, TimestampUnixMs: 1720656000000, Version: events.ContractVersionV1, Type: events.TypeLapTimeRegression, Severity: events.SeverityMedium, Confidence: 0.85, Source: events.EventSource{Kind: events.SourceDeterministicRule, RuleID: "test.v1", RuleVersion: "v1"}, Metrics: []events.MetricEvidence{{Name: "testMetric", Value: 1, Status: events.MetricStatusAvailable, Role: events.MetricRoleActual}}}}, frameStore, catalog)
+
+			if req.Input.Session.Track == nil || *req.Input.Session.Track.ID != "gt7_watkins_glen_international" {
+				t.Fatalf("expected fallback track detection to find Watkins Glen, got %+v", req.Input.Session.Track)
+			}
+			if req.Input.Session.Layout == nil || *req.Input.Session.Layout.ID != "gt7_layout_1240" {
+				t.Fatalf("expected fallback layout detection to find Long Course, got %+v", req.Input.Session.Layout)
+			}
+		})
 	}
 }
 
