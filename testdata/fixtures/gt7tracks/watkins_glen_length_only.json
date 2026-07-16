@@ -1,0 +1,10 @@
+{
+  "sessionId": "gt7tracks-watkins-length-only",
+  "frames": [
+    {"timestampUnixMs": 1720656000000, "speedMps": 10, "rpm": 3000, "gear": 1, "throttle": 0, "brake": 0, "steering": 0, "fuelLiters": 0, "positionX": 0, "positionY": 0, "positionZ": 0, "lapNumber": 1, "currentLapMs": 0, "isOnTrack": true},
+    {"timestampUnixMs": 1720656000050, "speedMps": 10, "rpm": 3000, "gear": 1, "throttle": 0, "brake": 0, "steering": 0, "fuelLiters": 0, "positionX": 1355.75, "positionY": 0, "positionZ": 0, "lapNumber": 1, "currentLapMs": 50, "isOnTrack": true},
+    {"timestampUnixMs": 1720656000100, "speedMps": 10, "rpm": 3000, "gear": 1, "throttle": 0, "brake": 0, "steering": 0, "fuelLiters": 0, "positionX": 2711.5, "positionY": 0, "positionZ": 0, "lapNumber": 1, "currentLapMs": 100, "isOnTrack": true},
+    {"timestampUnixMs": 1720656000150, "speedMps": 10, "rpm": 3000, "gear": 1, "throttle": 0, "brake": 0, "steering": 0, "fuelLiters": 0, "positionX": 4067.25, "positionY": 0, "positionZ": 0, "lapNumber": 1, "currentLapMs": 150, "isOnTrack": true},
+    {"timestampUnixMs": 1720656000200, "speedMps": 10, "rpm": 3000, "gear": 1, "throttle": 0, "brake": 0, "steering": 0, "fuelLiters": 0, "positionX": 5423, "positionY": 0, "positionZ": 0, "lapNumber": 2, "currentLapMs": 0, "isOnTrack": true}
+  ]
+}
