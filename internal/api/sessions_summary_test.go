@@ -30,6 +30,34 @@ func (r contractSummaryRepo) Summary(context.Context, string) (*sessions.Session
 	return r.summary, nil
 }
 
+type recordingSummaryRepo struct {
+	limit int
+}
+
+func (r *recordingSummaryRepo) List(_ context.Context, filter sessions.SummaryFilter) (*sessions.ListResponse, error) {
+	r.limit = filter.Limit
+	return &sessions.ListResponse{Sessions: []sessions.SessionSummaryItem{}}, nil
+}
+
+func (r *recordingSummaryRepo) Summary(context.Context, string) (*sessions.SessionDetailSummary, error) {
+	return &sessions.SessionDetailSummary{}, nil
+}
+
+func TestListSessionsContractUsesDefaultLimitWhenOmitted(t *testing.T) {
+	repo := &recordingSummaryRepo{}
+	handler := listSessionsHandler(repo)
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/sessions", nil))
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d with body %s", http.StatusOK, recorder.Code, recorder.Body.String())
+	}
+	if repo.limit != sessions.DefaultListLimit {
+		t.Fatalf("expected default limit %d, got %d", sessions.DefaultListLimit, repo.limit)
+	}
+}
+
 func TestListSessionsContractSeededSingle(t *testing.T) {
 	handler := newTestHandler(t)
 
@@ -142,7 +170,7 @@ func TestListSessionsContractLimit(t *testing.T) {
 		}
 	})
 
-	t.Run("limit=100 (clamped)", func(t *testing.T) {
+	t.Run("limit=100 accepted as upper bound", func(t *testing.T) {
 		recorder := httptest.NewRecorder()
 		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/sessions?limit=100", nil))
 		if recorder.Code != http.StatusOK {
@@ -157,18 +185,47 @@ func TestListSessionsContractLimit(t *testing.T) {
 		}
 	})
 
-	t.Run("limit=0 clamped to min", func(t *testing.T) {
+	t.Run("limit=101 rejected", func(t *testing.T) {
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/sessions?limit=101", nil))
+		if recorder.Code != http.StatusBadRequest {
+			t.Fatalf("expected status %d, got %d with body %s", http.StatusBadRequest, recorder.Code, recorder.Body.String())
+		}
+		if !strings.Contains(recorder.Body.String(), "bad_request") || !strings.Contains(recorder.Body.String(), "limit must be between 1 and 100") {
+			t.Fatalf("expected bad_request envelope for out-of-range limit, got %s", recorder.Body.String())
+		}
+	})
+
+	t.Run("limit=0 rejected", func(t *testing.T) {
 		recorder := httptest.NewRecorder()
 		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/sessions?limit=0", nil))
-		if recorder.Code != http.StatusOK {
-			t.Fatalf("expected status %d, got %d", http.StatusOK, recorder.Code)
+		if recorder.Code != http.StatusBadRequest {
+			t.Fatalf("expected status %d, got %d with body %s", http.StatusBadRequest, recorder.Code, recorder.Body.String())
 		}
-		var resp sessions.ListResponse
-		if err := json.Unmarshal(recorder.Body.Bytes(), &resp); err != nil {
-			t.Fatalf("decode: %v", err)
+		if !strings.Contains(recorder.Body.String(), "bad_request") || !strings.Contains(recorder.Body.String(), "limit must be between 1 and 100") {
+			t.Fatalf("expected bad_request envelope for low limit, got %s", recorder.Body.String())
 		}
-		if len(resp.Sessions) != 1 {
-			t.Fatalf("expected 1 session (clamped to min), got %d", len(resp.Sessions))
+	})
+
+	t.Run("limit=abc rejected", func(t *testing.T) {
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/sessions?limit=abc", nil))
+		if recorder.Code != http.StatusBadRequest {
+			t.Fatalf("expected status %d, got %d with body %s", http.StatusBadRequest, recorder.Code, recorder.Body.String())
+		}
+		if !strings.Contains(recorder.Body.String(), "bad_request") || !strings.Contains(recorder.Body.String(), "limit must be an integer") {
+			t.Fatalf("expected bad_request envelope for non-integer limit, got %s", recorder.Body.String())
+		}
+	})
+
+	t.Run("limit empty rejected", func(t *testing.T) {
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/sessions?limit=", nil))
+		if recorder.Code != http.StatusBadRequest {
+			t.Fatalf("expected status %d, got %d with body %s", http.StatusBadRequest, recorder.Code, recorder.Body.String())
+		}
+		if !strings.Contains(recorder.Body.String(), "bad_request") || !strings.Contains(recorder.Body.String(), "limit must be an integer") {
+			t.Fatalf("expected bad_request envelope for empty limit, got %s", recorder.Body.String())
 		}
 	})
 }

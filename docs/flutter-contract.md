@@ -513,9 +513,11 @@ Status in this phase: implemented.
 
 Returns recent sessions with aggregate frame, batch, event, and rejected-frame counts. No auth required. Detailed rejection reasons are not included in list responses.
 
+Query parameters are optional. Omitted values use the default below. Present values must parse as integers and stay within the documented range; invalid or out-of-range values return `400 bad_request`.
+
 | Query parameter | Default | Range | Description |
 |---|---|---|---|
-| `limit` | `20` | `1..100` | Number of recent sessions. Out-of-range values are silently clamped. |
+| `limit` | `20` | `1..100` | Number of recent sessions. |
 
 Response DTO:
 

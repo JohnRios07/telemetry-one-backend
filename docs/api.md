@@ -587,6 +587,8 @@ GET /api/v1/admin/ingest-stats
 
 Returns operational stats about the ingest pipeline. Available in both memory and Postgres modes; Postgres mode returns all aggregate fields, memory mode omits batch, event, and audit stats (marked as absent/null).
 
+Query parameters are optional. Omitted values use the defaults below. Present values must parse as integers and stay within the documented range; invalid or out-of-range values return `400 bad_request`.
+
 ### Authorization
 
 If `TELEMETRY_ONE_ADMIN_TOKEN` is set, this endpoint requires `Authorization: Bearer <token>`. If unset, the endpoint is open.
@@ -650,11 +652,13 @@ Returns a paginated list of sessions with aggregate frame, batch, event, and rej
 
 No auth required. Detailed rejection reasons are intentionally not included in list responses.
 
+Query parameters are optional. Omitted values use the defaults below. Present values must parse as integers and stay within the documented range; invalid or out-of-range values return `400 bad_request`.
+
 #### Query Parameters
 
 | Parameter | Default | Range | Description |
 |---|---|---|---|
-| `limit` | `20` | `1..100` | Number of sessions to return. Out-of-range values are silently clamped. |
+| `limit` | `20` | `1..100` | Number of sessions to return. |
 
 #### Response
 

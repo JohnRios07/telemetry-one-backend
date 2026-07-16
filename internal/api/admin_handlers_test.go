@@ -119,6 +119,39 @@ func TestAdminIngestStats_ReturnsSeededData(t *testing.T) {
 	}
 }
 
+func TestAdminIngestStats_RejectsInvalidQueryParams(t *testing.T) {
+	handler := newAdminTestHandler(t, "", true)
+
+	tests := []struct {
+		name string
+		url  string
+		want string
+	}{
+		{name: "limit too low", url: "/api/v1/admin/ingest-stats?limit=0", want: "limit must be between 1 and 100"},
+		{name: "limit too high", url: "/api/v1/admin/ingest-stats?limit=101", want: "limit must be between 1 and 100"},
+		{name: "limit not integer", url: "/api/v1/admin/ingest-stats?limit=abc", want: "limit must be an integer"},
+		{name: "limit empty", url: "/api/v1/admin/ingest-stats?limit=", want: "limit must be an integer"},
+		{name: "days too low", url: "/api/v1/admin/ingest-stats?days=0", want: "days must be between 1 and 90"},
+		{name: "days too high", url: "/api/v1/admin/ingest-stats?days=91", want: "days must be between 1 and 90"},
+		{name: "days not integer", url: "/api/v1/admin/ingest-stats?days=abc", want: "days must be an integer"},
+		{name: "days empty", url: "/api/v1/admin/ingest-stats?days=", want: "days must be an integer"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, tc.url, nil))
+
+			if recorder.Code != http.StatusBadRequest {
+				t.Fatalf("expected status %d, got %d with body %s", http.StatusBadRequest, recorder.Code, recorder.Body.String())
+			}
+			if !strings.Contains(recorder.Body.String(), "bad_request") || !strings.Contains(recorder.Body.String(), tc.want) {
+				t.Fatalf("expected bad_request envelope containing %q, got %s", tc.want, recorder.Body.String())
+			}
+		})
+	}
+}
+
 func newAdminTestHandler(t *testing.T, adminToken string, seedSession bool) http.Handler {
 	t.Helper()
 	cfg := config.Config{Addr: ":0", Env: "test", AdminToken: adminToken}
@@ -142,4 +175,33 @@ type noopAIService struct{}
 
 func (n *noopAIService) Analyze(_ context.Context, _ ai.GatewayRequest) (ai.GatewayResponse, error) {
 	return ai.GatewayResponse{}, nil
+}
+
+type recordingStatsRepo struct {
+	limit int
+	days  int
+}
+
+func (r *recordingStatsRepo) Stats(_ context.Context, limit int, days int) (*admin.IngestStatsResponse, error) {
+	r.limit = limit
+	r.days = days
+	return &admin.IngestStatsResponse{Mode: admin.ModeMemory}, nil
+}
+
+func TestAdminIngestStats_UsesDefaultQueryParamsWhenOmitted(t *testing.T) {
+	repo := &recordingStatsRepo{}
+	handler := ingestStatsHandler(repo)
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/admin/ingest-stats", nil))
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d with body %s", http.StatusOK, recorder.Code, recorder.Body.String())
+	}
+	if repo.limit != admin.DefaultLimit {
+		t.Fatalf("expected default limit %d, got %d", admin.DefaultLimit, repo.limit)
+	}
+	if repo.days != admin.DefaultDays {
+		t.Fatalf("expected default days %d, got %d", admin.DefaultDays, repo.days)
+	}
 }
