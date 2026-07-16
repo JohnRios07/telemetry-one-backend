@@ -194,9 +194,9 @@ func TestOpenRouterAdapterTitleHeader(t *testing.T) {
 	defer server.Close()
 
 	adapter := NewOpenRouterAdapter(OpenRouterConfig{
-		APIKey: "sk-test",
+		APIKey:  "sk-test",
 		BaseURL: server.URL,
-		Title:  "Telemetry One",
+		Title:   "Telemetry One",
 	})
 
 	_, err := adapter.Analyze(context.Background(), validProviderRequest())
@@ -335,6 +335,57 @@ func TestOpenRouterAdapter429ParsesMetadata(t *testing.T) {
 	}
 	if rateLimitErr.Model != "gpt-4o-mini" {
 		t.Fatalf("expected model gpt-4o-mini, got %q", rateLimitErr.Model)
+	}
+}
+
+func TestOpenRouterAdapter429ParsesRetryAfterHeader(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "60")
+		w.WriteHeader(http.StatusTooManyRequests)
+		fmt.Fprint(w, `{"error":{"message":"Free model rate limit exceeded","code":429,"metadata":{"retry_after_seconds":5,"provider_name":"Tencent"}}}`)
+	}))
+	defer server.Close()
+
+	adapter := NewOpenRouterAdapter(OpenRouterConfig{
+		APIKey:  "sk-test",
+		BaseURL: server.URL,
+	})
+
+	_, err := adapter.Analyze(context.Background(), validProviderRequest())
+	var rateLimitErr *ProviderRateLimitError
+	if !errors.As(err, &rateLimitErr) {
+		t.Fatalf("expected ProviderRateLimitError, got %T: %v", err, err)
+	}
+	if rateLimitErr.RetryAfterSeconds == nil || *rateLimitErr.RetryAfterSeconds != 60 {
+		t.Fatalf("expected Retry-After header seconds 60, got %v", rateLimitErr.RetryAfterSeconds)
+	}
+	if rateLimitErr.ProviderName != "Tencent" {
+		t.Fatalf("expected provider_name Tencent from metadata, got %q", rateLimitErr.ProviderName)
+	}
+}
+
+func TestOpenRouterAdapter429ParsesRawMetadataFallback(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+		fmt.Fprint(w, `{"error":{"message":"Free model rate limit exceeded","code":429,"metadata":{"retry_after_seconds_raw":5.2,"provider_name":"Anthropic"}}}`)
+	}))
+	defer server.Close()
+
+	adapter := NewOpenRouterAdapter(OpenRouterConfig{
+		APIKey:  "sk-test",
+		BaseURL: server.URL,
+	})
+
+	_, err := adapter.Analyze(context.Background(), validProviderRequest())
+	var rateLimitErr *ProviderRateLimitError
+	if !errors.As(err, &rateLimitErr) {
+		t.Fatalf("expected ProviderRateLimitError, got %T: %v", err, err)
+	}
+	if rateLimitErr.RetryAfterSeconds == nil || *rateLimitErr.RetryAfterSeconds != 6 {
+		t.Fatalf("expected ceil(retry_after_seconds_raw) 6, got %v", rateLimitErr.RetryAfterSeconds)
+	}
+	if rateLimitErr.ProviderName != "Anthropic" {
+		t.Fatalf("expected provider_name Anthropic, got %q", rateLimitErr.ProviderName)
 	}
 }
 

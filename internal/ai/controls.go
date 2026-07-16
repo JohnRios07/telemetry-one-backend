@@ -253,6 +253,8 @@ type ObservabilityHooks struct {
 	RetryAttempt   func(ctx context.Context, sessionID string, attempt int, err error)
 }
 
+type RetrySleeper func(ctx context.Context, delay time.Duration) error
+
 type Controller struct {
 	Budget        TokenBudget
 	Retry         RetryPolicy
@@ -260,6 +262,7 @@ type Controller struct {
 	Account       *UsageAccount
 	CostEstimator CostEstimator
 	Hooks         ObservabilityHooks
+	RetrySleeper  RetrySleeper
 }
 
 func (c *Controller) Validate() error {
@@ -308,11 +311,9 @@ func (c *Controller) ExecuteWithRetries(ctx context.Context, sessionID string, f
 			if ctx.Err() != nil {
 				return ProviderResponse{}, ctx.Err()
 			}
-			backoff := c.Retry.Backoff(attempt)
-			select {
-			case <-time.After(backoff):
-			case <-ctx.Done():
-				return ProviderResponse{}, ctx.Err()
+			delay := c.retryDelay(attempt, lastErr)
+			if err := c.sleepBeforeRetry(ctx, delay); err != nil {
+				return ProviderResponse{}, err
 			}
 		}
 		resp, err := fn(ctx)
@@ -328,6 +329,31 @@ func (c *Controller) ExecuteWithRetries(ctx context.Context, sessionID string, f
 		}
 	}
 	return ProviderResponse{}, fmt.Errorf("%w after %d attempts: %w", ErrRetryExhausted, maxAttempts, lastErr)
+}
+
+func (c *Controller) retryDelay(attempt int, err error) time.Duration {
+	var rateLimitErr *ProviderRateLimitError
+	if errors.As(err, &rateLimitErr) && rateLimitErr.RetryAfterSeconds != nil && *rateLimitErr.RetryAfterSeconds > 0 {
+		return time.Duration(*rateLimitErr.RetryAfterSeconds) * time.Second
+	}
+	return c.Retry.Backoff(attempt)
+}
+
+func (c *Controller) sleepBeforeRetry(ctx context.Context, delay time.Duration) error {
+	if delay <= 0 {
+		return nil
+	}
+	if c.RetrySleeper != nil {
+		return c.RetrySleeper(ctx, delay)
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (c *Controller) RecordResult(ctx context.Context, sessionID string, mode string, duration time.Duration, resp *ProviderResponse, err error) {
