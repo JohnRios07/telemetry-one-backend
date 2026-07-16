@@ -30,6 +30,34 @@ func (r contractSummaryRepo) Summary(context.Context, string) (*sessions.Session
 	return r.summary, nil
 }
 
+type recordingSummaryRepo struct {
+	limit int
+}
+
+func (r *recordingSummaryRepo) List(_ context.Context, filter sessions.SummaryFilter) (*sessions.ListResponse, error) {
+	r.limit = filter.Limit
+	return &sessions.ListResponse{Sessions: []sessions.SessionSummaryItem{}}, nil
+}
+
+func (r *recordingSummaryRepo) Summary(context.Context, string) (*sessions.SessionDetailSummary, error) {
+	return &sessions.SessionDetailSummary{}, nil
+}
+
+func TestListSessionsContractUsesDefaultLimitWhenOmitted(t *testing.T) {
+	repo := &recordingSummaryRepo{}
+	handler := listSessionsHandler(repo)
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/sessions", nil))
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d with body %s", http.StatusOK, recorder.Code, recorder.Body.String())
+	}
+	if repo.limit != sessions.DefaultListLimit {
+		t.Fatalf("expected default limit %d, got %d", sessions.DefaultListLimit, repo.limit)
+	}
+}
+
 func TestListSessionsContractSeededSingle(t *testing.T) {
 	handler := newTestHandler(t)
 
@@ -187,6 +215,17 @@ func TestListSessionsContractLimit(t *testing.T) {
 		}
 		if !strings.Contains(recorder.Body.String(), "bad_request") || !strings.Contains(recorder.Body.String(), "limit must be an integer") {
 			t.Fatalf("expected bad_request envelope for non-integer limit, got %s", recorder.Body.String())
+		}
+	})
+
+	t.Run("limit empty rejected", func(t *testing.T) {
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/sessions?limit=", nil))
+		if recorder.Code != http.StatusBadRequest {
+			t.Fatalf("expected status %d, got %d with body %s", http.StatusBadRequest, recorder.Code, recorder.Body.String())
+		}
+		if !strings.Contains(recorder.Body.String(), "bad_request") || !strings.Contains(recorder.Body.String(), "limit must be an integer") {
+			t.Fatalf("expected bad_request envelope for empty limit, got %s", recorder.Body.String())
 		}
 	})
 }

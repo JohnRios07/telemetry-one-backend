@@ -604,9 +604,13 @@ func adminAuthMiddleware(cfg config.Config, next http.Handler) http.Handler {
 }
 
 func validatedQueryParam(r *http.Request, name string, defaultVal, min, max int) (int, error) {
-	raw := r.URL.Query().Get(name)
-	if raw == "" {
+	values, ok := r.URL.Query()[name]
+	if !ok {
 		return defaultVal, nil
+	}
+	raw := values[0]
+	if raw == "" {
+		return 0, fmt.Errorf("%s must be an integer", name)
 	}
 	val, err := strconv.Atoi(raw)
 	if err != nil {
