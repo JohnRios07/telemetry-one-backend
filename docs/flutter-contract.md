@@ -179,11 +179,13 @@ Success response DTO (`202 Accepted`):
 }
 ```
 
+When a `202 Accepted` ingest response has `rejectedFrames > 0`, the backend stores a compact per-request diagnostic summary best-effort for session history. This diagnostic path never stores raw rejected frames, never persists batch-level `400` validation errors, and never turns a successful ingest into an error if diagnostic storage fails.
+
 Batching and retry semantics:
 
 - Send frames ordered by strictly increasing `timestampUnixMs` within each batch.
 - Keep batches at or below `600` frames.
-- Ingest is all-or-nothing: a bad frame rejects the whole batch and retains none of it.
+- Ingest is frame-tolerant: invalid frames are rejected individually, valid frames in the same batch are accepted, and all-invalid frame batches return `202` with status `rejected`. Batch-level validation errors still return `400`.
 - Retry transient network failures with the same ordered batch and same `sessionId`.
 - Do not blindly retry deterministic `bad_request` rejections. Use `details.rejectionCode` and `details.frameIndex` to drop, fix, or quarantine the bad frame before resubmitting a new valid batch.
 - A `session_id_mismatch` is a client bug: route `{sessionId}` and body `sessionId` must match, or Flutter can omit the body `sessionId` and rely on the route.
@@ -509,7 +511,7 @@ GET /api/v1/sessions?limit=20
 
 Status in this phase: implemented.
 
-Returns recent sessions with aggregate frame, batch, and event counts. No auth required.
+Returns recent sessions with aggregate frame, batch, event, and rejected-frame counts. No auth required. Detailed rejection reasons are not included in list responses.
 
 | Query parameter | Default | Range | Description |
 |---|---|---|---|
@@ -533,6 +535,7 @@ Response DTO:
       "durationMs": 9000000,
       "frameBatches": 5,
       "persistedFrames": 400,
+      "rejectedFrames": 7,
       "eventCount": 3,
       "detectedTrackId": null,
       "detectedLayoutId": null
@@ -541,7 +544,7 @@ Response DTO:
 }
 ```
 
-In memory mode, `frameBatches` is always `0`. `detectedTrackId` and `detectedLayoutId` are populated when the ingest pipeline detects and persists track/layout IDs to the session after a completed lap is observed. They remain omitted when detection has not run, has not produced a confident result, or when an explicit `trackId` was set at session creation.
+In memory mode, `frameBatches` is always `0`. `rejectedFrames` is the per-session total from persisted successful-ingest diagnostics. `detectedTrackId` and `detectedLayoutId` are populated when the ingest pipeline detects and persists track/layout IDs to the session after a completed lap is observed. They remain omitted when detection has not run, has not produced a confident result, or when an explicit `trackId` was set at session creation.
 
 ### Session Summary
 
@@ -570,6 +573,7 @@ Response DTO:
     "durationMs": 9000000,
     "frameBatches": 5,
     "persistedFrames": 400,
+    "rejectedFrames": 7,
     "eventCount": 3
   },
   "frameBatches": 5,
@@ -580,13 +584,19 @@ Response DTO:
   },
   "lapsDetected": 6,
   "engineerEventCount": 3,
-  "aiAuditLogCount": 1
+  "aiAuditLogCount": 1,
+  "rejectionSummary": {
+    "reasons": [
+      {"code": "invalid_throttle", "count": 4},
+      {"code": "invalid_speed", "count": 3}
+    ]
+  }
 }
 ```
 
 `timeRangeMs` is present only when at least one frame batch exists. In memory mode, `frameBatches` is `0`, `timeRangeMs` is derived from retained frames (if any), and `aiAuditLogCount` is always `0`.
 
-Rejection stats are not included — rejection summaries are not persisted on the backend.
+`session.rejectedFrames` is always present and scoped to the requested session. `rejectionSummary` is detail-only and omitted when no persisted rejection diagnostics exist. Reasons are merged across successful ingest requests and ordered by count descending, then code ascending. Admin stats do not include rejection diagnostics.
 
 ## Flutter Sync Resilience (Phase 6.3)
 

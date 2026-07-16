@@ -30,14 +30,15 @@ type healthResponse struct {
 
 func routes(cfg config.Config, logger *slog.Logger) http.Handler {
 	frameStore := telemetry.NewFrameStore(cfg.RetainedFramesPerSession)
+	rejectionStore := telemetry.NewMemoryRejectionSummaryStore()
 	catalog := tracks.OfficialGT7SeedCatalog()
 	eventStore := events.NewStore(events.DefaultStoredEventsLimit, events.DedupOptions{})
 	sessionRepo := sessions.NewMemoryRepository()
 	pipeCfg := ai.PipelineConfigFromConfig(cfg)
 	aiSvc := ai.ComposePipeline(pipeCfg, logger)
 	statsRepo := admin.NewMemoryStatsRepo(sessionRepo, frameStore)
-	summaryRepo := sessions.NewMemorySummaryRepository(sessionRepo, frameStore, eventStore)
-	return routesWithAIAndSessions(cfg, logger, frameStore, catalog, eventStore, sessionRepo, aiSvc, statsRepo, summaryRepo)
+	summaryRepo := sessions.NewMemorySummaryRepository(sessionRepo, frameStore, eventStore, rejectionStore)
+	return routesWithAIAndSessions(cfg, logger, frameStore, catalog, eventStore, sessionRepo, aiSvc, statsRepo, summaryRepo, rejectionStore)
 }
 
 func routesWithFrameStore(cfg config.Config, logger *slog.Logger, frameStore telemetry.Store) http.Handler {
@@ -53,17 +54,18 @@ func routesWithEventStore(cfg config.Config, logger *slog.Logger, frameStore tel
 }
 
 func routesWithSessionRepository(cfg config.Config, logger *slog.Logger, frameStore telemetry.Store, catalog tracks.Catalog, eventStore events.Repository, sessionRepo sessions.Repository) http.Handler {
+	rejectionStore := telemetry.NewMemoryRejectionSummaryStore()
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler(cfg))
 	mux.HandleFunc("GET /api/v1/health", healthHandler(cfg))
 	mux.HandleFunc("POST /api/v1/sessions", createSessionHandler(sessionRepo, catalog))
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}", getSessionHandler(sessionRepo, frameStore, eventStore))
 	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/finish", finishSessionHandler(sessionRepo, frameStore, eventStore))
-	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/frames", ingestFramesHandler(frameStore, eventStore, sessionRepo, catalog, logger))
+	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/frames", ingestFramesHandler(frameStore, eventStore, sessionRepo, catalog, logger, rejectionStore))
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/track", detectTrackHandler(frameStore, catalog, sessionRepo))
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/events", listEventsHandler(eventStore, sessionRepo))
 
-	summaryRepo := sessions.NewMemorySummaryRepository(sessionRepo, frameStore, eventStore)
+	summaryRepo := sessions.NewMemorySummaryRepository(sessionRepo, frameStore, eventStore, rejectionStore)
 	mux.HandleFunc("GET /api/v1/sessions", listSessionsHandler(summaryRepo))
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/summary", sessionSummaryHandler(summaryRepo))
 
@@ -250,7 +252,7 @@ func catalogHasTrack(catalog tracks.Catalog, trackID string) bool {
 	return false
 }
 
-func ingestFramesHandler(frameStore telemetry.Store, eventStore events.Repository, sessionRepo sessions.Repository, catalog tracks.Catalog, logger *slog.Logger) http.HandlerFunc {
+func ingestFramesHandler(frameStore telemetry.Store, eventStore events.Repository, sessionRepo sessions.Repository, catalog tracks.Catalog, logger *slog.Logger, rejectionStore telemetry.RejectionSummaryStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sessionID := r.PathValue("sessionId")
 		session, err := validateSession(r.Context(), sessionRepo, sessionID, true)
@@ -357,6 +359,28 @@ func ingestFramesHandler(frameStore telemetry.Store, eventStore events.Repositor
 		if len(result.Rejections) > 0 {
 			s := telemetry.BuildRejectionSummary(result.Rejections)
 			summary = &s
+		}
+
+		if rejectionStore != nil && summary != nil && len(result.Rejections) > 0 {
+			record := telemetry.RejectionSummaryRecord{
+				SessionID:          request.SessionID,
+				Status:             status,
+				ReceivedFrames:     len(request.Frames),
+				AcceptedFrames:     len(result.Frames),
+				RejectedFrames:     len(result.Rejections),
+				AcceptedFromUnixMs: fromUnixMs,
+				AcceptedToUnixMs:   toUnixMs,
+				Summary:            *summary,
+				IngestedAt:         time.Now().UTC(),
+			}
+			if err := rejectionStore.Append(r.Context(), record); err != nil {
+				logger.Warn("failed to persist ingest rejection summary",
+					"session_id", request.SessionID,
+					"rejected", len(result.Rejections),
+					"status", status,
+					"error", err,
+				)
+			}
 		}
 
 		resp := telemetry.IngestBatchResponse{
@@ -496,18 +520,23 @@ func analyzeHandler(aiSvc ai.AIService, sessionRepo sessions.Repository) http.Ha
 func routesWithAI(cfg config.Config, logger *slog.Logger, frameStore telemetry.Store, catalog tracks.Catalog, eventStore events.Repository, aiSvc ai.AIService) http.Handler {
 	sessionRepo := sessions.NewMemoryRepository()
 	statsRepo := admin.NewMemoryStatsRepo(sessionRepo, frameStore)
-	summaryRepo := sessions.NewMemorySummaryRepository(sessionRepo, frameStore, eventStore)
-	return routesWithAIAndSessions(cfg, logger, frameStore, catalog, eventStore, sessionRepo, aiSvc, statsRepo, summaryRepo)
+	rejectionStore := telemetry.NewMemoryRejectionSummaryStore()
+	summaryRepo := sessions.NewMemorySummaryRepository(sessionRepo, frameStore, eventStore, rejectionStore)
+	return routesWithAIAndSessions(cfg, logger, frameStore, catalog, eventStore, sessionRepo, aiSvc, statsRepo, summaryRepo, rejectionStore)
 }
 
-func routesWithAIAndSessions(cfg config.Config, logger *slog.Logger, frameStore telemetry.Store, catalog tracks.Catalog, eventStore events.Repository, sessionRepo sessions.Repository, aiSvc ai.AIService, statsRepo admin.StatsRepository, summaryRepo sessions.SummaryRepository) http.Handler {
+func routesWithAIAndSessions(cfg config.Config, logger *slog.Logger, frameStore telemetry.Store, catalog tracks.Catalog, eventStore events.Repository, sessionRepo sessions.Repository, aiSvc ai.AIService, statsRepo admin.StatsRepository, summaryRepo sessions.SummaryRepository, rejectionStores ...telemetry.RejectionSummaryStore) http.Handler {
+	var rejectionStore telemetry.RejectionSummaryStore
+	if len(rejectionStores) > 0 {
+		rejectionStore = rejectionStores[0]
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler(cfg))
 	mux.HandleFunc("GET /api/v1/health", healthHandler(cfg))
 	mux.HandleFunc("POST /api/v1/sessions", createSessionHandler(sessionRepo, catalog))
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}", getSessionHandler(sessionRepo, frameStore, eventStore))
 	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/finish", finishSessionHandler(sessionRepo, frameStore, eventStore))
-	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/frames", ingestFramesHandler(frameStore, eventStore, sessionRepo, catalog, logger))
+	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/frames", ingestFramesHandler(frameStore, eventStore, sessionRepo, catalog, logger, rejectionStore))
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/track", detectTrackHandler(frameStore, catalog, sessionRepo))
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/events", listEventsHandler(eventStore, sessionRepo))
 	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/analyze", analyzeHandler(aiSvc, sessionRepo))

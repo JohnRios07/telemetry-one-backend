@@ -45,12 +45,13 @@ func runtimeHandler(ctx context.Context, cfg config.Config, logger *slog.Logger)
 	}
 
 	frameStore := telemetry.NewPostgresStore(db.Pool)
+	rejectionStore := telemetry.NewPostgresRejectionSummaryStore(db.Pool)
 	catalog := tracks.OfficialGT7SeedCatalog()
 	eventStore := events.NewPostgresRepository(db.Pool, events.DedupOptions{})
 	sessionRepo := sessions.NewPostgresRepository(db.Pool)
 	aiSvc := ai.ComposePipelineWithAudit(ai.PipelineConfigFromConfig(cfg), logger, ai.NewPostgresAuditStore(db.Pool))
 	statsRepo := admin.NewPostgresStatsRepo(db.Pool)
-	summaryRepo := sessions.NewPostgresSummaryRepository(db.Pool)
+	summaryRepo := sessions.NewPostgresSummaryRepository(db.Pool, rejectionStore)
 
-	return routesWithAIAndSessions(cfg, logger, frameStore, catalog, eventStore, sessionRepo, aiSvc, statsRepo, summaryRepo), db.Close, nil
+	return routesWithAIAndSessions(cfg, logger, frameStore, catalog, eventStore, sessionRepo, aiSvc, statsRepo, summaryRepo, rejectionStore), db.Close, nil
 }

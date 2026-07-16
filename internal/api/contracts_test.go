@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"telemetry-one-backend/internal/admin"
 	"telemetry-one-backend/internal/config"
 	"telemetry-one-backend/internal/events"
 	"telemetry-one-backend/internal/sessions"
@@ -344,6 +345,112 @@ func TestIngestFramesContractAcceptsPartialWithRejectionSummary(t *testing.T) {
 	}
 	if response.RejectionSummary.Reasons[0].Code != "invalid_throttle" || response.RejectionSummary.Reasons[0].Count != 1 {
 		t.Fatalf("expected invalid_throttle count 1, got %+v", response.RejectionSummary.Reasons[0])
+	}
+}
+
+func TestIngestFramesPersistsPartialRejectionSummaryForSessionSummary(t *testing.T) {
+	handler := newTestHandler(t)
+	ingestBody := `{"sessionId":"session-1","frames":[{"timestampUnixMs":1720656000000,"speedMps":57,"rpm":6900,"gear":4,"throttle":0.7,"brake":0,"steering":-0.1,"fuelLiters":38.3,"positionX":122,"positionY":5.5,"positionZ":788,"lapNumber":2,"currentLapMs":81111,"isOnTrack":true},{"timestampUnixMs":1720656000123,"speedMps":58.33,"rpm":7100,"gear":4,"throttle":1.2,"brake":0,"steering":-0.12,"fuelLiters":38.4,"positionX":123.4,"positionY":5.6,"positionZ":789.1,"lapNumber":2,"currentLapMs":81234,"isOnTrack":true}]}`
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/session-1/frames", strings.NewReader(ingestBody)))
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("expected ingest status %d, got %d: %s", http.StatusAccepted, recorder.Code, recorder.Body.String())
+	}
+
+	summaryRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(summaryRecorder, httptest.NewRequest(http.MethodGet, "/api/v1/sessions/session-1/summary", nil))
+	if summaryRecorder.Code != http.StatusOK {
+		t.Fatalf("expected summary status %d, got %d: %s", http.StatusOK, summaryRecorder.Code, summaryRecorder.Body.String())
+	}
+
+	var response struct {
+		Session struct {
+			RejectedFrames int `json:"rejectedFrames"`
+		} `json:"session"`
+		RejectionSummary *struct {
+			Reasons []struct {
+				Code  string `json:"code"`
+				Count int    `json:"count"`
+			} `json:"reasons"`
+		} `json:"rejectionSummary,omitempty"`
+	}
+	if err := json.Unmarshal(summaryRecorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode summary: %v", err)
+	}
+	if response.Session.RejectedFrames != 1 {
+		t.Fatalf("expected session rejectedFrames 1, got %d", response.Session.RejectedFrames)
+	}
+	if response.RejectionSummary == nil || len(response.RejectionSummary.Reasons) != 1 {
+		t.Fatalf("expected detail rejection summary, got %+v", response.RejectionSummary)
+	}
+	if response.RejectionSummary.Reasons[0].Code != "invalid_throttle" || response.RejectionSummary.Reasons[0].Count != 1 {
+		t.Fatalf("unexpected rejection reason: %+v", response.RejectionSummary.Reasons[0])
+	}
+}
+
+func TestIngestFramesPersistsAllRejectedSummaryForSessionSummary(t *testing.T) {
+	handler := newTestHandler(t)
+	ingestBody := `{"sessionId":"session-1","frames":[{"timestampUnixMs":1720656000000,"speedMps":58.33,"rpm":7100,"gear":4,"throttle":1.2,"brake":0,"steering":-0.12,"fuelLiters":38.4,"positionX":123.4,"positionY":5.6,"positionZ":789.1,"lapNumber":2,"currentLapMs":81234,"isOnTrack":true}]}`
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/session-1/frames", strings.NewReader(ingestBody)))
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("expected ingest status %d, got %d: %s", http.StatusAccepted, recorder.Code, recorder.Body.String())
+	}
+
+	summaryRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(summaryRecorder, httptest.NewRequest(http.MethodGet, "/api/v1/sessions/session-1/summary", nil))
+	if summaryRecorder.Code != http.StatusOK {
+		t.Fatalf("expected summary status %d, got %d: %s", http.StatusOK, summaryRecorder.Code, summaryRecorder.Body.String())
+	}
+	if !strings.Contains(summaryRecorder.Body.String(), `"rejectedFrames":1`) || !strings.Contains(summaryRecorder.Body.String(), `"invalid_throttle"`) {
+		t.Fatalf("expected persisted all-rejected diagnostics, got %s", summaryRecorder.Body.String())
+	}
+}
+
+func TestIngestFramesDoesNotPersistBatchValidationErrors(t *testing.T) {
+	handler := newTestHandler(t)
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/session-1/frames", strings.NewReader(`{"sessionId":"session-1","frames":[]}`)))
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected ingest status %d, got %d: %s", http.StatusBadRequest, recorder.Code, recorder.Body.String())
+	}
+
+	summaryRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(summaryRecorder, httptest.NewRequest(http.MethodGet, "/api/v1/sessions/session-1/summary", nil))
+	if summaryRecorder.Code != http.StatusOK {
+		t.Fatalf("expected summary status %d, got %d: %s", http.StatusOK, summaryRecorder.Code, summaryRecorder.Body.String())
+	}
+	if strings.Contains(summaryRecorder.Body.String(), "rejectionSummary") {
+		t.Fatalf("expected no persisted batch-level diagnostics, got %s", summaryRecorder.Body.String())
+	}
+}
+
+func TestIngestFramesDiagnosticPersistenceFailureStillReturnsAccepted(t *testing.T) {
+	sessionRepo := sessions.NewMemoryRepository()
+	seedTestSession(t, sessionRepo, "session-1")
+	frameStore := telemetry.NewFrameStore(100)
+	eventStore := events.NewStore(100, events.DedupOptions{})
+	summaryRepo := sessions.NewMemorySummaryRepository(sessionRepo, frameStore, eventStore)
+	handler := routesWithAIAndSessions(
+		config.Config{Addr: ":0", Env: "test"},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		frameStore,
+		tracks.OfficialGT7SeedCatalog(),
+		eventStore,
+		sessionRepo,
+		&noopAIService{},
+		admin.NewMemoryStatsRepo(sessionRepo, frameStore),
+		summaryRepo,
+		failingRejectionStore{err: errors.New("diagnostics down")},
+	)
+	ingestBody := `{"sessionId":"session-1","frames":[{"timestampUnixMs":1720656000000,"speedMps":57,"rpm":6900,"gear":4,"throttle":0.7,"brake":0,"steering":-0.1,"fuelLiters":38.3,"positionX":122,"positionY":5.5,"positionZ":788,"lapNumber":2,"currentLapMs":81111,"isOnTrack":true},{"timestampUnixMs":1720656000123,"speedMps":58.33,"rpm":7100,"gear":4,"throttle":1.2,"brake":0,"steering":-0.12,"fuelLiters":38.4,"positionX":123.4,"positionY":5.6,"positionZ":789.1,"lapNumber":2,"currentLapMs":81234,"isOnTrack":true}]}`
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/session-1/frames", strings.NewReader(ingestBody)))
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("expected status %d despite diagnostic failure, got %d: %s", http.StatusAccepted, recorder.Code, recorder.Body.String())
 	}
 }
 
@@ -1182,4 +1289,20 @@ func newTestHandlerWithStores(t *testing.T, frameStore telemetry.Store, eventSto
 		eventStore,
 		sessionRepo,
 	)
+}
+
+type failingRejectionStore struct {
+	err error
+}
+
+func (s failingRejectionStore) Append(context.Context, telemetry.RejectionSummaryRecord) error {
+	return s.err
+}
+
+func (s failingRejectionStore) Summary(context.Context, string) (telemetry.RejectedSummaryAggregate, error) {
+	return telemetry.RejectedSummaryAggregate{}, nil
+}
+
+func (s failingRejectionStore) Summaries(context.Context, []string) (map[string]telemetry.RejectedSummaryAggregate, error) {
+	return map[string]telemetry.RejectedSummaryAggregate{}, nil
 }
