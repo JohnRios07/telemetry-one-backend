@@ -266,6 +266,8 @@ All-rejected response (`202 Accepted`) — every frame in the batch was invalid:
 
 The accepted time range is calculated from the accepted frame timestamps (zeroed when none accepted). `rejectionSummary` is present only when `rejectedFrames > 0`. Reasons are grouped by stable rejection code with counts; at most all unique codes are returned, ordered by count descending then code ascending for deterministic output.
 
+For successfully handled ingest requests (`202 Accepted`) with `rejectedFrames > 0`, the backend persists the same compact rejection summary best-effort for later session reporting. Diagnostic persistence failures are logged as warnings and do not change ingest status or accepted-frame persistence. Batch-level `400` validation errors are not persisted, and raw rejected frames are never stored.
+
 The response intentionally uses a compact aggregated summary (`rejectionSummary`) rather than per-frame rejection details. This keeps the API response lightweight for production telemetry ingest. Per-frame diagnostics (including `frameIndex`, `category`, `field`) are available through the error envelope (400) for batch-level validation failures such as missing session ID, empty batch, or exceeding the batch size limit. For batch-level failures there is no `rejectionSummary` because the entire request is rejected as a single unit and the specific rejection detail is returned in the error envelope.
 
 See `docs/ingest-performance.md` for expected frame rates, batch-size coverage, retention windows, current ingest benchmark coverage, and MVP limits.
@@ -634,7 +636,7 @@ Unauthorized responses use the standard error envelope with status 401 and code 
 }
 ```
 
-In memory mode, `mode` is `"memory"` and unavailable aggregate fields (`frameBatches`, `engineerEvents`, `aiAuditLogs`) are omitted. The endpoint does NOT report rejection statistics (rejection reasons are not persisted).
+In memory mode, `mode` is `"memory"` and unavailable aggregate fields (`frameBatches`, `engineerEvents`, `aiAuditLogs`) are omitted. The endpoint does NOT aggregate rejection diagnostics; rejection totals/reasons are exposed only through session list/detail APIs.
 
 ## Session History And Summary
 
@@ -644,9 +646,9 @@ In memory mode, `mode` is `"memory"` and unavailable aggregate fields (`frameBat
 GET /api/v1/sessions
 ```
 
-Returns a paginated list of sessions with aggregate frame, batch, and event counts. Available in both memory and Postgres modes.
+Returns a paginated list of sessions with aggregate frame, batch, event, and rejected-frame counts. Available in both memory and Postgres modes.
 
-No auth required. Rejection stats are not included — rejection summaries are not persisted.
+No auth required. Detailed rejection reasons are intentionally not included in list responses.
 
 #### Query Parameters
 
@@ -672,6 +674,7 @@ No auth required. Rejection stats are not included — rejection summaries are n
       "durationMs": 9000000,
       "frameBatches": 5,
       "persistedFrames": 400,
+      "rejectedFrames": 7,
       "eventCount": 3,
       "detectedTrackId": "gt7_watkins_glen_international",
       "detectedLayoutId": "gt7_layout_1240"
@@ -680,7 +683,7 @@ No auth required. Rejection stats are not included — rejection summaries are n
 }
 ```
 
-`detectedTrackId` and `detectedLayoutId` are populated when the ingest pipeline detects and persists track/layout IDs to the session after a completed lap is observed. They remain null/omitted when detection has not run, has not produced a confident result, or when an explicit `trackId` was set at session creation (manual selection is not overridden).
+`rejectedFrames` is the per-session total from persisted successful-ingest diagnostics. It is `0` when no diagnostics exist. `detectedTrackId` and `detectedLayoutId` are populated when the ingest pipeline detects and persists track/layout IDs to the session after a completed lap is observed. They remain null/omitted when detection has not run, has not produced a confident result, or when an explicit `trackId` was set at session creation (manual selection is not overridden).
 
 ### Session Summary
 
@@ -707,6 +710,7 @@ Returns aggregate counts and derived metrics for a single session. Session must 
     "durationMs": 9000000,
     "frameBatches": 5,
     "persistedFrames": 400,
+    "rejectedFrames": 7,
     "eventCount": 3,
     "detectedTrackId": "gt7_watkins_glen_international",
     "detectedLayoutId": "gt7_layout_1240"
@@ -719,10 +723,18 @@ Returns aggregate counts and derived metrics for a single session. Session must 
   },
   "lapsDetected": 6,
   "engineerEventCount": 3,
-  "aiAuditLogCount": 1
+  "aiAuditLogCount": 1,
+  "rejectionSummary": {
+    "reasons": [
+      {"code": "invalid_throttle", "count": 4},
+      {"code": "invalid_speed", "count": 3}
+    ]
+  }
 }
 ```
 
 `timeRangeMs` is present only when at least one frame batch exists. In memory mode, `frameBatches` is `0`, `timeRangeMs` is derived from retained frames (if any), and `aiAuditLogCount` is always `0`.
+
+`session.rejectedFrames` is always scoped to the requested session. `rejectionSummary` is detail-only and is omitted when no persisted rejection diagnostics exist. Reasons are merged across successful ingest requests and ordered by count descending, then code ascending. Admin stats intentionally do not expose rejection diagnostics.
 
 ## Planned V1 Endpoints

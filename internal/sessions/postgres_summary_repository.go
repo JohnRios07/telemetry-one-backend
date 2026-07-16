@@ -6,16 +6,28 @@ import (
 	"fmt"
 	"time"
 
+	"telemetry-one-backend/internal/telemetry"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type PostgresSummaryRepository struct {
-	pool *pgxpool.Pool
+	pool           postgresSummaryDB
+	rejectionStore telemetry.RejectionSummaryStore
 }
 
-func NewPostgresSummaryRepository(pool *pgxpool.Pool) *PostgresSummaryRepository {
-	return &PostgresSummaryRepository{pool: pool}
+type postgresSummaryDB interface {
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
+func NewPostgresSummaryRepository(pool *pgxpool.Pool, rejectionStores ...telemetry.RejectionSummaryStore) *PostgresSummaryRepository {
+	var rejectionStore telemetry.RejectionSummaryStore
+	if len(rejectionStores) > 0 {
+		rejectionStore = rejectionStores[0]
+	}
+	return &PostgresSummaryRepository{pool: pool, rejectionStore: rejectionStore}
 }
 
 func (r *PostgresSummaryRepository) List(ctx context.Context, filter SummaryFilter) (*ListResponse, error) {
@@ -65,6 +77,20 @@ LIMIT $1`
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate session summaries: %w", err)
 	}
+	rows.Close()
+	if r.rejectionStore != nil && len(items) > 0 {
+		sessionIDs := make([]string, 0, len(items))
+		for _, item := range items {
+			sessionIDs = append(sessionIDs, item.ID)
+		}
+		rejections, err := r.rejectionStore.Summaries(ctx, sessionIDs)
+		if err != nil {
+			return nil, fmt.Errorf("load rejection summaries: %w", err)
+		}
+		for i := range items {
+			items[i].RejectedFrames = rejections[items[i].ID].RejectedFrames
+		}
+	}
 
 	return &ListResponse{Sessions: items}, nil
 }
@@ -113,11 +139,11 @@ WHERE s.id = $1`
 	var startedAt time.Time
 	var endedAt *time.Time
 	var fb struct {
-		batches  int
+		batches   int
 		persisted int
 		timeStart int64
-		timeEnd  int64
-		laps     int
+		timeEnd   int64
+		laps      int
 	}
 	var eeCount, alCount int
 
@@ -153,6 +179,19 @@ WHERE s.id = $1`
 	item.PersistedFrames = fb.persisted
 	item.EventCount = eeCount
 
+	var rejectionSummary *telemetry.RejectionSummary
+	if r.rejectionStore != nil {
+		aggregate, err := r.rejectionStore.Summary(ctx, sessionID)
+		if err != nil {
+			return nil, fmt.Errorf("load rejection summary: %w", err)
+		}
+		item.RejectedFrames = aggregate.RejectedFrames
+		if len(aggregate.Summary.Reasons) > 0 {
+			summary := aggregate.Summary
+			rejectionSummary = &summary
+		}
+	}
+
 	if detectedTrackID != "" {
 		item.DetectedTrackID = &detectedTrackID
 	}
@@ -167,6 +206,7 @@ WHERE s.id = $1`
 		LapsDetected:       fb.laps,
 		EngineerEventCount: eeCount,
 		AIAuditLogCount:    alCount,
+		RejectionSummary:   rejectionSummary,
 	}
 
 	if fb.batches > 0 {

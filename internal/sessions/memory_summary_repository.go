@@ -11,16 +11,22 @@ import (
 )
 
 type MemorySummaryRepository struct {
-	sessionRepo Repository
-	frameStore  telemetry.Store
-	eventRepo   events.Repository
+	sessionRepo    Repository
+	frameStore     telemetry.Store
+	eventRepo      events.Repository
+	rejectionStore telemetry.RejectionSummaryStore
 }
 
-func NewMemorySummaryRepository(sessionRepo Repository, frameStore telemetry.Store, eventRepo events.Repository) *MemorySummaryRepository {
+func NewMemorySummaryRepository(sessionRepo Repository, frameStore telemetry.Store, eventRepo events.Repository, rejectionStores ...telemetry.RejectionSummaryStore) *MemorySummaryRepository {
+	var rejectionStore telemetry.RejectionSummaryStore
+	if len(rejectionStores) > 0 {
+		rejectionStore = rejectionStores[0]
+	}
 	return &MemorySummaryRepository{
-		sessionRepo: sessionRepo,
-		frameStore:  frameStore,
-		eventRepo:   eventRepo,
+		sessionRepo:    sessionRepo,
+		frameStore:     frameStore,
+		eventRepo:      eventRepo,
+		rejectionStore: rejectionStore,
 	}
 }
 
@@ -43,11 +49,23 @@ func (r *MemorySummaryRepository) List(ctx context.Context, filter SummaryFilter
 	}
 
 	items := make([]SessionSummaryItem, 0, limit)
+	rejectionSummaries := map[string]telemetry.RejectedSummaryAggregate{}
+	if r.rejectionStore != nil {
+		sessionIDs := make([]string, 0, limit)
+		for _, s := range all[:limit] {
+			sessionIDs = append(sessionIDs, s.ID)
+		}
+		rejectionSummaries, err = r.rejectionStore.Summaries(ctx, sessionIDs)
+		if err != nil {
+			return nil, fmt.Errorf("load rejection summaries: %w", err)
+		}
+	}
 	for _, s := range all[:limit] {
 		item, err := r.buildItem(ctx, s, nil, nil)
 		if err != nil {
 			return nil, err
 		}
+		item.RejectedFrames = rejectionSummaries[s.ID].RejectedFrames
 		items = append(items, item)
 	}
 
@@ -77,6 +95,19 @@ func (r *MemorySummaryRepository) Summary(ctx context.Context, sessionID string)
 	item, err := r.buildItem(ctx, session, frames, &eventCount)
 	if err != nil {
 		return nil, err
+	}
+
+	var rejectionSummary *telemetry.RejectionSummary
+	if r.rejectionStore != nil {
+		aggregate, err := r.rejectionStore.Summary(ctx, sessionID)
+		if err != nil {
+			return nil, fmt.Errorf("load rejection summary for session %s: %w", sessionID, err)
+		}
+		item.RejectedFrames = aggregate.RejectedFrames
+		if len(aggregate.Summary.Reasons) > 0 {
+			summary := aggregate.Summary
+			rejectionSummary = &summary
+		}
 	}
 
 	pf := len(frames)
@@ -110,6 +141,7 @@ func (r *MemorySummaryRepository) Summary(ctx context.Context, sessionID string)
 		LapsDetected:       laps,
 		EngineerEventCount: item.EventCount,
 		AIAuditLogCount:    0,
+		RejectionSummary:   rejectionSummary,
 	}, nil
 }
 

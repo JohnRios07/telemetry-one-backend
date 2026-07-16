@@ -131,6 +131,62 @@ func TestMemorySummaryRepositorySummaryFound(t *testing.T) {
 	}
 }
 
+func TestMemorySummaryRepositoryAggregatesPersistedRejections(t *testing.T) {
+	sessionRepo := NewMemoryRepository()
+	frameStore := telemetry.NewFrameStore(100)
+	eventStore := events.NewStore(100, events.DedupOptions{})
+	rejectionStore := telemetry.NewMemoryRejectionSummaryStore()
+	ctx := context.Background()
+	startedAt := time.UnixMilli(1720656000000).UTC()
+
+	sessionRepo.Create(ctx, Session{ID: "session-1", Source: "flutter", Game: "gt7", Platform: "ps5", StartedAt: startedAt})
+	sessionRepo.Create(ctx, Session{ID: "session-2", Source: "flutter", Game: "gt7", Platform: "ps5", StartedAt: startedAt.Add(time.Minute)})
+	for _, record := range []telemetry.RejectionSummaryRecord{
+		{SessionID: "session-1", RejectedFrames: 1, Summary: telemetry.RejectionSummary{Reasons: []telemetry.RejectionReasonCount{{Code: "invalid_speed", Count: 1}}}},
+		{SessionID: "session-1", RejectedFrames: 2, Summary: telemetry.RejectionSummary{Reasons: []telemetry.RejectionReasonCount{{Code: "invalid_throttle", Count: 2}}}},
+		{SessionID: "session-2", RejectedFrames: 1, Summary: telemetry.RejectionSummary{Reasons: []telemetry.RejectionReasonCount{{Code: "invalid_brake", Count: 1}}}},
+	} {
+		if err := rejectionStore.Append(ctx, record); err != nil {
+			t.Fatalf("append rejection summary: %v", err)
+		}
+	}
+	repo := NewMemorySummaryRepository(sessionRepo, frameStore, eventStore, rejectionStore)
+
+	list, err := repo.List(ctx, SummaryFilter{Limit: 10})
+	if err != nil {
+		t.Fatalf("list summaries: %v", err)
+	}
+	if len(list.Sessions) != 2 {
+		t.Fatalf("expected 2 sessions, got %d", len(list.Sessions))
+	}
+	if list.Sessions[0].ID != "session-2" || list.Sessions[0].RejectedFrames != 1 {
+		t.Fatalf("expected session-2 scoped total 1, got %+v", list.Sessions[0])
+	}
+	if list.Sessions[1].ID != "session-1" || list.Sessions[1].RejectedFrames != 3 {
+		t.Fatalf("expected session-1 scoped total 3, got %+v", list.Sessions[1])
+	}
+
+	summary, err := repo.Summary(ctx, "session-1")
+	if err != nil {
+		t.Fatalf("session summary: %v", err)
+	}
+	if summary.Session.RejectedFrames != 3 {
+		t.Fatalf("expected detail rejectedFrames 3, got %d", summary.Session.RejectedFrames)
+	}
+	if summary.RejectionSummary == nil {
+		t.Fatal("expected detail rejection summary")
+	}
+	want := []telemetry.RejectionReasonCount{{Code: "invalid_throttle", Count: 2}, {Code: "invalid_speed", Count: 1}}
+	if len(summary.RejectionSummary.Reasons) != len(want) {
+		t.Fatalf("expected %d reasons, got %+v", len(want), summary.RejectionSummary.Reasons)
+	}
+	for i := range want {
+		if summary.RejectionSummary.Reasons[i] != want[i] {
+			t.Fatalf("reason %d = %+v, want %+v", i, summary.RejectionSummary.Reasons[i], want[i])
+		}
+	}
+}
+
 func validSummaryEvent(eventID, sessionID string) events.EngineerEvent {
 	return events.EngineerEvent{
 		EventID:         eventID,
