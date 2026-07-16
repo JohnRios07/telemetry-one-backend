@@ -603,28 +603,36 @@ func adminAuthMiddleware(cfg config.Config, next http.Handler) http.Handler {
 	})
 }
 
-func clampQueryParam(r *http.Request, name string, defaultVal, min, max int) int {
+func validatedQueryParam(r *http.Request, name string, defaultVal, min, max int) (int, error) {
 	raw := r.URL.Query().Get(name)
 	if raw == "" {
-		return defaultVal
+		return defaultVal, nil
 	}
 	val, err := strconv.Atoi(raw)
 	if err != nil {
-		return defaultVal
+		return 0, fmt.Errorf("%s must be an integer", name)
 	}
 	if val < min {
-		return min
+		return 0, fmt.Errorf("%s must be between %d and %d", name, min, max)
 	}
 	if val > max {
-		return max
+		return 0, fmt.Errorf("%s must be between %d and %d", name, min, max)
 	}
-	return val
+	return val, nil
 }
 
 func ingestStatsHandler(statsRepo admin.StatsRepository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		limit := clampQueryParam(r, "limit", admin.DefaultLimit, admin.MinLimit, admin.MaxLimit)
-		days := clampQueryParam(r, "days", admin.DefaultDays, admin.MinDays, admin.MaxDays)
+		limit, err := validatedQueryParam(r, "limit", admin.DefaultLimit, admin.MinLimit, admin.MaxLimit)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, httperror.Envelope(httperror.BadRequest(err.Error())))
+			return
+		}
+		days, err := validatedQueryParam(r, "days", admin.DefaultDays, admin.MinDays, admin.MaxDays)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, httperror.Envelope(httperror.BadRequest(err.Error())))
+			return
+		}
 
 		resp, err := statsRepo.Stats(r.Context(), limit, days)
 		if err != nil {
@@ -638,7 +646,11 @@ func ingestStatsHandler(statsRepo admin.StatsRepository) http.HandlerFunc {
 
 func listSessionsHandler(summaryRepo sessions.SummaryRepository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		limit := clampQueryParam(r, "limit", sessions.DefaultListLimit, sessions.MinListLimit, sessions.MaxListLimit)
+		limit, err := validatedQueryParam(r, "limit", sessions.DefaultListLimit, sessions.MinListLimit, sessions.MaxListLimit)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, httperror.Envelope(httperror.BadRequest(err.Error())))
+			return
+		}
 
 		resp, err := summaryRepo.List(r.Context(), sessions.SummaryFilter{Limit: limit})
 		if err != nil {
