@@ -1,7 +1,7 @@
 {
   "catalogVersion": "telemetry-one.track-catalog.v1",
-  "generatedBy": "telemetry-one manual official-source seed",
-  "notes": "Initial GT7 seed curated only from official Gran Turismo URLs. Corners and sectors are intentionally empty because the cited official pages do not provide corner-name catalogs or sector boundaries.",
+  "generatedBy": "telemetry-one curated GT7 tracklist asset seed",
+  "notes": "Curated GT7 layout metadata from the official Gran Turismo tracklist asset, cross-checked against gt7info course.csv. Corners are generated as ordinal Corner 1..N entries from NumCorners only; sectors and centerLine are intentionally empty because neither source provides reliable sector boundaries or sampled layout geometry.",
   "tracks": [
     {
       "id": "gt7_watkins_glen_international",
@@ -9,10 +9,10 @@
       "country": "United States",
       "sources": [
         {
-          "url": "https://www.gran-turismo.com/us/news/00_5302315.html",
-          "sourceType": "official_gran_turismo_news",
+          "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+          "sourceType": "official_gran_turismo_tracklist_asset",
           "retrievedAt": "2026-07-12",
-          "note": "official Gran Turismo source"
+          "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
         }
       ],
       "layouts": [
@@ -22,10 +22,10 @@
           "lengthMeters": 5423,
           "sources": [
             {
-              "url": "https://www.gran-turismo.com/us/news/00_5302315.html",
-              "sourceType": "official_gran_turismo_news",
+              "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+              "sourceType": "official_gran_turismo_tracklist_asset",
               "retrievedAt": "2026-07-12",
-              "note": "official Gran Turismo source"
+              "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
             }
           ],
           "sectors": [],
@@ -39,10 +39,10 @@
       "country": "United Arab Emirates",
       "sources": [
         {
-          "url": "https://www.gran-turismo.com/us/news/00_4185758.html",
-          "sourceType": "official_gran_turismo_news",
+          "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+          "sourceType": "official_gran_turismo_tracklist_asset",
           "retrievedAt": "2026-07-12",
-          "note": "official Gran Turismo source"
+          "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
         }
       ],
       "layouts": [
@@ -52,10 +52,10 @@
           "lengthMeters": 5281,
           "sources": [
             {
-              "url": "https://www.gran-turismo.com/us/news/00_4185758.html",
-              "sourceType": "official_gran_turismo_news",
+              "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+              "sourceType": "official_gran_turismo_tracklist_asset",
               "retrievedAt": "2026-07-12",
-              "note": "official Gran Turismo source"
+              "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
             }
           ],
           "sectors": [],
@@ -68,10 +68,10 @@
       "name": "Circuit Gilles-Villeneuve",
       "sources": [
         {
-          "url": "https://www.gran-turismo.com/us/news/00_4185758.html",
-          "sourceType": "official_gran_turismo_news",
+          "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+          "sourceType": "official_gran_turismo_tracklist_asset",
           "retrievedAt": "2026-07-12",
-          "note": "official Gran Turismo source"
+          "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
         }
       ],
       "layouts": [
@@ -81,10 +81,10 @@
           "lengthMeters": 4361,
           "sources": [
             {
-              "url": "https://www.gran-turismo.com/us/news/00_4185758.html",
-              "sourceType": "official_gran_turismo_news",
+              "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+              "sourceType": "official_gran_turismo_tracklist_asset",
               "retrievedAt": "2026-07-12",
-              "note": "official Gran Turismo source"
+              "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
             }
           ],
           "sectors": [],

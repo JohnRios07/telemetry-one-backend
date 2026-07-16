@@ -1,26 +1,26 @@
 package tracks
 
 const gt7InfoCourseCSVURL = "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv"
+const gt7TracklistAssetURL = "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js"
 
 func OfficialGT7SeedCatalog() Catalog {
 	gt7Info := gt7InfoCourseCSVSource()
-	officialWatkins := officialNewsSource("https://www.gran-turismo.com/us/news/00_5302315.html")
-	officialYasGilles := officialNewsSource("https://www.gran-turismo.com/us/news/00_4185758.html")
+	officialTracklist := officialTracklistAssetSource(gt7TracklistAssetURL)
 
 	return Catalog{
 		CatalogVersion: CatalogVersionV1,
-		GeneratedBy:    "telemetry-one curated GT7 course.csv seed",
-		Notes:          "Curated GT7 layout metadata from gt7info course.csv. Corners are generated as ordinal Corner 1..N entries from NumCorners only; sectors and centerLine are intentionally empty because the source does not provide reliable sector boundaries or sampled layout geometry.",
+		GeneratedBy:    "telemetry-one curated GT7 tracklist asset seed",
+		Notes:          "Curated GT7 layout metadata from the official Gran Turismo tracklist asset, cross-checked against gt7info course.csv. Corners are generated as ordinal Corner 1..N entries from NumCorners only; sectors and centerLine are intentionally empty because neither source provides reliable sector boundaries or sampled layout geometry.",
 		Tracks: []CatalogTrack{
-			track("gt7_watkins_glen_international", "Watkins Glen International", "United States", []Source{officialWatkins, gt7Info},
-				layoutFromGT7Info(1240, "Watkins Glen Long Course", 5423, 11, []Source{officialWatkins, gt7Info}),
+			track("gt7_watkins_glen_international", "Watkins Glen International", "United States", []Source{officialTracklist, gt7Info},
+				layoutFromGT7Info(1240, "Watkins Glen Long Course", 5423, 11, []Source{officialTracklist, gt7Info}),
 				layoutFromGT7Info(1264, "Watkins Glen Short Course", 3942, 7, []Source{gt7Info}),
 			),
-			track("gt7_yas_marina_circuit", "Yas Marina Circuit", "United Arab Emirates", []Source{officialYasGilles, gt7Info},
-				layoutFromGT7Info(2003, "Yas Marina Circuit", 5281, 16, []Source{officialYasGilles, gt7Info}),
+			track("gt7_yas_marina_circuit", "Yas Marina Circuit", "United Arab Emirates", []Source{officialTracklist, gt7Info},
+				layoutFromGT7Info(2003, "Yas Marina Circuit", 5281, 16, []Source{officialTracklist, gt7Info}),
 			),
-			track("gt7_circuit_gilles_villeneuve", "Circuit Gilles-Villeneuve", "Canada", []Source{officialYasGilles, gt7Info},
-				layoutFromGT7Info(2004, "Circuit Gilles-Villeneuve", 4361, 14, []Source{officialYasGilles, gt7Info}),
+			track("gt7_circuit_gilles_villeneuve", "Circuit Gilles-Villeneuve", "Canada", []Source{officialTracklist, gt7Info},
+				layoutFromGT7Info(2004, "Circuit Gilles-Villeneuve", 4361, 14, []Source{officialTracklist, gt7Info}),
 			),
 			track("gt7_weathertech_raceway_laguna_seca", "WeatherTech Raceway Laguna Seca", "United States", []Source{gt7Info},
 				layoutFromGT7Info(41, "WeatherTech Raceway Laguna Seca", 3602, 11, []Source{gt7Info}),
@@ -135,13 +135,17 @@ func gt7InfoCourseCSVSource() Source {
 	}
 }
 
-func officialNewsSource(url string) Source {
+func officialTracklistAssetSource(url string) Source {
 	return Source{
 		URL:         url,
-		SourceType:  "official_gran_turismo_news",
+		SourceType:  "official_gran_turismo_tracklist_asset",
 		RetrievedAt: "2026-07-12",
-		Note:        "official Gran Turismo source",
+		Note:        "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount",
 	}
+}
+
+func officialNewsSource(url string) Source {
+	return officialTracklistAssetSource(url)
 }
 
 func itoa(value int) string {

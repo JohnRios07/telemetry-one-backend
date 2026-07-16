@@ -116,15 +116,16 @@ Each source must include `url`, `sourceType`, and `retrievedAt`. GT7 UDP telemet
 
 ## Official GT7 / gt7info Seed
 
-`OfficialGT7SeedCatalog()` is a curated GT7 seed for runtime detection. It combines official Gran Turismo news pages where already available with the upstream gt7info `course.csv` data source:
+`OfficialGT7SeedCatalog()` is a curated GT7 seed for runtime detection. It combines the public Gran Turismo tracklist page and its generated JS asset as the first-party source of layout ID, name, length, and corner count, with the upstream gt7info `course.csv` data source as a secondary cross-check:
 
-- `https://www.gran-turismo.com/us/news/00_5302315.html` for Watkins Glen International and Watkins Glen Long Course metadata.
-- `https://www.gran-turismo.com/us/news/00_4185758.html` for Yas Marina Circuit and Circuit Gilles-Villeneuve metadata.
-- `https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv` retrieved on `2026-07-15` for GT7 layout ID, layout name, base/group, country/category code, length, reverse/oval flags, and `NumCorners`.
+- `https://www.gran-turismo.com/gb/gt7/tracklist/` as the public entrypoint for the generated GT7 tracklist assets.
+- `https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js` as the generated catalog asset containing machine-readable layout metadata.
+- `https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks-id-list.gb-Dnd6PD5F.js` as the companion public asset for published GT7 track and layout IDs.
+- `https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv` retrieved on `2026-07-15` as the secondary GT7 seed cross-check for layout IDs, names, lengths, and `NumCorners`.
 
 The seed imports a representative subset rather than the full CSV in this PR. It includes common layouts plus candidates near the observed `3664m` lap-length problem: WeatherTech Raceway Laguna Seca (`3602m`), Nurburgring Sprint (`3629m`), Autodrome Lago Maggiore East/East Reverse (`3643m`), and Lake Louise Long/Long Reverse (`3694m`). This prevents the length-only detector from falsely selecting Watkins Glen for a roughly `3664m` lap; the current policy is to return `ambiguous` with nearest candidate evidence when multiple sourced layouts are similarly close.
 
-The seed intentionally leaves `sectors` empty. It also keeps `centerLine` empty. Neither the official pages nor `course.csv` provide reliable sector boundaries, sampled centerline geometry, corner ranges, apex positions, or corner names.
+The seed intentionally leaves `sectors` empty. It also keeps `centerLine` empty. Neither the official tracklist assets nor `course.csv` provide reliable sector boundaries, sampled centerline geometry, corner ranges, apex positions, or corner names.
 
 `NumCorners` is used only to create `catalog_enumerated` corner entries named exactly `Corner 1`, `Corner 2`, etc. Telemetry One must not invent named corners beyond those ordinal labels. These generated entries have provenance back to `course.csv`, but they are not manually named and are not spatially resolvable.
 
