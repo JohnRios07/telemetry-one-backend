@@ -104,17 +104,8 @@ func DetectTrack(frames []telemetry.Frame, catalog Catalog, options DetectionOpt
 	}
 
 	best := candidates[0]
-	if len(candidates) > 1 && best.confidence-candidates[1].confidence <= options.AmbiguousScoreMargin {
-		return fallbackResult(DetectionStatusAmbiguous, 0, observed, DetectionNextActionManualSelection, DetectionEvidence{
-			Reason:           DetectionReasonAmbiguousLength,
-			Message:          "multiple catalog layouts have similar observed lap length evidence",
-			TrackID:          best.trackID,
-			LayoutID:         best.layoutID,
-			CatalogMeters:    best.lengthMeters,
-			ObservedMeters:   observed,
-			DifferenceMeters: best.difference,
-			Confidence:       best.confidence,
-		})
+	if len(candidates) > 1 && (best.difference > 0 || candidates[1].difference == 0) && best.confidence-candidates[1].confidence <= options.AmbiguousScoreMargin {
+		return fallbackResult(DetectionStatusAmbiguous, 0, observed, DetectionNextActionManualSelection, ambiguousEvidence(candidates, observed, options.AmbiguousScoreMargin)...)
 	}
 	if best.confidence < options.MinDetectedConfidence {
 		return fallbackResult(DetectionStatusLowConfidence, best.confidence, observed, DetectionNextActionManualSelection, DetectionEvidence{
@@ -258,6 +249,31 @@ func matchingCandidates(catalog Catalog, observedLength float64, toleranceRatio 
 	return candidates
 }
 
+func ambiguousEvidence(candidates []layoutCandidate, observedLength float64, margin float64) []DetectionEvidence {
+	if len(candidates) == 0 {
+		return nil
+	}
+	bestConfidence := candidates[0].confidence
+	evidence := make([]DetectionEvidence, 0, len(candidates))
+	for _, candidate := range candidates {
+		if bestConfidence-candidate.confidence > margin {
+			continue
+		}
+		evidence = append(evidence, DetectionEvidence{
+			Reason:           DetectionReasonAmbiguousLength,
+			Message:          "multiple catalog layouts have similar observed lap length evidence",
+			TrackID:          candidate.trackID,
+			LayoutID:         candidate.layoutID,
+			CatalogMeters:    candidate.lengthMeters,
+			ObservedMeters:   observedLength,
+			DifferenceMeters: candidate.difference,
+			Confidence:       candidate.confidence,
+		})
+	}
+
+	return evidence
+}
+
 func hasSelectableLayoutMetadata(track CatalogTrack, layout CatalogLayout) bool {
 	if track.ID == "" || track.Name == "" || layout.ID == "" || layout.Name == "" {
 		return false
@@ -269,7 +285,11 @@ func hasSelectableLayoutMetadata(track CatalogTrack, layout CatalogLayout) bool 
 	return validateSources("track.sources", track.Sources) == nil && validateSources("layout.sources", layout.Sources) == nil
 }
 
-func fallbackResult(status string, confidence float64, observedLength float64, nextAction string, evidence DetectionEvidence) DetectionResult {
+func fallbackResult(status string, confidence float64, observedLength float64, nextAction string, evidence ...DetectionEvidence) DetectionResult {
+	reasons := make([]string, 0, len(evidence))
+	if len(evidence) > 0 {
+		reasons = append(reasons, evidence[0].Reason)
+	}
 	return DetectionResult{
 		Status:               status,
 		TrackID:              nil,
@@ -278,8 +298,8 @@ func fallbackResult(status string, confidence float64, observedLength float64, n
 		LayoutName:           nil,
 		Confidence:           confidence,
 		ObservedLengthMeters: observedLength,
-		Reasons:              []string{evidence.Reason},
-		Evidence:             []DetectionEvidence{evidence},
+		Reasons:              reasons,
+		Evidence:             evidence,
 		NextAction:           nextAction,
 	}
 }

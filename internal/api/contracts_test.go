@@ -562,7 +562,7 @@ func TestDetectTrackContractMatchesRetainedFramesAgainstSeedCatalog(t *testing.T
 	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
 	}
-	if response.Status != tracks.DetectionStatusDetected || response.TrackID == nil || *response.TrackID != "gt7_watkins_glen_international" || response.LayoutID == nil || *response.LayoutID != "gt7_watkins_glen_long_course" {
+	if response.Status != tracks.DetectionStatusDetected || response.TrackID == nil || *response.TrackID != "gt7_watkins_glen_international" || response.LayoutID == nil || *response.LayoutID != "gt7_layout_1240" {
 		t.Fatalf("unexpected detection response: %+v", response)
 	}
 	if len(response.Reasons) != 1 || response.Reasons[0] != tracks.DetectionReasonLengthMatch || response.NextAction != tracks.DetectionNextActionUseDetectedLayout {

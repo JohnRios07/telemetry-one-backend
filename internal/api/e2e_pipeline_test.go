@@ -117,8 +117,8 @@ func TestE2EPipelineFullFlow(t *testing.T) {
 		if result.TrackID == nil || *result.TrackID != "gt7_watkins_glen_international" {
 			t.Fatalf("expected trackId %q, got %+v", "gt7_watkins_glen_international", result.TrackID)
 		}
-		if result.LayoutID == nil || *result.LayoutID != "gt7_watkins_glen_long_course" {
-			t.Fatalf("expected layoutId %q, got %+v", "gt7_watkins_glen_long_course", result.LayoutID)
+		if result.LayoutID == nil || *result.LayoutID != "gt7_layout_1240" {
+			t.Fatalf("expected layoutId %q, got %+v", "gt7_layout_1240", result.LayoutID)
 		}
 		if result.TrackName == nil || *result.TrackName == "" {
 			t.Fatalf("expected non-nil trackName, got %+v", result.TrackName)

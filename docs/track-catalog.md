@@ -66,11 +66,12 @@ The machine-readable schema is in `docs/track-catalog.schema.json`.
 - `catalogVersion` is required and must be `telemetry-one.track-catalog.v1`.
 - Track, layout, and corner IDs must be globally unique within a catalog.
 - Track, layout, sector, and corner names are required because downstream APIs must not source these names from UDP telemetry.
-- Corner `definitionMode` is required. In the MVP, usable corner ranges must be `catalog_manual`; `auto_detected_future` is reserved documentation for a later automatic-detection contract and is rejected by the current Go validator.
+- Corner `definitionMode` is required. In the MVP, usable corner ranges must be `catalog_manual`. `catalog_enumerated` is allowed only for ordinal `Corner 1`..`Corner N` entries generated from a sourced corner count; those entries must not carry `startMeters`, `apexMeters`, or `endMeters` ranges. `auto_detected_future` is reserved documentation for a later automatic-detection contract and is rejected by the current Go validator.
 - `sources` is optional for synthetic/dev fixtures, but any declared source must include `url`, `sourceType`, and `retrievedAt`.
 - Layout `lengthMeters` must be greater than zero.
 - Sector ranges must satisfy `0 <= startMeters < endMeters <= lengthMeters`.
-- Corner ranges normally satisfy `0 <= startMeters < apexMeters < endMeters <= lengthMeters`.
+- Manual corner ranges normally satisfy `0 <= startMeters < apexMeters < endMeters <= lengthMeters`.
+- Enumerated corners are non-spatial metadata only. They use generated display labels like `Corner 1`, `Corner 2`, etc., and keep all distance fields at `0` because the current source does not provide reliable corner ranges, names, apexes, or centerline geometry.
 - A closed-loop corner may wrap across start/finish by using `startMeters > endMeters`. In that case the corner must be the final corner in distance order, its apex must be inside the wrapped interval (`apexMeters >= startMeters` or `apexMeters < endMeters`), and its early-lap portion must not overlap the first corner.
 - `centerLine` is optional. When present, it must contain at least two finite points, start at `accumulatedMeters: 0`, increase monotonically, stay within `lengthMeters`, and avoid zero-length consecutive geometry.
 - Sectors and corners must be listed in increasing distance order and must not overlap with the previous range of the same type.
@@ -88,13 +89,14 @@ Boundary semantics are explicit:
 - Layouts with no catalog corners resolve to `status: "no_corner"` with `reason: "catalog_has_no_corners"`.
 - Closed-loop resolution normalizes distances by layout length and supports final wrap-around corner ranges.
 - Open-layout resolution does not match wrap-around ranges.
-- Corners whose `definitionMode` is not `catalog_manual` are not authoritative in the MVP. If a future automatic definition reaches the resolver before its contract is implemented, resolution returns `status: "no_corner"` with `reason: "unsupported_corner_definition"` rather than emitting a corner name.
+- Corners whose `definitionMode` is not `catalog_manual` are not spatially resolvable in the MVP. If a layout has only `catalog_enumerated` entries, current-corner resolution returns `status: "no_corner"` with `reason: "catalog_has_enumerated_corners"` because there are no ranges to match. If a future automatic definition reaches the resolver before its contract is implemented, resolution returns `status: "no_corner"` with `reason: "unsupported_corner_definition"` rather than emitting a corner name.
 
 ## Manual MVP vs Future Automatic Corner Detection
 
 Phase 4.5 separates two concepts that must not be conflated:
 
 - `catalog_manual`: the only supported MVP mode. A human-curated catalog entry provides the corner range, name, ID, and provenance. Resolver and analysis engines may emit these IDs/names after normal catalog/source-of-truth validation.
+- `catalog_enumerated`: a generated ordinal entry created from a provenance-backed `NumCorners` value. It can support UI/advice copy such as "Corner 7" but is not a named corner catalog and cannot be resolved from distance until reliable ranges or geometry are added.
 - `auto_detected_future`: a reserved future mode for algorithmically detected candidate ranges. It is intentionally unsupported in catalog v1 runtime validation and cannot emit corner names without catalog provenance.
 
 Automatic detection may later propose anonymous or candidate ranges, but it must not become a source of official track/corner naming by itself. Names remain catalog metadata, not GT7 UDP output and not inferred geometry labels.
@@ -112,20 +114,24 @@ Source-of-truth validation requires every emitted display-name owner to be prove
 
 Each source must include `url`, `sourceType`, and `retrievedAt`. GT7 UDP telemetry is never a source for track, layout, sector, or corner names. If metadata lacks provenance, consumers must keep the selected display name unknown rather than inventing or copying a heuristic label.
 
-## Official GT7 Seed
+## Official GT7 / gt7info Seed
 
-`testdata/catalogs/gt7_official_seed_catalog.json` is the first small curated seed for GT7. It uses only official Gran Turismo pages as source material:
+`OfficialGT7SeedCatalog()` is a curated GT7 seed for runtime detection. It combines the public Gran Turismo tracklist page and its generated JS asset as the first-party source of layout ID, name, length, and corner count, with the upstream gt7info `course.csv` data source as a secondary cross-check:
 
-- `https://www.gran-turismo.com/us/news/00_5302315.html` for Watkins Glen International and Watkins Glen Long Course metadata.
-- `https://www.gran-turismo.com/us/news/00_4185758.html` for Yas Marina Circuit and Circuit Gilles-Villeneuve metadata.
+- `https://www.gran-turismo.com/gb/gt7/tracklist/` as the public entrypoint for the generated GT7 tracklist assets.
+- `https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js` as the generated catalog asset containing machine-readable layout metadata.
+- `https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks-id-list.gb-Dnd6PD5F.js` as the companion public asset for published GT7 track and layout IDs.
+- `https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv` retrieved on `2026-07-15` as the secondary GT7 seed cross-check for layout IDs, names, lengths, and `NumCorners`.
 
-The seed intentionally leaves `sectors` and `corners` empty. The official pages used here provide track/layout names and some layout-level facts such as total length, elevation change, number of corners, and longest straight, but they do not provide an official corner-name catalog or sector boundaries. Telemetry One must not backfill those fields from GT7 UDP or fan-maintained sources.
+The seed imports a representative subset rather than the full CSV in this PR. It includes common layouts plus candidates near the observed `3664m` lap-length problem: WeatherTech Raceway Laguna Seca (`3602m`), Nurburgring Sprint (`3629m`), Autodrome Lago Maggiore East/East Reverse (`3643m`), and Lake Louise Long/Long Reverse (`3694m`). This prevents the length-only detector from falsely selecting Watkins Glen for a roughly `3664m` lap; the current policy is to return `ambiguous` with nearest candidate evidence when multiple sourced layouts are similarly close.
 
-The seed also intentionally leaves `centerLine` empty. Phase 4.1 adds generic geometry infrastructure for distance/progress over a provided centerline, but the official GT7 layouts currently do not have source-backed sampled centerline geometry.
+The seed intentionally leaves `sectors` empty. It also keeps `centerLine` empty. Neither the official tracklist assets nor `course.csv` provide reliable sector boundaries, sampled centerline geometry, corner ranges, apex positions, or corner names.
 
-Because the official GT7 seed has no sourced corner catalog, Phase 4.3 current-corner resolution returns `no_corner` for official seed layouts until sourced corner ranges and names are added. This is intentional: Telemetry One prefers an explicit unknown/no-corner state over invented corner names.
+`NumCorners` is used only to create `catalog_enumerated` corner entries named exactly `Corner 1`, `Corner 2`, etc. Telemetry One must not invent named corners beyond those ordinal labels. These generated entries have provenance back to `course.csv`, but they are not manually named and are not spatially resolvable.
 
-Watkins Glen Short Course is confirmed by the official Update 1.17 page as an available layout, but this seed does not include it yet because the cited page does not provide a separate Short Course length and v1 catalog validation requires `lengthMeters`.
+Because the GT7 seed has only enumerated corner counts and no sourced corner ranges, Phase 4.3 current-corner resolution returns `no_corner` for official seed layouts until sourced corner ranges or reliable geometry are added. This is intentional: Telemetry One prefers an explicit no-current-corner state over pretending that `Corner N` can be inferred from distance without geometry.
+
+Watkins Glen Short Course is included from `course.csv` with GT7 layout ID `1264`, length `3942m`, and `7` enumerated corners. The official Update 1.17 page confirms the layout exists, but the separate Short Course length used here comes from `course.csv`.
 
 ## Synthetic Fixture
 
@@ -167,7 +173,7 @@ Assumptions and limitations:
 
 Phase 3.3 adds a conservative deterministic detector that compares retained session frames against catalog layout lengths. It requires enough retained frames and an observed completed lap, currently inferred from a lap number increment. When the observed lap length is within the configured tolerance for exactly one catalog layout and confidence meets the configured minimum, the detector returns `status: "detected"`, the catalog `trackId`, `layoutId`, catalog-owned names, confidence, evidence, and `nextAction: "use_detected_catalog_layout"`.
 
-Because the official GT7 seed does not include sampled centerlines, curvature signatures, elevation profiles, sector boundaries, or corner catalogs yet, this detector does not infer geometry or corner metadata. Length-only evidence is intentionally capped below high-confidence geometric recognition. If there are too few frames, no completed lap, no layout within tolerance, a candidate below the minimum confidence, or multiple similarly plausible layouts, the detector returns an explicit fallback state with evidence instead of pretending certainty.
+Because the GT7 seed does not include sampled centerlines, curvature signatures, elevation profiles, sector boundaries, or spatial corner catalogs yet, this detector does not infer geometry or current-corner metadata. Length-only evidence is intentionally capped below high-confidence geometric recognition. If there are too few frames, no completed lap, no layout within tolerance, a candidate below the minimum confidence, or multiple similarly plausible layouts, the detector returns an explicit fallback state with evidence instead of pretending certainty.
 
 Fallback state contract:
 
@@ -182,7 +188,7 @@ For all fallback states, `trackId`, `layoutId`, `trackName`, and `layoutName` ar
 
 The detector never reads track or corner names from GT7 UDP telemetry. Names are only included when a matched catalog entry provides them.
 
-As of Phase 3.5, the detector only selects candidates whose track and layout names have complete catalog provenance. Fallback candidate evidence is diagnostic only and never contains selected names. The official GT7 seed has no sector or corner entries, so current detection responses intentionally emit no sector or corner names.
+As of Phase 3.5, the detector only selects candidates whose track and layout names have complete catalog provenance. Fallback candidate evidence is diagnostic only and never contains selected names. The GT7 seed has no sector entries and only non-spatial enumerated corner counts, so current detection responses intentionally emit no sector or corner names.
 
 ## Tradeoffs
 

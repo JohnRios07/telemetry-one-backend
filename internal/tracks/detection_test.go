@@ -44,7 +44,7 @@ func TestDetectTrackMatchesObservedLapLengthWithinTolerance(t *testing.T) {
 	if result.Status != DetectionStatusDetected {
 		t.Fatalf("expected detected status, got %+v", result)
 	}
-	if result.TrackID == nil || *result.TrackID != "gt7_watkins_glen_international" || result.LayoutID == nil || *result.LayoutID != "gt7_watkins_glen_long_course" {
+	if result.TrackID == nil || *result.TrackID != "gt7_watkins_glen_international" || result.LayoutID == nil || *result.LayoutID != "gt7_layout_1240" {
 		t.Fatalf("unexpected match ids: %+v", result)
 	}
 	if result.TrackName == nil || *result.TrackName != "Watkins Glen International" || result.LayoutName == nil || *result.LayoutName != "Watkins Glen Long Course" {
@@ -112,7 +112,7 @@ func TestDetectTrackDoesNotSelectUnsourcedCatalogNames(t *testing.T) {
 	}
 }
 
-func TestDetectTrackDoesNotEmitSectorOrCornerNamesWhenCatalogLacksThem(t *testing.T) {
+func TestDetectTrackDoesNotEmitSectorOrCornerNamesFromDetection(t *testing.T) {
 	result := DetectTrack(straightCompletedLapFrames(5423, 32), OfficialGT7SeedCatalog(), DetectionOptions{})
 	encoded, err := json.Marshal(result)
 	if err != nil {
@@ -135,7 +135,7 @@ func TestDetectTrackReturnsAmbiguousStatusForSimilarLengths(t *testing.T) {
 		},
 	}
 
-	result := DetectTrack(straightCompletedLapFrames(1000, 25), catalog, DetectionOptions{})
+	result := DetectTrack(straightCompletedLapFrames(1000.5, 25), catalog, DetectionOptions{})
 
 	if result.Status != DetectionStatusAmbiguous {
 		t.Fatalf("expected ambiguous result, got %+v", result)
@@ -146,8 +146,27 @@ func TestDetectTrackReturnsAmbiguousStatusForSimilarLengths(t *testing.T) {
 	if result.TrackName != nil || result.LayoutName != nil {
 		t.Fatalf("expected candidate evidence not to become selected names, got %+v", result)
 	}
-	if len(result.Evidence) != 1 || result.Evidence[0].Reason != DetectionReasonAmbiguousLength {
+	if len(result.Evidence) != 2 || result.Evidence[0].Reason != DetectionReasonAmbiguousLength || result.Evidence[1].Reason != DetectionReasonAmbiguousLength {
 		t.Fatalf("expected ambiguous length evidence, got %+v", result.Evidence)
+	}
+}
+
+func TestDetectTrackDoesNotSelectWatkinsGlenForObserved3664Meters(t *testing.T) {
+	result := DetectTrack(straightCompletedLapFrames(3664, 32), OfficialGT7SeedCatalog(), DetectionOptions{})
+
+	if result.Status != DetectionStatusAmbiguous {
+		t.Fatalf("expected 3664m observation to be ambiguous among close GT7 candidates, got %+v", result)
+	}
+	if result.TrackID != nil || result.LayoutID != nil || result.TrackName != nil || result.LayoutName != nil {
+		t.Fatalf("expected ambiguous 3664m result not to select a layout, got %+v", result)
+	}
+	if len(result.Evidence) == 0 {
+		t.Fatalf("expected 3664m ambiguous result to include nearest candidate evidence")
+	}
+	for _, evidence := range result.Evidence {
+		if evidence.TrackID == "gt7_watkins_glen_international" {
+			t.Fatalf("expected 3664m candidates not to include Watkins Glen, got %+v", result.Evidence)
+		}
 	}
 }
 
@@ -166,7 +185,7 @@ func TestDetectTrackReturnsLowConfidenceFallbackBelowMinimum(t *testing.T) {
 }
 
 func TestDetectTrackDoesNotInventNamesForUnknown(t *testing.T) {
-	result := DetectTrack(straightCompletedLapFrames(7000, 32), OfficialGT7SeedCatalog(), DetectionOptions{})
+	result := DetectTrack(straightCompletedLapFrames(30000, 32), OfficialGT7SeedCatalog(), DetectionOptions{})
 
 	if result.Status != DetectionStatusUnknown {
 		t.Fatalf("expected unknown status, got %+v", result)
@@ -186,27 +205,20 @@ func TestDetectTrackOutputIsDeterministic(t *testing.T) {
 	}
 }
 
-func TestOfficialGT7SeedCatalogMatchesFixture(t *testing.T) {
-	fixture := loadCatalogFixture(t, "../../testdata/catalogs/gt7_official_seed_catalog.json")
+func TestOfficialGT7SeedCatalogIncludesCuratedGT7InfoSubset(t *testing.T) {
 	seed := OfficialGT7SeedCatalog()
 
 	if err := seed.Validate(); err != nil {
 		t.Fatalf("expected embedded official seed to validate, got %v", err)
 	}
-	if len(seed.Tracks) != len(fixture.Tracks) {
-		t.Fatalf("expected seed track count to match fixture")
+
+	watkinsShort := requireLayout(t, seed, "gt7_layout_1264")
+	if watkinsShort.Name != "Watkins Glen Short Course" || watkinsShort.LengthMeters != 3942 || len(watkinsShort.Corners) != 7 {
+		t.Fatalf("expected Watkins Glen Short Course from gt7info subset, got %+v", watkinsShort)
 	}
-	for i, track := range seed.Tracks {
-		fixtureTrack := fixture.Tracks[i]
-		if track.ID != fixtureTrack.ID || track.Name != fixtureTrack.Name || track.Country != fixtureTrack.Country || len(track.Layouts) != len(fixtureTrack.Layouts) {
-			t.Fatalf("seed track differs from fixture: got %+v want %+v", track, fixtureTrack)
-		}
-		for j, layout := range track.Layouts {
-			fixtureLayout := fixtureTrack.Layouts[j]
-			if layout.ID != fixtureLayout.ID || layout.Name != fixtureLayout.Name || layout.LengthMeters != fixtureLayout.LengthMeters || len(layout.Sectors) != 0 || len(layout.Corners) != 0 {
-				t.Fatalf("seed layout differs from fixture: got %+v want %+v", layout, fixtureLayout)
-			}
-		}
+	nurburgringSprint := requireLayout(t, seed, "gt7_layout_1248")
+	if nurburgringSprint.Name != "Nurburgring Sprint" || nurburgringSprint.LengthMeters != 3629 || len(nurburgringSprint.Corners) != 12 {
+		t.Fatalf("expected Nurburgring Sprint 3664m-neighbor metadata, got %+v", nurburgringSprint)
 	}
 }
 

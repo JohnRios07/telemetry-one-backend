@@ -1,7 +1,7 @@
 {
   "catalogVersion": "telemetry-one.track-catalog.v1",
-  "generatedBy": "telemetry-one manual official-source seed",
-  "notes": "Initial GT7 seed curated only from official Gran Turismo URLs. Corners and sectors are intentionally empty because the cited official pages do not provide corner-name catalogs or sector boundaries.",
+  "generatedBy": "telemetry-one curated GT7 tracklist asset seed",
+  "notes": "Curated GT7 layout metadata from the official Gran Turismo tracklist asset, cross-checked against gt7info course.csv. Corners are generated as ordinal Corner 1..N entries from NumCorners only; sectors and centerLine are intentionally empty because neither source provides reliable sector boundaries or sampled layout geometry.",
   "tracks": [
     {
       "id": "gt7_watkins_glen_international",
@@ -9,27 +9,392 @@
       "country": "United States",
       "sources": [
         {
-          "url": "https://www.gran-turismo.com/us/news/00_5302315.html",
-          "sourceType": "official_gran_turismo_news",
+          "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+          "sourceType": "official_gran_turismo_tracklist_asset",
           "retrievedAt": "2026-07-12",
-          "note": "official Gran Turismo source"
+          "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+          "sourceType": "gt7info_course_csv",
+          "retrievedAt": "2026-07-15",
+          "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
         }
       ],
       "layouts": [
         {
-          "id": "gt7_watkins_glen_long_course",
+          "id": "gt7_layout_1240",
           "name": "Watkins Glen Long Course",
           "lengthMeters": 5423,
           "sources": [
             {
-              "url": "https://www.gran-turismo.com/us/news/00_5302315.html",
-              "sourceType": "official_gran_turismo_news",
+              "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+              "sourceType": "official_gran_turismo_tracklist_asset",
               "retrievedAt": "2026-07-12",
-              "note": "official Gran Turismo source"
+              "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+            },
+            {
+              "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+              "sourceType": "gt7info_course_csv",
+              "retrievedAt": "2026-07-15",
+              "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
             }
           ],
           "sectors": [],
-          "corners": []
+          "corners": [
+            {
+              "id": "gt7_layout_1240_corner_1",
+              "number": 1,
+              "name": "Corner 1",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+                  "sourceType": "official_gran_turismo_tracklist_asset",
+                  "retrievedAt": "2026-07-12",
+                  "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+                },
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_1240_corner_2",
+              "number": 2,
+              "name": "Corner 2",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+                  "sourceType": "official_gran_turismo_tracklist_asset",
+                  "retrievedAt": "2026-07-12",
+                  "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+                },
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_1240_corner_3",
+              "number": 3,
+              "name": "Corner 3",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+                  "sourceType": "official_gran_turismo_tracklist_asset",
+                  "retrievedAt": "2026-07-12",
+                  "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+                },
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_1240_corner_4",
+              "number": 4,
+              "name": "Corner 4",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+                  "sourceType": "official_gran_turismo_tracklist_asset",
+                  "retrievedAt": "2026-07-12",
+                  "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+                },
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_1240_corner_5",
+              "number": 5,
+              "name": "Corner 5",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+                  "sourceType": "official_gran_turismo_tracklist_asset",
+                  "retrievedAt": "2026-07-12",
+                  "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+                },
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_1240_corner_6",
+              "number": 6,
+              "name": "Corner 6",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+                  "sourceType": "official_gran_turismo_tracklist_asset",
+                  "retrievedAt": "2026-07-12",
+                  "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+                },
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_1240_corner_7",
+              "number": 7,
+              "name": "Corner 7",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+                  "sourceType": "official_gran_turismo_tracklist_asset",
+                  "retrievedAt": "2026-07-12",
+                  "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+                },
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_1240_corner_8",
+              "number": 8,
+              "name": "Corner 8",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+                  "sourceType": "official_gran_turismo_tracklist_asset",
+                  "retrievedAt": "2026-07-12",
+                  "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+                },
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_1240_corner_9",
+              "number": 9,
+              "name": "Corner 9",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+                  "sourceType": "official_gran_turismo_tracklist_asset",
+                  "retrievedAt": "2026-07-12",
+                  "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+                },
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_1240_corner_10",
+              "number": 10,
+              "name": "Corner 10",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+                  "sourceType": "official_gran_turismo_tracklist_asset",
+                  "retrievedAt": "2026-07-12",
+                  "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+                },
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_1240_corner_11",
+              "number": 11,
+              "name": "Corner 11",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+                  "sourceType": "official_gran_turismo_tracklist_asset",
+                  "retrievedAt": "2026-07-12",
+                  "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+                },
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "gt7_layout_1264",
+          "name": "Watkins Glen Short Course",
+          "lengthMeters": 3942,
+          "sources": [
+            {
+              "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+              "sourceType": "gt7info_course_csv",
+              "retrievedAt": "2026-07-15",
+              "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+            }
+          ],
+          "sectors": [],
+          "corners": [
+            {
+              "id": "gt7_layout_1264_corner_1",
+              "number": 1,
+              "name": "Corner 1",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_1264_corner_2",
+              "number": 2,
+              "name": "Corner 2",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_1264_corner_3",
+              "number": 3,
+              "name": "Corner 3",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_1264_corner_4",
+              "number": 4,
+              "name": "Corner 4",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_1264_corner_5",
+              "number": 5,
+              "name": "Corner 5",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_1264_corner_6",
+              "number": 6,
+              "name": "Corner 6",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_1264_corner_7",
+              "number": 7,
+              "name": "Corner 7",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            }
+          ]
         }
       ]
     },
@@ -39,56 +404,713 @@
       "country": "United Arab Emirates",
       "sources": [
         {
-          "url": "https://www.gran-turismo.com/us/news/00_4185758.html",
-          "sourceType": "official_gran_turismo_news",
+          "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+          "sourceType": "official_gran_turismo_tracklist_asset",
           "retrievedAt": "2026-07-12",
-          "note": "official Gran Turismo source"
+          "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+          "sourceType": "gt7info_course_csv",
+          "retrievedAt": "2026-07-15",
+          "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
         }
       ],
       "layouts": [
         {
-          "id": "gt7_yas_marina_full_course",
-          "name": "Full Course",
+          "id": "gt7_layout_2003",
+          "name": "Yas Marina Circuit",
           "lengthMeters": 5281,
           "sources": [
             {
-              "url": "https://www.gran-turismo.com/us/news/00_4185758.html",
-              "sourceType": "official_gran_turismo_news",
+              "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+              "sourceType": "official_gran_turismo_tracklist_asset",
               "retrievedAt": "2026-07-12",
-              "note": "official Gran Turismo source"
+              "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+            },
+            {
+              "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+              "sourceType": "gt7info_course_csv",
+              "retrievedAt": "2026-07-15",
+              "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
             }
           ],
           "sectors": [],
-          "corners": []
+          "corners": [
+            {
+              "id": "gt7_layout_2003_corner_1",
+              "number": 1,
+              "name": "Corner 1",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+                  "sourceType": "official_gran_turismo_tracklist_asset",
+                  "retrievedAt": "2026-07-12",
+                  "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+                },
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_2003_corner_2",
+              "number": 2,
+              "name": "Corner 2",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+                  "sourceType": "official_gran_turismo_tracklist_asset",
+                  "retrievedAt": "2026-07-12",
+                  "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+                },
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_2003_corner_3",
+              "number": 3,
+              "name": "Corner 3",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+                  "sourceType": "official_gran_turismo_tracklist_asset",
+                  "retrievedAt": "2026-07-12",
+                  "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+                },
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_2003_corner_4",
+              "number": 4,
+              "name": "Corner 4",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+                  "sourceType": "official_gran_turismo_tracklist_asset",
+                  "retrievedAt": "2026-07-12",
+                  "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+                },
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_2003_corner_5",
+              "number": 5,
+              "name": "Corner 5",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+                  "sourceType": "official_gran_turismo_tracklist_asset",
+                  "retrievedAt": "2026-07-12",
+                  "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+                },
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_2003_corner_6",
+              "number": 6,
+              "name": "Corner 6",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+                  "sourceType": "official_gran_turismo_tracklist_asset",
+                  "retrievedAt": "2026-07-12",
+                  "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+                },
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_2003_corner_7",
+              "number": 7,
+              "name": "Corner 7",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+                  "sourceType": "official_gran_turismo_tracklist_asset",
+                  "retrievedAt": "2026-07-12",
+                  "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+                },
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_2003_corner_8",
+              "number": 8,
+              "name": "Corner 8",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+                  "sourceType": "official_gran_turismo_tracklist_asset",
+                  "retrievedAt": "2026-07-12",
+                  "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+                },
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_2003_corner_9",
+              "number": 9,
+              "name": "Corner 9",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+                  "sourceType": "official_gran_turismo_tracklist_asset",
+                  "retrievedAt": "2026-07-12",
+                  "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+                },
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_2003_corner_10",
+              "number": 10,
+              "name": "Corner 10",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+                  "sourceType": "official_gran_turismo_tracklist_asset",
+                  "retrievedAt": "2026-07-12",
+                  "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+                },
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_2003_corner_11",
+              "number": 11,
+              "name": "Corner 11",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+                  "sourceType": "official_gran_turismo_tracklist_asset",
+                  "retrievedAt": "2026-07-12",
+                  "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+                },
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_2003_corner_12",
+              "number": 12,
+              "name": "Corner 12",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+                  "sourceType": "official_gran_turismo_tracklist_asset",
+                  "retrievedAt": "2026-07-12",
+                  "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+                },
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_2003_corner_13",
+              "number": 13,
+              "name": "Corner 13",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+                  "sourceType": "official_gran_turismo_tracklist_asset",
+                  "retrievedAt": "2026-07-12",
+                  "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+                },
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_2003_corner_14",
+              "number": 14,
+              "name": "Corner 14",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+                  "sourceType": "official_gran_turismo_tracklist_asset",
+                  "retrievedAt": "2026-07-12",
+                  "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+                },
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_2003_corner_15",
+              "number": 15,
+              "name": "Corner 15",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+                  "sourceType": "official_gran_turismo_tracklist_asset",
+                  "retrievedAt": "2026-07-12",
+                  "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+                },
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_2003_corner_16",
+              "number": 16,
+              "name": "Corner 16",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+                  "sourceType": "official_gran_turismo_tracklist_asset",
+                  "retrievedAt": "2026-07-12",
+                  "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+                },
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            }
+          ]
         }
       ]
     },
     {
       "id": "gt7_circuit_gilles_villeneuve",
       "name": "Circuit Gilles-Villeneuve",
+      "country": "Canada",
       "sources": [
         {
-          "url": "https://www.gran-turismo.com/us/news/00_4185758.html",
-          "sourceType": "official_gran_turismo_news",
+          "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+          "sourceType": "official_gran_turismo_tracklist_asset",
           "retrievedAt": "2026-07-12",
-          "note": "official Gran Turismo source"
+          "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+          "sourceType": "gt7info_course_csv",
+          "retrievedAt": "2026-07-15",
+          "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
         }
       ],
       "layouts": [
         {
-          "id": "gt7_circuit_gilles_villeneuve_full_course",
-          "name": "Full Course",
+          "id": "gt7_layout_2004",
+          "name": "Circuit Gilles-Villeneuve",
           "lengthMeters": 4361,
           "sources": [
             {
-              "url": "https://www.gran-turismo.com/us/news/00_4185758.html",
-              "sourceType": "official_gran_turismo_news",
+              "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+              "sourceType": "official_gran_turismo_tracklist_asset",
               "retrievedAt": "2026-07-12",
-              "note": "official Gran Turismo source"
+              "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+            },
+            {
+              "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+              "sourceType": "gt7info_course_csv",
+              "retrievedAt": "2026-07-15",
+              "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
             }
           ],
           "sectors": [],
-          "corners": []
+          "corners": [
+            {
+              "id": "gt7_layout_2004_corner_1",
+              "number": 1,
+              "name": "Corner 1",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+                  "sourceType": "official_gran_turismo_tracklist_asset",
+                  "retrievedAt": "2026-07-12",
+                  "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+                },
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_2004_corner_2",
+              "number": 2,
+              "name": "Corner 2",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+                  "sourceType": "official_gran_turismo_tracklist_asset",
+                  "retrievedAt": "2026-07-12",
+                  "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+                },
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_2004_corner_3",
+              "number": 3,
+              "name": "Corner 3",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+                  "sourceType": "official_gran_turismo_tracklist_asset",
+                  "retrievedAt": "2026-07-12",
+                  "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+                },
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_2004_corner_4",
+              "number": 4,
+              "name": "Corner 4",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+                  "sourceType": "official_gran_turismo_tracklist_asset",
+                  "retrievedAt": "2026-07-12",
+                  "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+                },
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_2004_corner_5",
+              "number": 5,
+              "name": "Corner 5",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+                  "sourceType": "official_gran_turismo_tracklist_asset",
+                  "retrievedAt": "2026-07-12",
+                  "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+                },
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_2004_corner_6",
+              "number": 6,
+              "name": "Corner 6",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+                  "sourceType": "official_gran_turismo_tracklist_asset",
+                  "retrievedAt": "2026-07-12",
+                  "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+                },
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_2004_corner_7",
+              "number": 7,
+              "name": "Corner 7",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+                  "sourceType": "official_gran_turismo_tracklist_asset",
+                  "retrievedAt": "2026-07-12",
+                  "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+                },
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_2004_corner_8",
+              "number": 8,
+              "name": "Corner 8",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+                  "sourceType": "official_gran_turismo_tracklist_asset",
+                  "retrievedAt": "2026-07-12",
+                  "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+                },
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_2004_corner_9",
+              "number": 9,
+              "name": "Corner 9",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+                  "sourceType": "official_gran_turismo_tracklist_asset",
+                  "retrievedAt": "2026-07-12",
+                  "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+                },
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_2004_corner_10",
+              "number": 10,
+              "name": "Corner 10",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+                  "sourceType": "official_gran_turismo_tracklist_asset",
+                  "retrievedAt": "2026-07-12",
+                  "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+                },
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_2004_corner_11",
+              "number": 11,
+              "name": "Corner 11",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+                  "sourceType": "official_gran_turismo_tracklist_asset",
+                  "retrievedAt": "2026-07-12",
+                  "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+                },
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_2004_corner_12",
+              "number": 12,
+              "name": "Corner 12",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+                  "sourceType": "official_gran_turismo_tracklist_asset",
+                  "retrievedAt": "2026-07-12",
+                  "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+                },
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_2004_corner_13",
+              "number": 13,
+              "name": "Corner 13",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+                  "sourceType": "official_gran_turismo_tracklist_asset",
+                  "retrievedAt": "2026-07-12",
+                  "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+                },
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            },
+            {
+              "id": "gt7_layout_2004_corner_14",
+              "number": 14,
+              "name": "Corner 14",
+              "definitionMode": "catalog_enumerated",
+              "confidence": 1,
+              "sources": [
+                {
+                  "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+                  "sourceType": "official_gran_turismo_tracklist_asset",
+                  "retrievedAt": "2026-07-12",
+                  "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+                },
+                {
+                  "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+                  "sourceType": "gt7info_course_csv",
+                  "retrievedAt": "2026-07-15",
+                  "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+                }
+              ]
+            }
+          ]
         }
       ]
     }

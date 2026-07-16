@@ -88,9 +88,9 @@
         "number": { "type": "integer", "minimum": 0 },
         "name": { "type": "string", "minLength": 1 },
         "definitionMode": {
-          "description": "MVP corner ranges and names are manually curated catalog metadata only. auto_detected_future is reserved for a later contract and is not accepted as authoritative by the current Go validator or corner engines.",
+          "description": "MVP corner ranges and names are manually curated catalog metadata only. catalog_enumerated entries are ordinal Corner 1..N labels generated from a sourced corner count and are not spatially resolvable. auto_detected_future is reserved for a later contract and is not accepted as authoritative by the current Go validator or corner engines.",
           "type": "string",
-          "enum": ["catalog_manual", "auto_detected_future"]
+          "enum": ["catalog_manual", "catalog_enumerated", "auto_detected_future"]
         },
         "startMeters": { "type": "number", "minimum": 0 },
         "apexMeters": { "type": "number", "minimum": 0 },
