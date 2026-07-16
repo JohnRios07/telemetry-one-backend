@@ -866,6 +866,171 @@ func TestIngestFramesDoesNotAttachRefsBeforeLapOneBegins(t *testing.T) {
 	}
 }
 
+func TestIngestFramesPersistsDetectedTrackLayoutOnSession(t *testing.T) {
+	store := telemetry.NewFrameStore(64)
+	eventStore := events.NewStore(100, events.DedupOptions{})
+	catalog := tracks.OfficialGT7SeedCatalog()
+	sessionRepo := sessions.NewMemoryRepository()
+	seedTestSession(t, sessionRepo, "session-detect-persist")
+	handler := routesWithSessionRepository(
+		config.Config{Addr: ":0", Env: "test"},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		store, catalog, eventStore, sessionRepo,
+	)
+
+	const lengthMeters = 5423.0
+	const count = 34
+	body := ingestFrameBatchBody(lengthMeters, count)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/session-detect-persist/frames", bytes.NewReader(body))
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("expected status %d, got %d body %s", http.StatusAccepted, recorder.Code, recorder.Body.String())
+	}
+
+	session, err := sessionRepo.FindByID(context.Background(), "session-detect-persist")
+	if err != nil {
+		t.Fatalf("find session: %v", err)
+	}
+	if session.DetectedTrackID != "gt7_watkins_glen_international" {
+		t.Fatalf("expected detectedTrackId gt7_watkins_glen_international, got %q", session.DetectedTrackID)
+	}
+	if session.DetectedLayoutID != "gt7_layout_1240" {
+		t.Fatalf("expected detectedLayoutId gt7_layout_1240, got %q", session.DetectedLayoutID)
+	}
+
+	summaryRepo := sessions.NewMemorySummaryRepository(sessionRepo, store, eventStore)
+	summary, err := summaryRepo.Summary(context.Background(), "session-detect-persist")
+	if err != nil {
+		t.Fatalf("summary: %v", err)
+	}
+	if summary.Session.DetectedTrackID == nil || *summary.Session.DetectedTrackID != "gt7_watkins_glen_international" {
+		t.Fatalf("expected detectedTrackId in summary, got %+v", summary.Session.DetectedTrackID)
+	}
+	if summary.Session.DetectedLayoutID == nil || *summary.Session.DetectedLayoutID != "gt7_layout_1240" {
+		t.Fatalf("expected detectedLayoutId in summary, got %+v", summary.Session.DetectedLayoutID)
+	}
+
+	listResp, err := summaryRepo.List(context.Background(), sessions.SummaryFilter{Limit: 10})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	var found bool
+	for _, item := range listResp.Sessions {
+		if item.ID == "session-detect-persist" {
+			found = true
+			if item.DetectedTrackID == nil || *item.DetectedTrackID != "gt7_watkins_glen_international" {
+				t.Fatalf("expected detectedTrackId in list, got %+v", item.DetectedTrackID)
+			}
+			if item.DetectedLayoutID == nil || *item.DetectedLayoutID != "gt7_layout_1240" {
+				t.Fatalf("expected detectedLayoutId in list, got %+v", item.DetectedLayoutID)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("expected session-detect-persist in list response")
+	}
+}
+
+func TestIngestFramesDoesNotPersistDetectedBeforeLapOne(t *testing.T) {
+	store := telemetry.NewFrameStore(64)
+	eventStore := events.NewStore(100, events.DedupOptions{})
+	catalog := tracks.OfficialGT7SeedCatalog()
+	sessionRepo := sessions.NewMemoryRepository()
+	seedTestSession(t, sessionRepo, "session-prerace-nopersist")
+	handler := routesWithSessionRepository(
+		config.Config{Addr: ":0", Env: "test"},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		store, catalog, eventStore, sessionRepo,
+	)
+
+	const count = 10
+	frames := make([]telemetry.Frame, count)
+	for i := 0; i < count; i++ {
+		frames[i] = telemetry.Frame{
+			TimestampUnixMs: int64(i + 1),
+			LapNumber:       0,
+			IsOnTrack:       true,
+			PositionX:       float64(i) * 100,
+			PositionY:       5.6,
+			PositionZ:       789.1,
+			SpeedMps:        58.33,
+			RPM:             7100,
+			Gear:            4,
+			Throttle:        0.7,
+			Brake:           0,
+			Steering:        -0.1,
+			FuelLiters:      38.4,
+		}
+	}
+	body, _ := json.Marshal(telemetry.IngestBatchRequest{Frames: frames})
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/session-prerace-nopersist/frames", bytes.NewReader(body))
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("expected status %d, got %d body %s", http.StatusAccepted, recorder.Code, recorder.Body.String())
+	}
+
+	session, err := sessionRepo.FindByID(context.Background(), "session-prerace-nopersist")
+	if err != nil {
+		t.Fatalf("find session: %v", err)
+	}
+	if session.DetectedTrackID != "" {
+		t.Fatalf("expected empty detectedTrackId before lap 1, got %q", session.DetectedTrackID)
+	}
+	if session.DetectedLayoutID != "" {
+		t.Fatalf("expected empty detectedLayoutId before lap 1, got %q", session.DetectedLayoutID)
+	}
+}
+
+func TestIngestFramesDoesNotOverrideManualTrackID(t *testing.T) {
+	store := telemetry.NewFrameStore(64)
+	eventStore := events.NewStore(100, events.DedupOptions{})
+	catalog := tracks.OfficialGT7SeedCatalog()
+	sessionRepo := sessions.NewMemoryRepository()
+	ctx := context.Background()
+	startedAt := time.UnixMilli(1720656000000).UTC()
+	sessionRepo.Create(ctx, sessions.Session{
+		ID: "session-manual-track", Source: "test", Game: "gt7",
+		Platform: "ps5", StartedAt: startedAt,
+		TrackID: "gt7_watkins_glen_international",
+	})
+	handler := routesWithSessionRepository(
+		config.Config{Addr: ":0", Env: "test"},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		store, catalog, eventStore, sessionRepo,
+	)
+
+	const lengthMeters = 5423.0
+	const count = 34
+	body := ingestFrameBatchBody(lengthMeters, count)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/session-manual-track/frames", bytes.NewReader(body))
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("expected status %d, got %d body %s", http.StatusAccepted, recorder.Code, recorder.Body.String())
+	}
+
+	session, err := sessionRepo.FindByID(ctx, "session-manual-track")
+	if err != nil {
+		t.Fatalf("find session: %v", err)
+	}
+	if session.DetectedTrackID != "" {
+		t.Fatalf("expected detectedTrackId to remain empty when manual TrackID is set, got %q", session.DetectedTrackID)
+	}
+	if session.DetectedLayoutID != "" {
+		t.Fatalf("expected detectedLayoutId to remain empty when manual TrackID is set, got %q", session.DetectedLayoutID)
+	}
+	if session.TrackID != "gt7_watkins_glen_international" {
+		t.Fatalf("expected manual TrackID to be preserved, got %q", session.TrackID)
+	}
+}
+
 func TestIngestFramesDoesNotAttachRefsForPendingDetection(t *testing.T) {
 	store := telemetry.NewFrameStore(64)
 	eventStore := events.NewStore(100, events.DedupOptions{})

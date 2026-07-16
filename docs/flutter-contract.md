@@ -541,7 +541,7 @@ Response DTO:
 }
 ```
 
-In memory mode, `frameBatches` is always `0`. `detectedTrackId` and `detectedLayoutId` are reserved and always omitted in the current implementation.
+In memory mode, `frameBatches` is always `0`. `detectedTrackId` and `detectedLayoutId` are populated when the ingest pipeline detects and persists track/layout IDs to the session after a completed lap is observed. They remain omitted when detection has not run, has not produced a confident result, or when an explicit `trackId` was set at session creation.
 
 ### Session Summary
 

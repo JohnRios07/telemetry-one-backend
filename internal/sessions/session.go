@@ -10,14 +10,16 @@ const (
 )
 
 type Session struct {
-	ID          string     `json:"id"`
-	Source      string     `json:"source,omitempty"`
-	Game        string     `json:"game,omitempty"`
-	Platform    string     `json:"platform,omitempty"`
-	DriverAlias string     `json:"driverAlias,omitempty"`
-	StartedAt   time.Time  `json:"startedAt"`
-	EndedAt     *time.Time `json:"endedAt,omitempty"`
-	TrackID     string     `json:"trackId,omitempty"`
+	ID               string     `json:"id"`
+	Source           string     `json:"source,omitempty"`
+	Game             string     `json:"game,omitempty"`
+	Platform         string     `json:"platform,omitempty"`
+	DriverAlias      string     `json:"driverAlias,omitempty"`
+	StartedAt        time.Time  `json:"startedAt"`
+	EndedAt          *time.Time `json:"endedAt,omitempty"`
+	TrackID          string     `json:"trackId,omitempty"`
+	DetectedTrackID  string     `json:"detectedTrackId,omitempty"`
+	DetectedLayoutID string     `json:"detectedLayoutId,omitempty"`
 }
 
 func (s Session) Status() Status {
@@ -83,7 +85,7 @@ func (r FinishRequest) EndedAt(now func() time.Time) time.Time {
 }
 
 func NewDTO(session Session, frameCount int, eventCount int) DTO {
-	return DTO{
+	dto := DTO{
 		ID:          session.ID,
 		Source:      session.Source,
 		Game:        session.Game,
@@ -97,6 +99,15 @@ func NewDTO(session Session, frameCount int, eventCount int) DTO {
 		FrameCount:  frameCount,
 		EventCount:  eventCount,
 	}
+	if session.DetectedTrackID != "" {
+		v := session.DetectedTrackID
+		dto.DetectedTrackID = &v
+	}
+	if session.DetectedLayoutID != "" {
+		v := session.DetectedLayoutID
+		dto.DetectedLayoutID = &v
+	}
+	return dto
 }
 
 func (r CreateRequest) Validate() error {

@@ -81,6 +81,24 @@ func (r *MemoryRepository) Update(_ context.Context, session Session) (Session, 
 	return cloneSession(session), nil
 }
 
+func (r *MemoryRepository) SetDetectedTrackLayout(_ context.Context, id string, trackID, layoutID string) (Session, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	session, ok := r.sessions[id]
+	if !ok {
+		return Session{}, ErrNotFound
+	}
+
+	if session.DetectedTrackID == "" && session.DetectedLayoutID == "" {
+		session.DetectedTrackID = trackID
+		session.DetectedLayoutID = layoutID
+		r.sessions[id] = cloneSession(session)
+	}
+
+	return cloneSession(session), nil
+}
+
 func (r *MemoryRepository) List(_ context.Context) ([]Session, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

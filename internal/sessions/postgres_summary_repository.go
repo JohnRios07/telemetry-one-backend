@@ -30,7 +30,8 @@ SELECT
 	s.started_at, s.ended_at,
 	COALESCE(fb.batches, 0),
 	COALESCE(fb.persisted, 0),
-	COALESCE(ee.event_count, 0)
+	COALESCE(ee.event_count, 0),
+	COALESCE(s.detected_track_id, ''), COALESCE(s.detected_layout_id, '')
 FROM sessions s
 LEFT JOIN LATERAL (
 	SELECT
@@ -83,7 +84,8 @@ SELECT
 	COALESCE(fb.time_end_ms, 0),
 	COALESCE(fb.laps, 0),
 	COALESCE(ee.event_count, 0),
-	COALESCE(al.audit_count, 0)
+	COALESCE(al.audit_count, 0),
+	COALESCE(s.detected_track_id, ''), COALESCE(s.detected_layout_id, '')
 FROM sessions s
 LEFT JOIN LATERAL (
 	SELECT
@@ -119,6 +121,7 @@ WHERE s.id = $1`
 	}
 	var eeCount, alCount int
 
+	var detectedTrackID, detectedLayoutID string
 	err := r.pool.QueryRow(ctx, query, sessionID).Scan(
 		&item.ID, &item.Source, &item.Game, &item.Platform,
 		&item.DriverAlias, &item.TrackID,
@@ -127,6 +130,7 @@ WHERE s.id = $1`
 		&fb.timeStart, &fb.timeEnd,
 		&fb.laps,
 		&eeCount, &alCount,
+		&detectedTrackID, &detectedLayoutID,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
@@ -148,6 +152,13 @@ WHERE s.id = $1`
 	item.FrameBatches = fb.batches
 	item.PersistedFrames = fb.persisted
 	item.EventCount = eeCount
+
+	if detectedTrackID != "" {
+		item.DetectedTrackID = &detectedTrackID
+	}
+	if detectedLayoutID != "" {
+		item.DetectedLayoutID = &detectedLayoutID
+	}
 
 	summary := &SessionDetailSummary{
 		Session:            item,
@@ -174,6 +185,7 @@ func scanSummaryItem(scanner summaryItemScanner) (SessionSummaryItem, error) {
 	var startedAt time.Time
 	var endedAt *time.Time
 	var frameBatches, persistedFrames, eventCount int
+	var detectedTrackID, detectedLayoutID string
 
 	if err := scanner.Scan(
 		&item.ID, &item.Source, &item.Game, &item.Platform,
@@ -181,6 +193,7 @@ func scanSummaryItem(scanner summaryItemScanner) (SessionSummaryItem, error) {
 		&startedAt, &endedAt,
 		&frameBatches, &persistedFrames,
 		&eventCount,
+		&detectedTrackID, &detectedLayoutID,
 	); err != nil {
 		return SessionSummaryItem{}, err
 	}
@@ -196,6 +209,13 @@ func scanSummaryItem(scanner summaryItemScanner) (SessionSummaryItem, error) {
 		d := endedAt.Sub(startedAt).Milliseconds()
 		item.DurationMs = &d
 		item.Status = StatusFinished
+	}
+
+	if detectedTrackID != "" {
+		item.DetectedTrackID = &detectedTrackID
+	}
+	if detectedLayoutID != "" {
+		item.DetectedLayoutID = &detectedLayoutID
 	}
 
 	return item, nil
