@@ -545,6 +545,71 @@ func TestControllerExecuteWithRetriesRetriesOnRetryableThenSucceeds(t *testing.T
 	}
 }
 
+func TestControllerExecuteWithRetriesUsesProviderRetryAfterDelay(t *testing.T) {
+	retryAfterSeconds := 60
+	var slept []time.Duration
+	ctrl := Controller{
+		Retry: RetryPolicy{MaxAttempts: 2, BaseBackoffMs: 5, MaxBackoffMs: 50},
+		RetrySleeper: func(ctx context.Context, delay time.Duration) error {
+			slept = append(slept, delay)
+			return ctx.Err()
+		},
+	}
+	callCount := 0
+
+	resp, err := ctrl.ExecuteWithRetries(context.Background(), "session-provider-retry-after", func(ctx context.Context) (ProviderResponse, error) {
+		callCount++
+		if callCount == 1 {
+			return ProviderResponse{}, &ProviderRateLimitError{
+				Err:               ErrProviderNotAvailable,
+				RetryAfterSeconds: &retryAfterSeconds,
+				ProviderName:      "Tencent",
+			}
+		}
+		return ProviderResponse{Content: "recovered"}, nil
+	})
+
+	if err != nil {
+		t.Fatalf("expected eventual success, got %v", err)
+	}
+	if resp.Content != "recovered" {
+		t.Fatalf("expected recovered response, got %q", resp.Content)
+	}
+	if len(slept) != 1 || slept[0] != 60*time.Second {
+		t.Fatalf("expected fake sleeper to receive 60s retry-after delay, got %v", slept)
+	}
+	if callCount != 2 {
+		t.Fatalf("expected 2 calls, got %d", callCount)
+	}
+}
+
+func TestControllerExecuteWithRetriesKeepsBackoffForNonRateLimitErrors(t *testing.T) {
+	var slept []time.Duration
+	ctrl := Controller{
+		Retry: RetryPolicy{MaxAttempts: 2, BaseBackoffMs: 5, MaxBackoffMs: 50},
+		RetrySleeper: func(ctx context.Context, delay time.Duration) error {
+			slept = append(slept, delay)
+			return ctx.Err()
+		},
+	}
+	callCount := 0
+
+	_, err := ctrl.ExecuteWithRetries(context.Background(), "session-backoff", func(ctx context.Context) (ProviderResponse, error) {
+		callCount++
+		return ProviderResponse{}, ErrProviderNotAvailable
+	})
+
+	if !errors.Is(err, ErrRetryExhausted) {
+		t.Fatalf("expected ErrRetryExhausted, got %v", err)
+	}
+	if len(slept) != 1 || slept[0] != 5*time.Millisecond {
+		t.Fatalf("expected fake sleeper to receive backoff delay 5ms, got %v", slept)
+	}
+	if callCount != 2 {
+		t.Fatalf("expected 2 calls, got %d", callCount)
+	}
+}
+
 func TestControllerExecuteWithRetriesExhaustsRetries(t *testing.T) {
 	adapter := &controlledTestAdapter{failWith: ErrProviderNotAvailable}
 	ctrl := Controller{
@@ -799,7 +864,7 @@ func TestControllerExecuteRateLimitedBlocks(t *testing.T) {
 }
 
 func TestControllerExecuteNoRateLimiterDoesNotBlock(t *testing.T) {
-	ctrl :=Controller{
+	ctrl := Controller{
 		Budget: DefaultTokenBudget(),
 		Retry:  RetryPolicy{MaxAttempts: 1, BaseBackoffMs: 100, MaxBackoffMs: 100},
 	}

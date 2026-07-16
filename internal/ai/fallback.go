@@ -55,7 +55,7 @@ func (s *FallbackService) buildFallbackResponse(req GatewayRequest, err error, s
 	summary := s.buildFallbackSummary(req.Input, status)
 	referencedEvents := extractEventIDs(req.Input.Events)
 
-	return GatewayResponse{
+	resp := GatewayResponse{
 		Summary:          summary,
 		EventExplanations: nil,
 		Recommendations:  nil,
@@ -67,6 +67,17 @@ func (s *FallbackService) buildFallbackResponse(req GatewayRequest, err error, s
 		Status: status,
 		Error:  err.Error(),
 	}
+
+	var rateLimitErr *ProviderRateLimitError
+	if errors.As(err, &rateLimitErr) {
+		resp.ProviderInfo.RetryAfterSeconds = rateLimitErr.RetryAfterSeconds
+		resp.ProviderInfo.ProviderName = rateLimitErr.ProviderName
+		if rateLimitErr.Model != "" {
+			resp.ProviderInfo.Model = rateLimitErr.Model
+		}
+	}
+
+	return resp
 }
 
 func (s *FallbackService) buildFallbackSummary(input ConsumerInput, status string) string {
@@ -152,6 +163,10 @@ func sortBySeverityDesc(events []EventSummary) []EventSummary {
 }
 
 func statusFromError(err error) string {
+	var rateLimitErr *ProviderRateLimitError
+	if errors.As(err, &rateLimitErr) {
+		return StatusRateLimited
+	}
 	if errors.Is(err, ErrBudgetExceeded) {
 		return StatusBudgetLimited
 	}

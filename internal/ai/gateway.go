@@ -95,7 +95,9 @@ type EventExplanation struct {
 }
 
 type ProviderResultInfo struct {
-	Model        string    `json:"model"`
-	FinishReason string    `json:"finishReason"`
-	Usage        UsageInfo `json:"usage"`
+	Model             string    `json:"model"`
+	FinishReason      string    `json:"finishReason"`
+	Usage             UsageInfo `json:"usage"`
+	RetryAfterSeconds *int      `json:"retryAfterSeconds,omitempty"`
+	ProviderName      string    `json:"providerName,omitempty"`
 }

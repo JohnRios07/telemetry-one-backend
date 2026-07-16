@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -16,6 +18,8 @@ const (
 	openRouterChatPath       = "/chat/completions"
 	openRouterRequestTimeout = 30 * time.Second
 )
+
+var maxRetryAfterSeconds = int(^uint(0) >> 1)
 
 type OpenRouterConfig struct {
 	APIKey      string
@@ -91,13 +95,13 @@ func (a *OpenRouterAdapter) Analyze(ctx context.Context, req ProviderRequest) (P
 	}
 	defer httpResp.Body.Close()
 
-	if err := a.mapHTTPError(httpResp.StatusCode); err != nil {
-		return ProviderResponse{}, err
-	}
-
 	respBody, err := io.ReadAll(httpResp.Body)
 	if err != nil {
 		return ProviderResponse{}, fmt.Errorf("%w: read response: %v", ErrProviderNotAvailable, err)
+	}
+
+	if httpResp.StatusCode != http.StatusOK {
+		return ProviderResponse{}, a.mapHTTPError(httpResp.StatusCode, httpResp.Header, respBody, req.Model)
 	}
 
 	var openResp openRouterResponse
@@ -132,14 +136,14 @@ func (a *OpenRouterAdapter) chatEndpoint() string {
 	return base + openRouterChatPath
 }
 
-func (a *OpenRouterAdapter) mapHTTPError(statusCode int) error {
+func (a *OpenRouterAdapter) mapHTTPError(statusCode int, headers http.Header, body []byte, model string) error {
 	switch {
 	case statusCode == http.StatusUnauthorized || statusCode == http.StatusForbidden:
 		return ErrProviderRejected
 	case statusCode == http.StatusBadRequest:
 		return ErrProviderRejected
 	case statusCode == http.StatusTooManyRequests:
-		return ErrProviderNotAvailable
+		return a.parseRateLimitError(headers, body, model)
 	case statusCode >= 500:
 		return ErrProviderNotAvailable
 	case statusCode < 200 || statusCode >= 300:
@@ -147,6 +151,95 @@ func (a *OpenRouterAdapter) mapHTTPError(statusCode int) error {
 	default:
 		return nil
 	}
+}
+
+func (a *OpenRouterAdapter) parseRateLimitError(headers http.Header, body []byte, model string) error {
+	rateLimitErr := &ProviderRateLimitError{
+		Err:   ErrProviderNotAvailable,
+		Model: model,
+	}
+	if retryAfter, ok := parseRetryAfterHeader(headers.Get("Retry-After")); ok {
+		rateLimitErr.RetryAfterSeconds = &retryAfter
+	}
+
+	var errBody openRouterErrorBody
+	if err := json.Unmarshal(body, &errBody); err == nil {
+		if rateLimitErr.RetryAfterSeconds == nil {
+			if retryAfter, ok := errBody.Error.Metadata.retryAfterSeconds(); ok {
+				rateLimitErr.RetryAfterSeconds = &retryAfter
+			}
+		}
+		if errBody.Error.Metadata.ProviderName != "" {
+			rateLimitErr.ProviderName = errBody.Error.Metadata.ProviderName
+		}
+	}
+
+	return rateLimitErr
+}
+
+func parseRetryAfterHeader(value string) (int, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0, false
+	}
+	seconds, err := strconv.Atoi(value)
+	if err == nil && seconds > 0 {
+		return seconds, true
+	}
+	if retryAt, err := http.ParseTime(value); err == nil {
+		if seconds, ok := positiveCeilSeconds(time.Until(retryAt).Seconds()); ok {
+			return seconds, true
+		}
+	}
+	return 0, false
+}
+
+type openRouterErrorBody struct {
+	Error openRouterErrorDetail `json:"error"`
+}
+
+type openRouterErrorDetail struct {
+	Code     int                     `json:"code"`
+	Message  string                  `json:"message"`
+	Metadata openRouterErrorMetadata `json:"metadata"`
+}
+
+type openRouterErrorMetadata struct {
+	RetryAfterSeconds    json.RawMessage `json:"retry_after_seconds"`
+	RetryAfterSecondsRaw json.RawMessage `json:"retry_after_seconds_raw"`
+	ProviderName         string          `json:"provider_name"`
+}
+
+func (m openRouterErrorMetadata) retryAfterSeconds() (int, bool) {
+	if seconds, ok := parsePositiveSeconds(m.RetryAfterSeconds); ok {
+		return seconds, true
+	}
+	return parsePositiveSeconds(m.RetryAfterSecondsRaw)
+}
+
+func parsePositiveSeconds(raw json.RawMessage) (int, bool) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return 0, false
+	}
+	var n float64
+	if err := json.Unmarshal(raw, &n); err == nil {
+		return positiveCeilSeconds(n)
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		parsed, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
+		if err == nil {
+			return positiveCeilSeconds(parsed)
+		}
+	}
+	return 0, false
+}
+
+func positiveCeilSeconds(seconds float64) (int, bool) {
+	if seconds <= 0 || math.IsNaN(seconds) || math.IsInf(seconds, 0) || seconds > float64(maxRetryAfterSeconds) {
+		return 0, false
+	}
+	return int(math.Ceil(seconds)), true
 }
 
 type openRouterRequest struct {
