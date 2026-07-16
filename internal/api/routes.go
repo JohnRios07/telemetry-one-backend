@@ -316,10 +316,8 @@ func ingestFramesHandler(frameStore telemetry.Store, eventStore events.Repositor
 							DisplayStrategy: events.DisplayStrategyCatalogName,
 						}
 
-						if session.TrackID == "" {
-							session.DetectedTrackID = *detectResult.TrackID
-							session.DetectedLayoutID = *detectResult.LayoutID
-							if _, err := sessionRepo.Update(r.Context(), session); err != nil {
+						if session.TrackID == "" && session.DetectedTrackID == "" {
+							if _, err := sessionRepo.SetDetectedTrackLayout(r.Context(), sessionID, *detectResult.TrackID, *detectResult.LayoutID); err != nil {
 								logger.Warn("failed to persist detected track/layout on session",
 									"session_id", sessionID,
 									"detected_track_id", *detectResult.TrackID,

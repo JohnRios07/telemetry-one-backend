@@ -123,6 +123,32 @@ RETURNING id, source, game, platform, driver_alias, COALESCE(track_id, ''), star
 	return updated, nil
 }
 
+func (r *PostgresRepository) SetDetectedTrackLayout(ctx context.Context, id string, trackID, layoutID string) (Session, error) {
+	if id == "" {
+		return Session{}, ErrMissingID
+	}
+
+	session, err := scanSession(r.pool.QueryRow(ctx, `
+UPDATE sessions
+SET detected_track_id = $2, detected_layout_id = $3, updated_at = now()
+WHERE id = $1 AND detected_track_id IS NULL AND detected_layout_id IS NULL
+RETURNING id, source, game, platform, driver_alias, COALESCE(track_id, ''), started_at, ended_at, COALESCE(detected_track_id, ''), COALESCE(detected_layout_id, '')`,
+		id, trackID, layoutID,
+	))
+	if errors.Is(err, pgx.ErrNoRows) {
+		current, findErr := r.FindByID(ctx, id)
+		if findErr != nil {
+			return Session{}, findErr
+		}
+		return current, nil
+	}
+	if err != nil {
+		return Session{}, fmt.Errorf("set detected track layout: %w", err)
+	}
+
+	return session, nil
+}
+
 func (r *PostgresRepository) List(ctx context.Context) ([]Session, error) {
 	rows, err := r.pool.Query(ctx, selectSessionSQL+" ORDER BY started_at DESC, id DESC")
 	if err != nil {
