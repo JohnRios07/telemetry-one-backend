@@ -33,6 +33,23 @@ func TestParseAndConvertGT7TracksCSVToValidIngestRequest(t *testing.T) {
 	}
 }
 
+func TestConvertSamplesPreservesExplicitZeroSpeedAndRPM(t *testing.T) {
+	csv := "track_id,x,z,y,speed,rpm,orientation,rotation_x,rotation_z,rotation_y\n1240,0,0,0,0,0,0,0,0,1\n1240,10,0,0,,,0,0,0,1\n"
+	samples, err := parseGT7TracksCSV(strings.NewReader(csv), "")
+	if err != nil {
+		t.Fatalf("parseGT7TracksCSV returned error: %v", err)
+	}
+
+	request := convertSamples(samples, options{sessionID: "gt7-fixture-session", frequencyHz: 10, startUnixMs: defaultStartUnixMs})
+
+	if request.Frames[0].SpeedMps != 0 || request.Frames[0].RPM != 0 {
+		t.Fatalf("expected explicit zero speed/rpm to be preserved, got %+v", request.Frames[0])
+	}
+	if request.Frames[1].SpeedMps != 100 || request.Frames[1].RPM != 1000 {
+		t.Fatalf("expected missing speed/rpm to be inferred/defaulted, got %+v", request.Frames[1])
+	}
+}
+
 func TestParseGT7TracksCSVRejectsMalformedInput(t *testing.T) {
 	_, err := parseGT7TracksCSV(strings.NewReader("track_id,x,z\n1240,1,2\n"), "")
 	if !errors.Is(err, errMissingRequiredColumn) {
@@ -42,6 +59,13 @@ func TestParseGT7TracksCSVRejectsMalformedInput(t *testing.T) {
 	_, err = parseGT7TracksCSV(strings.NewReader("track_id,x,z,y\n1240,1,nope,3\n"), "")
 	if err == nil || !strings.Contains(err.Error(), "invalid finite z") {
 		t.Fatalf("expected clear malformed field error, got %v", err)
+	}
+}
+
+func TestParseGT7TracksCSVRejectsMixedTrackIDsWhenTrackIDIsOmitted(t *testing.T) {
+	_, err := parseGT7TracksCSV(strings.NewReader("track_id,x,z,y\n1240,1,2,3\n1241,4,5,6\n"), "")
+	if err == nil || !strings.Contains(err.Error(), "exactly one distinct track_id") {
+		t.Fatalf("expected mixed track_id rejection, got %v", err)
 	}
 }
 

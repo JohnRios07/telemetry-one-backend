@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"sort"
 	"os"
 	"strconv"
 	"strings"
@@ -34,8 +35,8 @@ type rawSample struct {
 	X       float64
 	Z       float64
 	Y       float64
-	Speed   float64
-	RPM     float64
+	Speed   *float64
+	RPM     *float64
 }
 
 func main() {
@@ -122,6 +123,7 @@ func convertFile(opt options) (telemetry.IngestBatchRequest, error) {
 }
 
 func parseGT7TracksCSV(reader io.Reader, expectedTrackID string) ([]rawSample, error) {
+	expectedTrackID = strings.TrimSpace(expectedTrackID)
 	csvReader := csv.NewReader(reader)
 	csvReader.TrimLeadingSpace = true
 	records, err := csvReader.ReadAll()
@@ -140,6 +142,7 @@ func parseGT7TracksCSV(reader io.Reader, expectedTrackID string) ([]rawSample, e
 	}
 
 	samples := make([]rawSample, 0, len(records)-1)
+	trackIDs := make(map[string]struct{})
 	for rowIndex, record := range records[1:] {
 		sample, err := parseSample(rowIndex+2, record, columns)
 		if err != nil {
@@ -148,7 +151,18 @@ func parseGT7TracksCSV(reader io.Reader, expectedTrackID string) ([]rawSample, e
 		if expectedTrackID != "" && sample.TrackID != expectedTrackID {
 			return nil, fmt.Errorf("row %d: track_id %q does not match expected %q", rowIndex+2, sample.TrackID, expectedTrackID)
 		}
+		trackIDs[sample.TrackID] = struct{}{}
 		samples = append(samples, sample)
+	}
+	if expectedTrackID == "" {
+		if len(trackIDs) != 1 {
+			values := make([]string, 0, len(trackIDs))
+			for trackID := range trackIDs {
+				values = append(values, trackID)
+			}
+			sort.Strings(values)
+			return nil, fmt.Errorf("GT7Tracks CSV must contain exactly one distinct track_id when -track-id is omitted; found %v", values)
+		}
 	}
 
 	return samples, nil
@@ -185,16 +199,16 @@ func parseSample(row int, record []string, columns map[string]int) (rawSample, e
 		}
 		return parsed, nil
 	}
-	parseOptionalNonNegativeFloat := func(column string) (float64, error) {
+	parseOptionalNonNegativeFloat := func(column string) (*float64, error) {
 		index, ok := columns[column]
 		if !ok || index >= len(record) || strings.TrimSpace(record[index]) == "" {
-			return 0, nil
+			return nil, nil
 		}
 		parsed, err := strconv.ParseFloat(strings.TrimSpace(record[index]), 64)
 		if err != nil || !isFinite(parsed) || parsed < 0 {
-			return 0, fmt.Errorf("row %d: invalid finite non-negative %s", row, column)
+			return nil, fmt.Errorf("row %d: invalid finite non-negative %s", row, column)
 		}
-		return parsed, nil
+		return &parsed, nil
 	}
 
 	trackID, err := read("track_id")
@@ -232,13 +246,15 @@ func convertSamples(samples []rawSample, opt options) telemetry.IngestBatchReque
 		intervalMs = 1
 	}
 	for index, sample := range samples {
-		speed := sample.Speed
-		if speed == 0 && index > 0 {
+		speed := 0.0
+		if sample.Speed != nil {
+			speed = *sample.Speed
+		} else if index > 0 {
 			speed = distance(samples[index-1], sample) / (float64(intervalMs) / 1000)
 		}
-		rpm := sample.RPM
-		if rpm == 0 {
-			rpm = 1000
+		rpm := 1000.0
+		if sample.RPM != nil {
+			rpm = *sample.RPM
 		}
 		frames = append(frames, telemetry.Frame{
 			TimestampUnixMs: opt.startUnixMs + int64(index)*intervalMs,
