@@ -212,12 +212,10 @@ func validateSectors(path string, sectors []Sector, lengthMeters float64) error 
 func validateCorners(path string, corners []Corner, lengthMeters float64, ids map[string]string) error {
 	var previousEnd float64
 	var firstStart float64
+	var hasFirstStart bool
 	hasWrapAroundCorner := false
 	for i, corner := range corners {
 		cornerPath := fmt.Sprintf("%s[%d]", path, i)
-		if i == 0 {
-			firstStart = corner.StartMeters
-		}
 		if corner.ID == "" {
 			return fmt.Errorf("%s.id: %w", cornerPath, ErrMissingCornerID)
 		}
@@ -243,6 +241,10 @@ func validateCorners(path string, corners []Corner, lengthMeters float64, ids ma
 		wrapAround, err := validateCornerRange(corner, lengthMeters)
 		if err != nil {
 			return fmt.Errorf("%s: %w", cornerPath, ErrInvalidDistanceRange)
+		}
+		if !hasFirstStart {
+			firstStart = corner.StartMeters
+			hasFirstStart = true
 		}
 		if hasWrapAroundCorner || (wrapAround && i != len(corners)-1) {
 			return fmt.Errorf("%s: %w", cornerPath, ErrOverlappingDistanceRange)

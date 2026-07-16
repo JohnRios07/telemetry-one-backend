@@ -91,7 +91,7 @@ func track(id string, name string, country string, sources []Source, layouts ...
 	return CatalogTrack{ID: id, Name: name, Country: country, Sources: sources, Layouts: layouts}
 }
 
-func layoutFromGT7Info(gt7LayoutID int, name string, lengthMeters float64, numCorners int, sources []Source) CatalogLayout {
+func layoutFromGT7Info(gt7LayoutID uint, name string, lengthMeters float64, numCorners uint, sources []Source) CatalogLayout {
 	return CatalogLayout{
 		ID:           layoutID(gt7LayoutID),
 		Name:         name,
@@ -103,19 +103,19 @@ func layoutFromGT7Info(gt7LayoutID int, name string, lengthMeters float64, numCo
 	}
 }
 
-func layoutID(gt7LayoutID int) string {
+func layoutID(gt7LayoutID uint) string {
 	return "gt7_layout_" + itoa(gt7LayoutID)
 }
 
-func enumeratedCorners(gt7LayoutID int, numCorners int, sources []Source) []Corner {
-	if numCorners <= 0 {
+func enumeratedCorners(gt7LayoutID uint, numCorners uint, sources []Source) []Corner {
+	if numCorners == 0 {
 		return []Corner{}
 	}
 	corners := make([]Corner, 0, numCorners)
-	for i := 1; i <= numCorners; i++ {
+	for i := uint(1); i <= numCorners; i++ {
 		corners = append(corners, Corner{
 			ID:             layoutID(gt7LayoutID) + "_corner_" + itoa(i),
-			Number:         i,
+			Number:         int(i),
 			Name:           "Corner " + itoa(i),
 			DefinitionMode: CornerDefinitionCatalogEnumerated,
 			Confidence:     1,
@@ -145,10 +145,15 @@ func officialTracklistAssetSource(url string) Source {
 }
 
 func officialNewsSource(url string) Source {
-	return officialTracklistAssetSource(url)
+	return Source{
+		URL:         url,
+		SourceType:  "official_gran_turismo_news",
+		RetrievedAt: "2026-07-12",
+		Note:        "official Gran Turismo news article",
+	}
 }
 
-func itoa(value int) string {
+func itoa(value uint) string {
 	if value == 0 {
 		return "0"
 	}

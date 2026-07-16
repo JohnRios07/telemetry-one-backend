@@ -337,7 +337,7 @@ func TestGT7OfficialSeedCatalogSourceOfTruthValidatesWithEnumeratedCorners(t *te
 	}
 	for i, corner := range layout.Corners {
 		want := i + 1
-		if corner.Number != want || corner.Name != "Corner "+itoa(want) || corner.DefinitionMode != CornerDefinitionCatalogEnumerated {
+		if corner.Number != want || corner.Name != "Corner "+itoa(uint(want)) || corner.DefinitionMode != CornerDefinitionCatalogEnumerated {
 			t.Fatalf("unexpected enumerated corner %d: %+v", want, corner)
 		}
 		if corner.StartMeters != 0 || corner.ApexMeters != 0 || corner.EndMeters != 0 {
