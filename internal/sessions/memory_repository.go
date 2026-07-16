@@ -90,9 +90,11 @@ func (r *MemoryRepository) SetDetectedTrackLayout(_ context.Context, id string, 
 		return Session{}, ErrNotFound
 	}
 
-	session.DetectedTrackID = trackID
-	session.DetectedLayoutID = layoutID
-	r.sessions[id] = cloneSession(session)
+	if session.DetectedTrackID == "" && session.DetectedLayoutID == "" {
+		session.DetectedTrackID = trackID
+		session.DetectedLayoutID = layoutID
+		r.sessions[id] = cloneSession(session)
+	}
 
 	return cloneSession(session), nil
 }

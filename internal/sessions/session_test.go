@@ -243,7 +243,7 @@ func TestMemoryRepositorySetDetectedTrackLayoutPreservesEndedAt(t *testing.T) {
 	}
 }
 
-func TestMemoryRepositorySetDetectedTrackLayoutIdempotent(t *testing.T) {
+func TestMemoryRepositorySetDetectedTrackLayoutWriteOnce(t *testing.T) {
 	repo := NewMemoryRepository()
 	ctx := context.Background()
 	startedAt := time.UnixMilli(1720656000000).UTC()
@@ -264,7 +264,7 @@ func TestMemoryRepositorySetDetectedTrackLayoutIdempotent(t *testing.T) {
 		t.Fatalf("expected detectedTrackId after first call, got %q", first.DetectedTrackID)
 	}
 
-	second, err := repo.SetDetectedTrackLayout(ctx, "session-detect-idempotent", "gt7_watkins_glen_international", "gt7_layout_1240")
+	second, err := repo.SetDetectedTrackLayout(ctx, "session-detect-idempotent", "gt7_autodromo_nazionale_monza", "gt7_layout_9999")
 	if err != nil {
 		t.Fatalf("second SetDetectedTrackLayout: %v", err)
 	}
@@ -273,6 +273,17 @@ func TestMemoryRepositorySetDetectedTrackLayoutIdempotent(t *testing.T) {
 	}
 	if second.DetectedLayoutID != "gt7_layout_1240" {
 		t.Fatalf("expected detectedLayoutId preserved after second call, got %q", second.DetectedLayoutID)
+	}
+
+	found, err := repo.FindByID(ctx, "session-detect-idempotent")
+	if err != nil {
+		t.Fatalf("find: %v", err)
+	}
+	if found.DetectedTrackID != "gt7_watkins_glen_international" {
+		t.Fatalf("expected stored detectedTrackId preserved after second call, got %q", found.DetectedTrackID)
+	}
+	if found.DetectedLayoutID != "gt7_layout_1240" {
+		t.Fatalf("expected stored detectedLayoutId preserved after second call, got %q", found.DetectedLayoutID)
 	}
 }
 
