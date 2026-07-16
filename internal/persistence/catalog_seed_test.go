@@ -86,6 +86,36 @@ func TestSeedTrackReferenceCatalogRequiresProvenanceBackedCatalog(t *testing.T) 
 	}
 }
 
+func TestSeedTrackReferenceCatalogRejectsUnsafeSourceTypes(t *testing.T) {
+	db := &fakeCatalogSeedDB{}
+	source := tracks.Source{URL: "https://example.com/gt7tracks.csv", SourceType: tracks.SourceTypeGT7TracksRawDump, RetrievedAt: "2026-07-16"}
+	catalog := tracks.Catalog{
+		CatalogVersion: tracks.CatalogVersionV1,
+		Tracks: []tracks.CatalogTrack{{
+			ID:      "track-with-unsafe-source",
+			Name:    "Track With Unsafe Source",
+			Sources: []tracks.Source{source},
+			Layouts: []tracks.CatalogLayout{{
+				ID:           "layout-with-unsafe-source",
+				Name:         "Layout With Unsafe Source",
+				LengthMeters: 1000,
+				Sources:      []tracks.Source{source},
+				Sectors:      []tracks.Sector{{Number: 1, Name: "Sector 1", StartMeters: 0, EndMeters: 1000, Sources: []tracks.Source{source}}},
+				Corners:      []tracks.Corner{{ID: "layout-with-unsafe-source_t1", Number: 1, Name: "Corner 1", DefinitionMode: tracks.CornerDefinitionCatalogManual, StartMeters: 100, ApexMeters: 140, EndMeters: 190, Sources: []tracks.Source{source}}},
+			}},
+		}},
+	}
+
+	err := SeedTrackReferenceCatalog(context.Background(), db, catalog)
+
+	if !errors.Is(err, tracks.ErrUnsupportedSourceOfTruthSource) {
+		t.Fatalf("expected unsafe source type error, got %v", err)
+	}
+	if len(db.execs) != 0 {
+		t.Fatalf("expected unsafe catalog not to be written, got %d execs", len(db.execs))
+	}
+}
+
 func TestSeedTrackReferenceCatalogReturnsExecError(t *testing.T) {
 	dbErr := errors.New("database unavailable")
 	db := &fakeCatalogSeedDB{execErr: dbErr}

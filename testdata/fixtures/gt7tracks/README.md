@@ -13,4 +13,5 @@ These fixtures are development/test data only. They are **not** production track
 - JSON files in this directory use only `telemetry.IngestBatchRequest` shape (`sessionId` + `frames`).
 - Raw dump-derived or minimal CSV data may be used to regenerate test fixtures with `go run ./cmd/gt7convert`, but must stay under `testdata` or local developer scratch space.
 - Do not wire these fixtures into production catalog, geometry, current-corner resolver, centerline, sector, or apex flows.
+- These fixtures are not valid runtime source-of-truth provenance. `Catalog.ValidateSourceOfTruth()` rejects GT7Tracks fixture/raw provenance even when the fixture is structurally valid.
 - Do not invent GT7 corner names from these samples. Length-only detection remains conservative and must allow `ambiguous`/`unknown` fallback.

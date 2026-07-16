@@ -129,7 +129,7 @@ func enumeratedCorners(gt7LayoutID uint, numCorners uint, sources []Source) []Co
 func gt7InfoCourseCSVSource() Source {
 	return Source{
 		URL:         gt7InfoCourseCSVURL,
-		SourceType:  "gt7info_course_csv",
+		SourceType:  SourceTypeGT7InfoCourseCSV,
 		RetrievedAt: "2026-07-15",
 		Note:        "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners",
 	}
@@ -138,7 +138,7 @@ func gt7InfoCourseCSVSource() Source {
 func officialTracklistAssetSource(url string) Source {
 	return Source{
 		URL:         url,
-		SourceType:  "official_gran_turismo_tracklist_asset",
+		SourceType:  SourceTypeOfficialGranTurismoTracklistAsset,
 		RetrievedAt: "2026-07-12",
 		Note:        "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount",
 	}
@@ -147,7 +147,7 @@ func officialTracklistAssetSource(url string) Source {
 func officialNewsSource(url string) Source {
 	return Source{
 		URL:         url,
-		SourceType:  "official_gran_turismo_news",
+		SourceType:  SourceTypeOfficialGranTurismoNews,
 		RetrievedAt: "2026-07-12",
 		Note:        "official Gran Turismo news article",
 	}

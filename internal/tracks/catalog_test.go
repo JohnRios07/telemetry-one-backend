@@ -302,6 +302,50 @@ func TestCatalogValidateSourceOfTruthAcceptsProvenanceBackedCatalog(t *testing.T
 	}
 }
 
+func TestCatalogValidateSourceOfTruthRejectsSyntheticDevCatalogWithoutProductionSources(t *testing.T) {
+	catalog := validCatalog()
+
+	if err := catalog.Validate(); err != nil {
+		t.Fatalf("expected synthetic dev catalog to validate structurally, got %v", err)
+	}
+	if err := catalog.ValidateSourceOfTruth(); !errors.Is(err, ErrMissingMetadataSource) {
+		t.Fatalf("expected synthetic dev catalog to fail source-of-truth validation, got %v", err)
+	}
+}
+
+func TestCatalogValidateSourceOfTruthRejectsGT7TracksProvenance(t *testing.T) {
+	tests := []struct {
+		name       string
+		sourceType string
+	}{
+		{name: "track list csv", sourceType: SourceTypeGT7TracksTrackListCSV},
+		{name: "raw dump", sourceType: SourceTypeGT7TracksRawDump},
+		{name: "fixture raw dump", sourceType: SourceTypeGT7TracksFixtureRawDump},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			catalog := validCatalog()
+			source := Source{URL: "https://example.com/gt7tracks.csv", SourceType: tt.sourceType, RetrievedAt: "2026-07-16"}
+			catalog.Tracks[0].Sources = []Source{source}
+			catalog.Tracks[0].Layouts[0].Sources = []Source{source}
+			for i := range catalog.Tracks[0].Layouts[0].Sectors {
+				catalog.Tracks[0].Layouts[0].Sectors[i].Sources = []Source{source}
+			}
+			for i := range catalog.Tracks[0].Layouts[0].Corners {
+				catalog.Tracks[0].Layouts[0].Corners[i].Sources = []Source{source}
+			}
+
+			if err := catalog.Validate(); err != nil {
+				t.Fatalf("expected structural validation to pass, got %v", err)
+			}
+			if err := catalog.ValidateSourceOfTruth(); !errors.Is(err, ErrUnsupportedSourceOfTruthSource) {
+				t.Fatalf("expected GT7Tracks provenance to fail source-of-truth validation, got %v", err)
+			}
+		})
+	}
+}
+
 func TestCatalogValidateSourceOfTruthRequiresProvenanceForNamedMetadata(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -425,14 +469,15 @@ func validCatalog() Catalog {
 
 func sourcedCatalog() Catalog {
 	catalog := validCatalog()
-	source := officialNewsSource("https://www.gran-turismo.com/us/news/00_5302315.html")
-	catalog.Tracks[0].Sources = []Source{source}
-	catalog.Tracks[0].Layouts[0].Sources = []Source{source}
+	trackSource := officialTracklistAssetSource("https://www.gran-turismo.com/us/gt7/tracklist/")
+	infoSource := gt7InfoCourseCSVSource()
+	catalog.Tracks[0].Sources = []Source{trackSource, infoSource}
+	catalog.Tracks[0].Layouts[0].Sources = []Source{trackSource, infoSource}
 	for i := range catalog.Tracks[0].Layouts[0].Sectors {
-		catalog.Tracks[0].Layouts[0].Sectors[i].Sources = []Source{source}
+		catalog.Tracks[0].Layouts[0].Sectors[i].Sources = []Source{infoSource}
 	}
 	for i := range catalog.Tracks[0].Layouts[0].Corners {
-		catalog.Tracks[0].Layouts[0].Corners[i].Sources = []Source{source}
+		catalog.Tracks[0].Layouts[0].Corners[i].Sources = []Source{trackSource, infoSource}
 	}
 
 	return catalog
