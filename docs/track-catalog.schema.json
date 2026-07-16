@@ -112,7 +112,11 @@
       "required": ["url", "sourceType", "retrievedAt"],
       "properties": {
         "url": { "type": "string", "format": "uri" },
-        "sourceType": { "type": "string", "minLength": 1 },
+        "sourceType": {
+          "description": "Provenance label such as gt7info_course_csv, official_gran_turismo_tracklist, gt7tracks_track_list_csv, or a fixture-only raw dump source type.",
+          "type": "string",
+          "minLength": 1
+        },
         "retrievedAt": { "type": "string", "format": "date" },
         "note": { "type": "string" }
       }
