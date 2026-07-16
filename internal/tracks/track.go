@@ -34,6 +34,7 @@ type CornerDefinitionMode string
 
 const (
 	CornerDefinitionCatalogManual      CornerDefinitionMode = "catalog_manual"
+	CornerDefinitionCatalogEnumerated  CornerDefinitionMode = "catalog_enumerated"
 	CornerDefinitionAutoDetectedFuture CornerDefinitionMode = "auto_detected_future"
 )
 

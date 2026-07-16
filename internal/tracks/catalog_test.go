@@ -96,6 +96,37 @@ func TestCatalogValidateAcceptsManualCatalogCornerDefinitions(t *testing.T) {
 	}
 }
 
+func TestCatalogValidateAcceptsEnumeratedCornerDefinitionsWithoutRanges(t *testing.T) {
+	catalog := validCatalog()
+	catalog.Tracks[0].Layouts[0].Corners = []Corner{{
+		ID:             "synthetic_dev_loop_corner_1",
+		Number:         1,
+		Name:           "Corner 1",
+		DefinitionMode: CornerDefinitionCatalogEnumerated,
+	}}
+
+	if err := catalog.Validate(); err != nil {
+		t.Fatalf("expected enumerated catalog corner definition to validate, got %v", err)
+	}
+}
+
+func TestCatalogValidateRejectsEnumeratedCornerDefinitionsWithRanges(t *testing.T) {
+	catalog := validCatalog()
+	catalog.Tracks[0].Layouts[0].Corners = []Corner{{
+		ID:             "synthetic_dev_loop_corner_1",
+		Number:         1,
+		Name:           "Corner 1",
+		DefinitionMode: CornerDefinitionCatalogEnumerated,
+		StartMeters:    100,
+		ApexMeters:     120,
+		EndMeters:      140,
+	}}
+
+	if err := catalog.Validate(); !errors.Is(err, ErrInvalidDistanceRange) {
+		t.Fatalf("expected ranged enumerated corner definition to be rejected, got %v", err)
+	}
+}
+
 func TestCatalogValidateRejectsFutureAutomaticCornerDefinitions(t *testing.T) {
 	tests := []struct {
 		name string
@@ -294,17 +325,26 @@ func TestCatalogValidateSourceOfTruthRequiresProvenanceForNamedMetadata(t *testi
 	}
 }
 
-func TestGT7OfficialSeedCatalogSourceOfTruthValidatesWithoutSectorsOrCorners(t *testing.T) {
+func TestGT7OfficialSeedCatalogSourceOfTruthValidatesWithEnumeratedCorners(t *testing.T) {
 	catalog := OfficialGT7SeedCatalog()
 
 	if err := catalog.ValidateSourceOfTruth(); err != nil {
 		t.Fatalf("expected official seed source-of-truth metadata to validate, got %v", err)
 	}
-	for _, track := range catalog.Tracks {
-		for _, layout := range track.Layouts {
-			if len(layout.Sectors) != 0 || len(layout.Corners) != 0 {
-				t.Fatalf("expected official seed layout %q to omit unsourced sector/corner names", layout.ID)
-			}
+	layout := requireLayout(t, catalog, "gt7_layout_1248")
+	if len(layout.Corners) != 12 {
+		t.Fatalf("expected Nurburgring Sprint to have 12 enumerated corners, got %d", len(layout.Corners))
+	}
+	for i, corner := range layout.Corners {
+		want := i + 1
+		if corner.Number != want || corner.Name != "Corner "+itoa(want) || corner.DefinitionMode != CornerDefinitionCatalogEnumerated {
+			t.Fatalf("unexpected enumerated corner %d: %+v", want, corner)
+		}
+		if corner.StartMeters != 0 || corner.ApexMeters != 0 || corner.EndMeters != 0 {
+			t.Fatalf("expected enumerated corner %d not to carry spatial ranges, got %+v", want, corner)
+		}
+		if len(corner.Sources) == 0 {
+			t.Fatalf("expected enumerated corner %d to include provenance", want)
 		}
 	}
 }
@@ -334,11 +374,21 @@ func TestGT7OfficialSeedCatalogFixtureValidates(t *testing.T) {
 			if len(layout.Sectors) != 0 {
 				t.Fatalf("expected official seed layout %q to omit sectors until official boundaries are sourced", layout.ID)
 			}
-			if len(layout.Corners) != 0 {
-				t.Fatalf("expected official seed layout %q to omit corners until official corner metadata is sourced", layout.ID)
+		}
+	}
+}
+
+func requireLayout(t *testing.T, catalog Catalog, layoutID string) CatalogLayout {
+	t.Helper()
+	for _, track := range catalog.Tracks {
+		for _, layout := range track.Layouts {
+			if layout.ID == layoutID {
+				return layout
 			}
 		}
 	}
+	t.Fatalf("layout %q not found", layoutID)
+	return CatalogLayout{}
 }
 
 func loadCatalogFixture(t *testing.T, path string) Catalog {

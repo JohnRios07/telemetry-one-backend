@@ -27,7 +27,7 @@ var (
 	ErrMissingSourceRetrievedAt        = errors.New("source retrievedAt is required")
 	ErrMissingMetadataSource           = errors.New("metadata source is required")
 	ErrInvalidCenterLine               = errors.New("centerLine must contain finite, ordered, non-zero geometry when present")
-	ErrUnsupportedCornerDefinitionMode = errors.New("corner definitionMode must be catalog_manual in catalog v1")
+	ErrUnsupportedCornerDefinitionMode = errors.New("corner definitionMode must be catalog_manual or catalog_enumerated in catalog v1")
 )
 
 type Catalog struct {
@@ -224,7 +224,7 @@ func validateCorners(path string, corners []Corner, lengthMeters float64, ids ma
 		if corner.Name == "" {
 			return fmt.Errorf("%s.name: %w", cornerPath, ErrMissingCornerName)
 		}
-		if corner.DefinitionMode != CornerDefinitionCatalogManual {
+		if corner.DefinitionMode != CornerDefinitionCatalogManual && corner.DefinitionMode != CornerDefinitionCatalogEnumerated {
 			return fmt.Errorf("%s.definitionMode: %w", cornerPath, ErrUnsupportedCornerDefinitionMode)
 		}
 		if err := rememberID(ids, corner.ID, cornerPath); err != nil {
@@ -233,6 +233,13 @@ func validateCorners(path string, corners []Corner, lengthMeters float64, ids ma
 		if err := validateSources(cornerPath+".sources", corner.Sources); err != nil {
 			return err
 		}
+		if corner.DefinitionMode == CornerDefinitionCatalogEnumerated {
+			if corner.StartMeters != 0 || corner.ApexMeters != 0 || corner.EndMeters != 0 {
+				return fmt.Errorf("%s: %w", cornerPath, ErrInvalidDistanceRange)
+			}
+			continue
+		}
+
 		wrapAround, err := validateCornerRange(corner, lengthMeters)
 		if err != nil {
 			return fmt.Errorf("%s: %w", cornerPath, ErrInvalidDistanceRange)

@@ -12,6 +12,7 @@ const (
 	StatusNoCorner = "no_corner"
 
 	ReasonCatalogHasNoCorners         = "catalog_has_no_corners"
+	ReasonCatalogHasEnumeratedCorners = "catalog_has_enumerated_corners"
 	ReasonOutsideCornerRange          = "outside_corner_range"
 	ReasonUnsupportedCornerDefinition = "unsupported_corner_definition"
 )
@@ -68,6 +69,9 @@ func ResolveCurrent(layout tracks.CatalogLayout, distanceFromStart float64, clos
 	}
 
 	for _, corner := range layout.Corners {
+		if corner.DefinitionMode == tracks.CornerDefinitionCatalogEnumerated {
+			return noCorner(ReasonCatalogHasEnumeratedCorners), nil
+		}
 		if corner.DefinitionMode != tracks.CornerDefinitionCatalogManual {
 			return noCorner(ReasonUnsupportedCornerDefinition), nil
 		}

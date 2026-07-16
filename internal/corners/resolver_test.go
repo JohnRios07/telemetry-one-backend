@@ -50,7 +50,7 @@ func TestResolveCurrentUsesStartInclusiveEndExclusiveBoundaries(t *testing.T) {
 	}
 }
 
-func TestResolveCurrentReturnsNoCornerWhenOfficialSeedHasNoCorners(t *testing.T) {
+func TestResolveCurrentReturnsNoCornerWhenOfficialSeedHasOnlyEnumeratedCorners(t *testing.T) {
 	catalog := tracks.OfficialGT7SeedCatalog()
 	layout := catalog.Tracks[0].Layouts[0]
 
@@ -58,8 +58,8 @@ func TestResolveCurrentReturnsNoCornerWhenOfficialSeedHasNoCorners(t *testing.T)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if got.Status != StatusNoCorner || got.Reason != ReasonCatalogHasNoCorners || got.CornerID != "" || got.CornerName != "" {
-		t.Fatalf("expected official seed to resolve no_corner without names, got %+v", got)
+	if got.Status != StatusNoCorner || got.Reason != ReasonCatalogHasEnumeratedCorners || got.CornerID != "" || got.CornerName != "" {
+		t.Fatalf("expected official seed to avoid resolving enumerated corners without ranges, got %+v", got)
 	}
 }
 
