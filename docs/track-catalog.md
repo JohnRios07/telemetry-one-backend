@@ -12,6 +12,7 @@ Telemetry One treats track data sources as provenance, not interchangeable truth
 
 - `GT7Tracks` `track_list.csv` is allowed as catalog metadata for `ID`, `Name`, `Country`, `Category`, `Length`, `LongestStraight`, `ElevationDiff`, `Altitude`, `LayoutNumber`, `IsReverse`, `PitLaneDelta`, `IsOval`, `NumCorners`, and `NoRain`.
 - `GT7Tracks` raw `x/z/y` dumps are fixture-only. They may support dev/test scenarios, but they are not production geometry and must not be used for corner names, sector boundaries, apexes, or centerlines.
+- `cmd/gt7convert` may normalize curated GT7Tracks raw dumps into `telemetry.IngestBatchRequest` JSON under `testdata/fixtures/gt7tracks/` for offline tests only. Its output is not a catalog source and must not be imported by production geometry, centerline, sector, apex, or corner resolver flows.
 - `gt7info` `course.csv` is allowed as a secondary catalog seed for layout `ID`, `Name`, `Length`, `NumCorners`, and other summary fields.
 - The official Gran Turismo 7 tracklist page/assets are allowed as a factual reference for layout `ID`, `Name`, base, `Length`, `cornerCount`, `straight`, `elevation`, and `country`.
 - The official page/assets are provenance references, not mirrored open data. They do not provide an explicit open-data license, so Telemetry One should not present them as redistributable source data.
@@ -25,6 +26,8 @@ Safe vs unsafe data types:
 - Safe: track/layout identity, lengths, countries, `NumCorners`, and provenance notes from the sources above.
 - Safe: ordinal corner labels generated from a sourced `NumCorners` value.
 - Unsafe: named corners inferred from telemetry, sector cuts inferred from dumps, apex positions inferred from `NumCorners`, and centerlines fabricated from raw dumps.
+
+GT7Tracks raw dump schema confirmed from upstream `vthinsel/GT7Tracks` on 2026-07-16 is `track_id,x,z,y,speed,rpm,orientation,rotation_x,rotation_z,rotation_y`. Those columns are sufficient for fixture-backed ingest and conservative length-only detection tests, but they still do not provide canonical sector, corner, apex, or centerline truth.
 
 ## Shape
 

@@ -1,0 +1,3 @@
+track_id,x,z,y,speed,rpm,orientation,rotation_x,rotation_z,rotation_y
+1240,0,0,0,10,3000,0,0,0,1
+1240,10,0,0,20,4000,0,0,0,1
