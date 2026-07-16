@@ -807,6 +807,65 @@ func TestIngestFramesAttachesTrackLayoutToGeneratedEvents(t *testing.T) {
 	}
 }
 
+func TestIngestFramesDoesNotAttachRefsBeforeLapOneBegins(t *testing.T) {
+	store := telemetry.NewFrameStore(64)
+	eventStore := events.NewStore(100, events.DedupOptions{})
+	catalog := tracks.OfficialGT7SeedCatalog()
+	sessionRepo := sessions.NewMemoryRepository()
+	seedTestSession(t, sessionRepo, "session-prerace")
+	handler := routesWithSessionRepository(
+		config.Config{Addr: ":0", Env: "test"},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		store, catalog, eventStore, sessionRepo,
+	)
+
+	const lengthMeters = 5423.0
+	const count = 34
+	frames := make([]telemetry.Frame, count)
+	lastIndex := count - 1
+	for i := 0; i < count; i++ {
+		frames[i] = telemetry.Frame{
+			TimestampUnixMs: int64(i + 1),
+			PositionX:       lengthMeters * float64(i) / float64(lastIndex),
+			PositionY:       5.6,
+			PositionZ:       789.1,
+			LapNumber:       0,
+			IsOnTrack:       true,
+			SpeedMps:        0,
+			RPM:             800,
+			Throttle:        0,
+			Brake:           0,
+			Steering:        0,
+			FuelLiters:      40.0,
+			CurrentLapMs:    0,
+		}
+	}
+	body, _ := json.Marshal(telemetry.IngestBatchRequest{
+		Frames: frames,
+	})
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/session-prerace/frames", bytes.NewReader(body))
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("expected status %d, got %d body %s", http.StatusAccepted, recorder.Code, recorder.Body.String())
+	}
+
+	storedEvents, err := eventStore.List(context.Background(), events.Query{SessionID: "session-prerace"})
+	if err != nil {
+		t.Fatalf("list events: %v", err)
+	}
+	for _, e := range storedEvents {
+		if e.Track != nil {
+			t.Fatalf("expected nil track before lap 1 begins, got %+v", e.Track)
+		}
+		if e.Layout != nil {
+			t.Fatalf("expected nil layout before lap 1 begins, got %+v", e.Layout)
+		}
+	}
+}
+
 func TestIngestFramesDoesNotAttachRefsForPendingDetection(t *testing.T) {
 	store := telemetry.NewFrameStore(64)
 	eventStore := events.NewStore(100, events.DedupOptions{})

@@ -339,6 +339,80 @@ func TestBuildRaceEngineerAdviceGatewayRequestUsesFirstAvailableSessionRefs(t *t
 	}
 }
 
+func TestHasLapOneBeganFalseForEmptyFrames(t *testing.T) {
+	if hasLapOneBegan(nil) {
+		t.Fatal("expected false for nil frames")
+	}
+	if hasLapOneBegan([]telemetry.Frame{}) {
+		t.Fatal("expected false for empty frames")
+	}
+}
+
+func TestHasLapOneBeganFalseForPreRaceFrames(t *testing.T) {
+	frames := []telemetry.Frame{
+		{LapNumber: 0, TimestampUnixMs: 1000},
+		{LapNumber: 0, TimestampUnixMs: 2000},
+	}
+	if hasLapOneBegan(frames) {
+		t.Fatal("expected false when all frames have LapNumber 0")
+	}
+}
+
+func TestHasLapOneBeganTrueWhenLapOnePresent(t *testing.T) {
+	frames := []telemetry.Frame{
+		{LapNumber: 0, TimestampUnixMs: 1000},
+		{LapNumber: 1, TimestampUnixMs: 2000},
+	}
+	if !hasLapOneBegan(frames) {
+		t.Fatal("expected true when any frame has LapNumber >= 1")
+	}
+}
+
+func TestHasLapOneBeganTrueForLaterLaps(t *testing.T) {
+	frames := []telemetry.Frame{
+		{LapNumber: 3, TimestampUnixMs: 1000},
+	}
+	if !hasLapOneBegan(frames) {
+		t.Fatal("expected true for lap 3")
+	}
+}
+
+func TestBuildRaceEngineerAdviceGatewayRequestDoesNotDetectBeforeLapOne(t *testing.T) {
+	frames := make([]telemetry.Frame, 35)
+	for i := range frames {
+		frames[i] = telemetry.Frame{
+			TimestampUnixMs: int64(i + 1),
+			LapNumber:       0,
+			IsOnTrack:       true,
+		}
+	}
+	frameStore := telemetry.NewFrameStore(100)
+	if err := frameStore.Append(context.Background(), "session-prerace", frames); err != nil {
+		t.Fatalf("append frames: %v", err)
+	}
+	catalog := tracks.OfficialGT7SeedCatalog()
+
+	inputEvents := []events.EngineerEvent{
+		{
+			EventID: "event-prerace", SessionID: "session-prerace",
+			Version: events.ContractVersionV1, Type: events.TypeLapTimeRegression,
+			Severity: events.SeverityMedium, Confidence: 0.85,
+			LapNumber: 0, TimestampUnixMs: 1720656000000,
+			Source: events.EventSource{Kind: events.SourceDeterministicRule, RuleID: "test.v1", RuleVersion: "v1"},
+			Metrics: []events.MetricEvidence{{Name: "testMetric", Value: 1, Status: events.MetricStatusAvailable, Role: events.MetricRoleActual}},
+		},
+	}
+
+	req := buildRaceEngineerAdviceGatewayRequest("session-prerace", inputEvents, frameStore, catalog)
+
+	if req.Input.Session.Track != nil {
+		t.Fatalf("expected nil track before lap 1 begins, got %+v", req.Input.Session.Track)
+	}
+	if req.Input.Session.Layout != nil {
+		t.Fatalf("expected nil layout before lap 1 begins, got %+v", req.Input.Session.Layout)
+	}
+}
+
 func TestBuildRaceEngineerAdviceGatewayRequestFallsBackToDetectionWhenEventsLackRefs(t *testing.T) {
 	const lengthMeters = 5423.0
 	const count = 34

@@ -253,9 +253,22 @@ func referencedEventIDs(selectedEvents []events.EngineerEvent) []string {
 	return ids
 }
 
+func hasLapOneBegan(frames []telemetry.Frame) bool {
+	for _, f := range frames {
+		if f.LapNumber >= 1 {
+			return true
+		}
+	}
+	return false
+}
+
 func detectTrackLayoutFromFrames(sessionID string, frameStore telemetry.Store, catalog tracks.Catalog) (*events.CatalogRef, *events.CatalogRef) {
 	frames, err := frameStore.Frames(context.Background(), sessionID)
 	if err != nil || len(frames) == 0 {
+		return nil, nil
+	}
+
+	if !hasLapOneBegan(frames) {
 		return nil, nil
 	}
 
