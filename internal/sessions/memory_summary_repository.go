@@ -132,6 +132,15 @@ func (r *MemorySummaryRepository) buildItem(ctx context.Context, session Session
 		item.DurationMs = d
 	}
 
+	if session.DetectedTrackID != "" {
+		v := session.DetectedTrackID
+		item.DetectedTrackID = &v
+	}
+	if session.DetectedLayoutID != "" {
+		v := session.DetectedLayoutID
+		item.DetectedLayoutID = &v
+	}
+
 	if frames == nil {
 		loadedFrames, err := r.frameStore.Frames(ctx, session.ID)
 		if err != nil {

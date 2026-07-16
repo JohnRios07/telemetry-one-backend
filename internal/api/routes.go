@@ -253,7 +253,8 @@ func catalogHasTrack(catalog tracks.Catalog, trackID string) bool {
 func ingestFramesHandler(frameStore telemetry.Store, eventStore events.Repository, sessionRepo sessions.Repository, catalog tracks.Catalog, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sessionID := r.PathValue("sessionId")
-		if _, err := validateSession(r.Context(), sessionRepo, sessionID, true); err != nil {
+		session, err := validateSession(r.Context(), sessionRepo, sessionID, true)
+		if err != nil {
 			writeSessionError(w, err)
 			return
 		}
@@ -313,6 +314,19 @@ func ingestFramesHandler(frameStore telemetry.Store, eventStore events.Repositor
 							ID:              detectResult.LayoutID,
 							Name:            detectResult.LayoutName,
 							DisplayStrategy: events.DisplayStrategyCatalogName,
+						}
+
+						if session.TrackID == "" {
+							session.DetectedTrackID = *detectResult.TrackID
+							session.DetectedLayoutID = *detectResult.LayoutID
+							if _, err := sessionRepo.Update(r.Context(), session); err != nil {
+								logger.Warn("failed to persist detected track/layout on session",
+									"session_id", sessionID,
+									"detected_track_id", *detectResult.TrackID,
+									"detected_layout_id", *detectResult.LayoutID,
+									"error", err,
+								)
+							}
 						}
 					}
 				}

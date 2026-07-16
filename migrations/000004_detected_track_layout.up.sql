@@ -1,0 +1,2 @@
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS detected_track_id TEXT NULL;
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS detected_layout_id TEXT NULL;

@@ -24,9 +24,9 @@ func (r *PostgresRepository) Create(ctx context.Context, session Session) (Sessi
 	}
 
 	row := r.pool.QueryRow(ctx, `
-INSERT INTO sessions (id, source, game, platform, driver_alias, track_id, started_at, ended_at)
-VALUES ($1, $2, $3, $4, $5, NULLIF($6, ''), $7, $8)
-RETURNING id, source, game, platform, driver_alias, COALESCE(track_id, ''), started_at, ended_at`,
+INSERT INTO sessions (id, source, game, platform, driver_alias, track_id, started_at, ended_at, detected_track_id, detected_layout_id)
+VALUES ($1, $2, $3, $4, $5, NULLIF($6, ''), $7, $8, NULLIF($9, ''), NULLIF($10, ''))
+RETURNING id, source, game, platform, driver_alias, COALESCE(track_id, ''), started_at, ended_at, COALESCE(detected_track_id, ''), COALESCE(detected_layout_id, '')`,
 		session.ID,
 		session.Source,
 		session.Game,
@@ -35,6 +35,8 @@ RETURNING id, source, game, platform, driver_alias, COALESCE(track_id, ''), star
 		session.TrackID,
 		session.StartedAt.UTC(),
 		session.EndedAt,
+		session.DetectedTrackID,
+		session.DetectedLayoutID,
 	)
 
 	created, err := scanSession(row)
@@ -64,7 +66,7 @@ func (r *PostgresRepository) End(ctx context.Context, id string, endedAt time.Ti
 UPDATE sessions
 SET ended_at = $2, updated_at = now()
 WHERE id = $1 AND ended_at IS NULL AND started_at <= $2
-RETURNING id, source, game, platform, driver_alias, COALESCE(track_id, ''), started_at, ended_at`, id, endedAt))
+RETURNING id, source, game, platform, driver_alias, COALESCE(track_id, ''), started_at, ended_at, COALESCE(detected_track_id, ''), COALESCE(detected_layout_id, '')`, id, endedAt))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Session{}, r.classifyEndNoRows(ctx, id, endedAt)
 	}
@@ -97,9 +99,9 @@ func (r *PostgresRepository) Update(ctx context.Context, session Session) (Sessi
 
 	updated, err := scanSession(r.pool.QueryRow(ctx, `
 UPDATE sessions
-SET source = $2, game = $3, platform = $4, driver_alias = $5, track_id = NULLIF($6, ''), started_at = $7, ended_at = $8, updated_at = now()
+SET source = $2, game = $3, platform = $4, driver_alias = $5, track_id = NULLIF($6, ''), started_at = $7, ended_at = $8, detected_track_id = NULLIF($9, ''), detected_layout_id = NULLIF($10, ''), updated_at = now()
 WHERE id = $1
-RETURNING id, source, game, platform, driver_alias, COALESCE(track_id, ''), started_at, ended_at`,
+RETURNING id, source, game, platform, driver_alias, COALESCE(track_id, ''), started_at, ended_at, COALESCE(detected_track_id, ''), COALESCE(detected_layout_id, '')`,
 		session.ID,
 		session.Source,
 		session.Game,
@@ -108,6 +110,8 @@ RETURNING id, source, game, platform, driver_alias, COALESCE(track_id, ''), star
 		session.TrackID,
 		session.StartedAt.UTC(),
 		session.EndedAt,
+		session.DetectedTrackID,
+		session.DetectedLayoutID,
 	))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Session{}, ErrNotFound
@@ -141,7 +145,7 @@ func (r *PostgresRepository) List(ctx context.Context) ([]Session, error) {
 	return result, nil
 }
 
-const selectSessionSQL = `SELECT id, source, game, platform, driver_alias, COALESCE(track_id, ''), started_at, ended_at FROM sessions`
+const selectSessionSQL = `SELECT id, source, game, platform, driver_alias, COALESCE(track_id, ''), started_at, ended_at, COALESCE(detected_track_id, ''), COALESCE(detected_layout_id, '') FROM sessions`
 
 type sessionScanner interface {
 	Scan(dest ...any) error
@@ -158,6 +162,8 @@ func scanSession(scanner sessionScanner) (Session, error) {
 		&session.TrackID,
 		&session.StartedAt,
 		&session.EndedAt,
+		&session.DetectedTrackID,
+		&session.DetectedLayoutID,
 	); err != nil {
 		return Session{}, err
 	}

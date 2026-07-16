@@ -127,6 +127,77 @@ func TestPostgresRepositoryEndUsesAtomicActiveSessionUpdate(t *testing.T) {
 	}
 }
 
+func TestNewDTOIncludesDetectedFieldsWhenSet(t *testing.T) {
+	s := Session{
+		ID:               "session-detect",
+		Source:           "test",
+		Game:             "gt7",
+		Platform:         "ps5",
+		StartedAt:        time.UnixMilli(1720656000000).UTC(),
+		DetectedTrackID:  "gt7_watkins_glen_international",
+		DetectedLayoutID: "gt7_layout_1240",
+	}
+	dto := NewDTO(s, 0, 0)
+	if dto.DetectedTrackID == nil || *dto.DetectedTrackID != "gt7_watkins_glen_international" {
+		t.Fatalf("expected detectedTrackId, got %+v", dto.DetectedTrackID)
+	}
+	if dto.DetectedLayoutID == nil || *dto.DetectedLayoutID != "gt7_layout_1240" {
+		t.Fatalf("expected detectedLayoutId, got %+v", dto.DetectedLayoutID)
+	}
+}
+
+func TestNewDTOOmitsDetectedFieldsWhenEmpty(t *testing.T) {
+	s := Session{
+		ID: "session-no-detect", Source: "test", Game: "gt7",
+		Platform: "ps5", StartedAt: time.UnixMilli(1720656000000).UTC(),
+	}
+	dto := NewDTO(s, 0, 0)
+	if dto.DetectedTrackID != nil {
+		t.Fatalf("expected nil detectedTrackId when empty, got %v", *dto.DetectedTrackID)
+	}
+	if dto.DetectedLayoutID != nil {
+		t.Fatalf("expected nil detectedLayoutId when empty, got %v", *dto.DetectedLayoutID)
+	}
+}
+
+func TestMemoryRepositoryUpdatePreservesDetectedFields(t *testing.T) {
+	repo := NewMemoryRepository()
+	ctx := context.Background()
+	startedAt := time.UnixMilli(1720656000000).UTC()
+
+	created, err := repo.Create(ctx, Session{
+		ID: "session-detect-update", Source: "test", Game: "gt7",
+		Platform: "ps5", StartedAt: startedAt,
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	created.DetectedTrackID = "gt7_watkins_glen_international"
+	created.DetectedLayoutID = "gt7_layout_1240"
+	updated, err := repo.Update(ctx, created)
+	if err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if updated.DetectedTrackID != "gt7_watkins_glen_international" {
+		t.Fatalf("expected detectedTrackId preserved, got %q", updated.DetectedTrackID)
+	}
+	if updated.DetectedLayoutID != "gt7_layout_1240" {
+		t.Fatalf("expected detectedLayoutId preserved, got %q", updated.DetectedLayoutID)
+	}
+
+	found, err := repo.FindByID(ctx, "session-detect-update")
+	if err != nil {
+		t.Fatalf("find: %v", err)
+	}
+	if found.DetectedTrackID != "gt7_watkins_glen_international" {
+		t.Fatalf("expected detectedTrackId persisted, got %q", found.DetectedTrackID)
+	}
+	if found.DetectedLayoutID != "gt7_layout_1240" {
+		t.Fatalf("expected detectedLayoutId persisted, got %q", found.DetectedLayoutID)
+	}
+}
+
 func TestNewIDUsesSessionPrefixedULIDShape(t *testing.T) {
 	id, err := NewID()
 	if err != nil {

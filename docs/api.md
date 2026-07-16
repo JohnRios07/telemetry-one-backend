@@ -673,14 +673,14 @@ No auth required. Rejection stats are not included — rejection summaries are n
       "frameBatches": 5,
       "persistedFrames": 400,
       "eventCount": 3,
-      "detectedTrackId": null,
-      "detectedLayoutId": null
+      "detectedTrackId": "gt7_watkins_glen_international",
+      "detectedLayoutId": "gt7_layout_1240"
     }
   ]
 }
 ```
 
-In memory mode, `frameBatches` is always `0` because the in-memory frame store does not track batch boundaries. `detectedTrackId` and `detectedLayoutId` are reserved for future per-session detection results and are always omitted in the current implementation.
+`detectedTrackId` and `detectedLayoutId` are populated when the ingest pipeline detects and persists track/layout IDs to the session after a completed lap is observed. They remain null/omitted when detection has not run, has not produced a confident result, or when an explicit `trackId` was set at session creation (manual selection is not overridden).
 
 ### Session Summary
 
@@ -707,7 +707,9 @@ Returns aggregate counts and derived metrics for a single session. Session must 
     "durationMs": 9000000,
     "frameBatches": 5,
     "persistedFrames": 400,
-    "eventCount": 3
+    "eventCount": 3,
+    "detectedTrackId": "gt7_watkins_glen_international",
+    "detectedLayoutId": "gt7_layout_1240"
   },
   "frameBatches": 5,
   "persistedFrames": 400,
