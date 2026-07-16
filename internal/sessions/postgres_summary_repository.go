@@ -13,8 +13,13 @@ import (
 )
 
 type PostgresSummaryRepository struct {
-	pool           *pgxpool.Pool
+	pool           postgresSummaryDB
 	rejectionStore telemetry.RejectionSummaryStore
+}
+
+type postgresSummaryDB interface {
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
 func NewPostgresSummaryRepository(pool *pgxpool.Pool, rejectionStores ...telemetry.RejectionSummaryStore) *PostgresSummaryRepository {
@@ -72,6 +77,7 @@ LIMIT $1`
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate session summaries: %w", err)
 	}
+	rows.Close()
 	if r.rejectionStore != nil && len(items) > 0 {
 		sessionIDs := make([]string, 0, len(items))
 		for _, item := range items {

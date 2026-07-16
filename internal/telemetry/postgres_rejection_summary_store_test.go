@@ -108,6 +108,28 @@ func TestPostgresRejectionSummaryStoreSummariesReturnsQueryError(t *testing.T) {
 	}
 }
 
+func TestPostgresRejectionSummaryStoreSummaryHandlesNilReceiver(t *testing.T) {
+	tests := []struct {
+		name  string
+		store *PostgresRejectionSummaryStore
+	}{
+		{name: "nil receiver"},
+		{name: "nil pool", store: &PostgresRejectionSummaryStore{}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.store.Summary(context.Background(), "session-1")
+			if err != nil {
+				t.Fatalf("summary: %v", err)
+			}
+			if got.RejectedFrames != 0 || len(got.Summary.Reasons) != 0 {
+				t.Fatalf("expected zero aggregate, got %+v", got)
+			}
+		})
+	}
+}
+
 type fakeRejectionRow struct {
 	sessionID      string
 	rejectedFrames int

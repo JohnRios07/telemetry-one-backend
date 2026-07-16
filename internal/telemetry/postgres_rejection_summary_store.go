@@ -63,7 +63,7 @@ INSERT INTO ingest_rejection_summaries (
 }
 
 func (s *PostgresRejectionSummaryStore) Summary(ctx context.Context, sessionID string) (RejectedSummaryAggregate, error) {
-	if sessionID == "" {
+	if s == nil || s.pool == nil || sessionID == "" {
 		return RejectedSummaryAggregate{}, nil
 	}
 	results, err := s.Summaries(ctx, []string{sessionID})
