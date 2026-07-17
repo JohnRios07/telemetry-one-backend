@@ -53,6 +53,8 @@ track_id,x,z,y,speed,rpm,orientation,rotation_x,rotation_z,rotation_y
 
 The converter maps raw `x/z/y` coordinates to telemetry `positionX/positionY/positionZ` fields as `positionX=x`, `positionY=y`, and `positionZ=z`, synthesizes deterministic timestamps from `-hz`, and emits no metadata envelope. It is fixture-only: do not wire raw dumps or generated fixtures into production ingest, production track geometry, catalog centerlines, sector boundaries, apexes, or corner resolver code.
 
+Fixtures derived from GT7Tracks raw dumps are intentionally outside `Catalog.ValidateSourceOfTruth()`'s production allowlist, so they remain useful for dev/test but cannot become runtime seed provenance.
+
 ## Tradeoffs
 
 - Deterministic math beats realism for this phase because contract validation and repeatable tests matter more than GT7 fidelity.

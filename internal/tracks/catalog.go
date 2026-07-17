@@ -26,8 +26,18 @@ var (
 	ErrMissingSourceType               = errors.New("source type is required")
 	ErrMissingSourceRetrievedAt        = errors.New("source retrievedAt is required")
 	ErrMissingMetadataSource           = errors.New("metadata source is required")
+	ErrUnsupportedSourceOfTruthSource  = errors.New("source type is not production-safe for source-of-truth validation")
 	ErrInvalidCenterLine               = errors.New("centerLine must contain finite, ordered, non-zero geometry when present")
 	ErrUnsupportedCornerDefinitionMode = errors.New("corner definitionMode must be catalog_manual or catalog_enumerated in catalog v1")
+)
+
+const (
+	SourceTypeGT7InfoCourseCSV                  = "gt7info_course_csv"
+	SourceTypeOfficialGranTurismoTracklistAsset = "official_gran_turismo_tracklist_asset"
+	SourceTypeOfficialGranTurismoNews           = "official_gran_turismo_news"
+	SourceTypeGT7TracksTrackListCSV             = "gt7tracks_track_list_csv"
+	SourceTypeGT7TracksRawDump                  = "gt7tracks_raw_dump"
+	SourceTypeGT7TracksFixtureRawDump           = "gt7tracks_fixture_raw_dump"
 )
 
 type Catalog struct {
@@ -98,6 +108,9 @@ func (c Catalog) Validate() error {
 	return nil
 }
 
+// ValidateSourceOfTruth enforces the runtime seed boundary: metadata must be
+// structurally complete and every source must come from the production-safe
+// allowlist.
 func (c Catalog) ValidateSourceOfTruth() error {
 	if err := c.Validate(); err != nil {
 		return err
@@ -105,24 +118,24 @@ func (c Catalog) ValidateSourceOfTruth() error {
 
 	for trackIndex, track := range c.Tracks {
 		trackPath := fmt.Sprintf("tracks[%d]", trackIndex)
-		if err := requireSources(trackPath+".sources", track.Sources); err != nil {
+		if err := requireProductionSources(trackPath+".sources", track.Sources); err != nil {
 			return err
 		}
 
 		for layoutIndex, layout := range track.Layouts {
 			layoutPath := fmt.Sprintf("%s.layouts[%d]", trackPath, layoutIndex)
-			if err := requireSources(layoutPath+".sources", layout.Sources); err != nil {
+			if err := requireProductionSources(layoutPath+".sources", layout.Sources); err != nil {
 				return err
 			}
 			for sectorIndex, sector := range layout.Sectors {
 				sectorPath := fmt.Sprintf("%s.sectors[%d]", layoutPath, sectorIndex)
-				if err := requireSources(sectorPath+".sources", sector.Sources); err != nil {
+				if err := requireProductionSources(sectorPath+".sources", sector.Sources); err != nil {
 					return err
 				}
 			}
 			for cornerIndex, corner := range layout.Corners {
 				cornerPath := fmt.Sprintf("%s.corners[%d]", layoutPath, cornerIndex)
-				if err := requireSources(cornerPath+".sources", corner.Sources); err != nil {
+				if err := requireProductionSources(cornerPath+".sources", corner.Sources); err != nil {
 					return err
 				}
 			}
@@ -185,6 +198,30 @@ func requireSources(path string, sources []Source) error {
 	}
 
 	return validateSources(path, sources)
+}
+
+func requireProductionSources(path string, sources []Source) error {
+	if err := requireSources(path, sources); err != nil {
+		return err
+	}
+
+	for i, source := range sources {
+		sourcePath := fmt.Sprintf("%s[%d]", path, i)
+		if !isProductionSourceType(source.SourceType) {
+			return fmt.Errorf("%s.sourceType: %w: %q (allowed: %s, %s)", sourcePath, ErrUnsupportedSourceOfTruthSource, source.SourceType, SourceTypeOfficialGranTurismoTracklistAsset, SourceTypeGT7InfoCourseCSV)
+		}
+	}
+
+	return nil
+}
+
+func isProductionSourceType(sourceType string) bool {
+	switch sourceType {
+	case SourceTypeOfficialGranTurismoTracklistAsset, SourceTypeGT7InfoCourseCSV:
+		return true
+	default:
+		return false
+	}
 }
 
 func validateSectors(path string, sectors []Sector, lengthMeters float64) error {

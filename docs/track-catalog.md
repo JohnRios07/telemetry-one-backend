@@ -16,6 +16,7 @@ Telemetry One treats track data sources as provenance, not interchangeable truth
 - `gt7info` `course.csv` is allowed as a secondary catalog seed for layout `ID`, `Name`, `Length`, `NumCorners`, and other summary fields.
 - The official Gran Turismo 7 tracklist page/assets are allowed as a factual reference for layout `ID`, `Name`, base, `Length`, `cornerCount`, `straight`, `elevation`, and `country`.
 - The official page/assets are provenance references, not mirrored open data. They do not provide an explicit open-data license, so Telemetry One should not present them as redistributable source data.
+- `Catalog.ValidateSourceOfTruth()` is a production/runtime gate, not a generic structure check. Its allowlist is currently limited to `official_gran_turismo_tracklist_asset` and `gt7info_course_csv`; `gt7tracks_track_list_csv`, raw dump labels, and fixture-only GT7Tracks provenance are rejected for runtime seed catalogs.
 - No source means no emitted name.
 - `NumCorners` may only produce ordinal labels `Corner 1` through `Corner N`.
 - Never infer named corners, sectors, apexes, or centerlines from raw telemetry dumps or from length-only matching.
@@ -135,6 +136,8 @@ Source-of-truth validation requires every emitted display-name owner to be prove
 - Layout names require complete layout `sources`.
 - Sector names require complete sector `sources` when sectors are present.
 - Corner names require complete corner `sources` when corners are present.
+
+Source-of-truth validation also rejects unsafe provenance labels. The production-safe allowlist is `official_gran_turismo_tracklist_asset` and `gt7info_course_csv`. Anything else, including `gt7tracks_track_list_csv` and fixture/raw GT7Tracks dump labels, must fail runtime seed validation even if the catalog is structurally valid.
 
 Each source must include `url`, `sourceType`, and `retrievedAt`. GT7 UDP telemetry is never a source for track, layout, sector, or corner names. If metadata lacks provenance, consumers must keep the selected display name unknown rather than inventing or copying a heuristic label.
 
