@@ -31,6 +31,41 @@ func TestMemoryRepositoryUpsertIsIdempotentAndListIsSorted(t *testing.T) {
 	}
 }
 
+func TestMemoryRepositoryTelemetryGapCountPersistsAndOverwrites(t *testing.T) {
+	repo := NewMemoryRepository()
+	ctx := context.Background()
+
+	if err := repo.UpsertCompleted(ctx, []CompletedLap{{SessionID: "session-1", LapNumber: 1, LapTimeMs: 91000, CompletedAtUnixMs: 1000, TelemetryGapCount: 2}}); err != nil {
+		t.Fatalf("upsert completed lap: %v", err)
+	}
+	if err := repo.UpsertCompleted(ctx, []CompletedLap{{SessionID: "session-1", LapNumber: 1, LapTimeMs: 91000, CompletedAtUnixMs: 1000, TelemetryGapCount: 4}}); err != nil {
+		t.Fatalf("upsert completed lap overwrite: %v", err)
+	}
+	if err := repo.UpdateTelemetryGapCount(ctx, "session-1", 1, 1); err != nil {
+		t.Fatalf("update telemetry gap count: %v", err)
+	}
+
+	got, err := repo.ListBySession(ctx, "session-1")
+	if err != nil {
+		t.Fatalf("list completed laps: %v", err)
+	}
+	if len(got) != 1 || got[0].TelemetryGapCount != 1 {
+		t.Fatalf("expected overwritten telemetry gap count 1, got %+v", got)
+	}
+}
+
+func TestMemoryRepositoryRejectsNegativeTelemetryGapCount(t *testing.T) {
+	repo := NewMemoryRepository()
+	ctx := context.Background()
+
+	if err := repo.UpsertCompleted(ctx, []CompletedLap{{SessionID: "session-1", LapNumber: 1, LapTimeMs: 91000, CompletedAtUnixMs: 1000, TelemetryGapCount: -1}}); err != ErrInvalidGapCount {
+		t.Fatalf("expected ErrInvalidGapCount on upsert, got %v", err)
+	}
+	if err := repo.UpdateTelemetryGapCount(ctx, "session-1", 1, -1); err != ErrInvalidGapCount {
+		t.Fatalf("expected ErrInvalidGapCount on update, got %v", err)
+	}
+}
+
 func TestMemoryRepositorySamplesAreIdempotentSortedAndPreserveNilVsZero(t *testing.T) {
 	repo := NewMemoryRepository()
 	ctx := context.Background()

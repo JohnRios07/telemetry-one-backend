@@ -39,12 +39,44 @@ func (r *MemoryRepository) UpsertCompleted(ctx context.Context, completed []Comp
 			byLap = make(map[int]CompletedLap)
 			r.laps[lap.SessionID] = byLap
 		}
-		if _, exists := byLap[lap.LapNumber]; exists {
+		if existing, exists := byLap[lap.LapNumber]; exists {
+			existing.TelemetryGapCount = lap.TelemetryGapCount
+			byLap[lap.LapNumber] = existing
 			continue
 		}
 		byLap[lap.LapNumber] = lap
 	}
 
+	return nil
+}
+
+func (r *MemoryRepository) UpdateTelemetryGapCount(ctx context.Context, sessionID string, lapNumber int, count int) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if r == nil || sessionID == "" {
+		return nil
+	}
+	if lapNumber < 0 {
+		return ErrInvalidLapNumber
+	}
+	if count < 0 {
+		return ErrInvalidGapCount
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	byLap := r.laps[sessionID]
+	if byLap == nil {
+		return nil
+	}
+	lap, ok := byLap[lapNumber]
+	if !ok {
+		return nil
+	}
+	lap.TelemetryGapCount = count
+	byLap[lapNumber] = lap
 	return nil
 }
 

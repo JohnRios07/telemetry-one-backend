@@ -356,6 +356,15 @@ func ingestFramesHandler(frameStore telemetry.Store, eventStore events.Repositor
 					writeJSON(w, http.StatusInternalServerError, httperror.Envelope(httperror.Internal("lap persistence error")))
 					return
 				}
+				if err := persistTelemetryGapCounts(r.Context(), frameStore, lapRepo, request.SessionID, completedLaps); err != nil {
+					logger.Error("failed to persist telemetry gap counts",
+						"session_id", request.SessionID,
+						"completed_laps", len(completedLaps),
+						"error", err,
+					)
+					writeJSON(w, http.StatusInternalServerError, httperror.Envelope(httperror.Internal("lap persistence error")))
+					return
+				}
 			}
 			if lapRepo != nil && sampleRepo != nil && len(completedLaps) > 0 {
 				if err := persistLapSamples(r.Context(), frameStore, sampleRepo, request.SessionID, completedLaps); err != nil {
@@ -480,6 +489,23 @@ func ingestFramesHandler(frameStore telemetry.Store, eventStore events.Repositor
 			"top_reasons", formatTopReasons(summary),
 		)
 	}
+}
+
+func persistTelemetryGapCounts(ctx context.Context, frameStore telemetry.Store, lapRepo laps.Repository, sessionID string, completedLaps []laps.CompletedLap) error {
+	if frameStore == nil || lapRepo == nil || len(completedLaps) == 0 {
+		return nil
+	}
+	accumulatedFrames, err := frameStore.Frames(ctx, sessionID)
+	if err != nil {
+		return fmt.Errorf("load frames for telemetry gap counts: %w", err)
+	}
+	for _, lap := range completedLaps {
+		count := laps.CountTelemetryGaps(lap, accumulatedFrames)
+		if err := lapRepo.UpdateTelemetryGapCount(ctx, sessionID, lap.LapNumber, count); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func persistLapSamples(ctx context.Context, frameStore telemetry.Store, sampleRepo laps.SampleRepository, sessionID string, completedLaps []laps.CompletedLap) error {
