@@ -45,8 +45,39 @@ func TestPostgresRepositoryUpsertUsesSessionLapConflict(t *testing.T) {
 	if !strings.Contains(db.execs[0].sql, "ON CONFLICT (session_id, lap_number)") {
 		t.Fatalf("expected idempotent session/lap conflict clause, got %s", db.execs[0].sql)
 	}
-	if db.execs[0].args[0] != "lap_session-1_2" || db.execs[0].args[1] != "session-1" || db.execs[0].args[2] != 2 {
+	if !strings.Contains(db.execs[0].sql, "telemetry_gap_count") {
+		t.Fatalf("expected telemetry_gap_count in upsert SQL, got %s", db.execs[0].sql)
+	}
+	if db.execs[0].args[0] != "lap_session-1_2" || db.execs[0].args[1] != "session-1" || db.execs[0].args[2] != 2 || db.execs[0].args[7] != 0 {
 		t.Fatalf("unexpected insert args: %+v", db.execs[0].args)
+	}
+}
+
+func TestPostgresRepositoryUpdateTelemetryGapCountOverwrites(t *testing.T) {
+	db := &fakeLapsDB{}
+	repo := NewPostgresRepository(nil)
+	repo.pool = db
+
+	if err := repo.UpdateTelemetryGapCount(context.Background(), "session-1", 2, 3); err != nil {
+		t.Fatalf("update telemetry gap count: %v", err)
+	}
+	if len(db.execs) != 1 {
+		t.Fatalf("expected one update, got %d", len(db.execs))
+	}
+	if !strings.Contains(db.execs[0].sql, "SET telemetry_gap_count = $3") || db.execs[0].args[0] != "session-1" || db.execs[0].args[1] != 2 || db.execs[0].args[2] != 3 {
+		t.Fatalf("unexpected update call: sql=%s args=%+v", db.execs[0].sql, db.execs[0].args)
+	}
+}
+
+func TestPostgresRepositoryRejectsNegativeTelemetryGapCount(t *testing.T) {
+	repo := NewPostgresRepository(nil)
+	repo.pool = &fakeLapsDB{}
+
+	if err := repo.UpsertCompleted(context.Background(), []CompletedLap{{SessionID: "session-1", LapNumber: 2, LapTimeMs: 91234, CompletedAtUnixMs: 12345, TelemetryGapCount: -1}}); err != ErrInvalidGapCount {
+		t.Fatalf("expected ErrInvalidGapCount on upsert, got %v", err)
+	}
+	if err := repo.UpdateTelemetryGapCount(context.Background(), "session-1", 2, -1); err != ErrInvalidGapCount {
+		t.Fatalf("expected ErrInvalidGapCount on update, got %v", err)
 	}
 }
 

@@ -14,6 +14,7 @@ var (
 	ErrInvalidLapTime     = errors.New("lapTimeMs must be greater than zero")
 	ErrInvalidBestLapTime = errors.New("bestLapMs must be zero or greater")
 	ErrInvalidTimestamp   = errors.New("completedAtUnixMs must be greater than zero")
+	ErrInvalidGapCount    = errors.New("telemetryGapCount must be zero or greater")
 )
 
 type CompletedLap struct {
@@ -24,6 +25,7 @@ type CompletedLap struct {
 	CompletedAtUnixMs int64
 	BestLapMs         *int64
 	SampleCount       *int
+	TelemetryGapCount int
 }
 
 func NewCompletedLapID(sessionID string, lapNumber int) string {
@@ -48,6 +50,9 @@ func (lap CompletedLap) Validate() error {
 	}
 	if lap.SampleCount != nil && *lap.SampleCount <= 0 {
 		return errors.New("sampleCount must be greater than zero")
+	}
+	if lap.TelemetryGapCount < 0 {
+		return ErrInvalidGapCount
 	}
 	return nil
 }

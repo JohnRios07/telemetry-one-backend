@@ -40,9 +40,10 @@ func (r *PostgresRepository) UpsertCompleted(ctx context.Context, completed []Co
 			return err
 		}
 		if _, err := r.pool.Exec(ctx, `
-INSERT INTO laps (id, session_id, lap_number, lap_time_ms, completed_at_unix_ms, best_lap_ms, sample_count)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO laps (id, session_id, lap_number, lap_time_ms, completed_at_unix_ms, best_lap_ms, sample_count, telemetry_gap_count)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 ON CONFLICT (session_id, lap_number) DO UPDATE SET
+    telemetry_gap_count = EXCLUDED.telemetry_gap_count,
     updated_at = laps.updated_at
 WHERE laps.lap_time_ms = EXCLUDED.lap_time_ms
   AND laps.completed_at_unix_ms = EXCLUDED.completed_at_unix_ms`,
@@ -53,11 +54,37 @@ WHERE laps.lap_time_ms = EXCLUDED.lap_time_ms
 			lap.CompletedAtUnixMs,
 			lap.BestLapMs,
 			lap.SampleCount,
+			lap.TelemetryGapCount,
 		); err != nil {
 			return fmt.Errorf("upsert completed lap: %w", err)
 		}
 	}
 
+	return nil
+}
+
+func (r *PostgresRepository) UpdateTelemetryGapCount(ctx context.Context, sessionID string, lapNumber int, count int) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if r == nil || r.pool == nil || sessionID == "" {
+		return nil
+	}
+	if lapNumber < 0 {
+		return ErrInvalidLapNumber
+	}
+	if count < 0 {
+		return ErrInvalidGapCount
+	}
+
+	if _, err := r.pool.Exec(ctx, `
+UPDATE laps
+SET telemetry_gap_count = $3,
+    updated_at = NOW()
+WHERE session_id = $1
+  AND lap_number = $2`, sessionID, lapNumber, count); err != nil {
+		return fmt.Errorf("update telemetry gap count: %w", err)
+	}
 	return nil
 }
 
@@ -70,7 +97,7 @@ func (r *PostgresRepository) ListBySession(ctx context.Context, sessionID string
 	}
 
 	rows, err := r.pool.Query(ctx, `
-SELECT id, session_id, lap_number, lap_time_ms, completed_at_unix_ms, best_lap_ms, sample_count
+SELECT id, session_id, lap_number, lap_time_ms, completed_at_unix_ms, best_lap_ms, sample_count, telemetry_gap_count
 FROM laps
 WHERE session_id = $1
 ORDER BY lap_number ASC, id ASC`, sessionID)
@@ -82,7 +109,7 @@ ORDER BY lap_number ASC, id ASC`, sessionID)
 	result := make([]CompletedLap, 0)
 	for rows.Next() {
 		var lap CompletedLap
-		if err := rows.Scan(&lap.ID, &lap.SessionID, &lap.LapNumber, &lap.LapTimeMs, &lap.CompletedAtUnixMs, &lap.BestLapMs, &lap.SampleCount); err != nil {
+		if err := rows.Scan(&lap.ID, &lap.SessionID, &lap.LapNumber, &lap.LapTimeMs, &lap.CompletedAtUnixMs, &lap.BestLapMs, &lap.SampleCount, &lap.TelemetryGapCount); err != nil {
 			return nil, fmt.Errorf("scan completed lap: %w", err)
 		}
 		result = append(result, lap.withDefaults())

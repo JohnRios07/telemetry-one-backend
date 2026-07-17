@@ -282,6 +282,39 @@ func TestIngestPersistsCompletedLapsWithZeroBestLapMs(t *testing.T) {
 	}
 }
 
+func TestIngestPersistsTelemetryGapCountAcrossBatchesIdempotently(t *testing.T) {
+	store := telemetry.NewFrameStore(100)
+	eventStore := events.NewStore(100, events.DedupOptions{})
+	lapRepo := laps.NewMemoryRepository()
+	sessionRepo := sessions.NewMemoryRepository()
+	seedTestSession(t, sessionRepo, "session-gaps")
+	handler := routesWithLapRepository(config.Config{Addr: ":0", Env: "test"}, slog.New(slog.NewTextHandler(io.Discard, nil)), store, tracks.OfficialGT7SeedCatalog(), eventStore, lapRepo, sessionRepo)
+
+	ingestFrames(t, handler, "session-gaps", []telemetry.Frame{
+		completedLapFrame(1720656000000, 1, nil, nil),
+		completedLapFrame(1720656000050, 1, nil, nil),
+		completedLapFrame(1720656000100, 1, nil, nil),
+		completedLapFrame(1720656000150, 1, nil, nil),
+	})
+	lastLapMs := int64(91234)
+	secondBatch := []telemetry.Frame{
+		completedLapFrame(1720656000700, 1, nil, nil),
+		completedLapFrame(1720656000750, 1, nil, nil),
+		{TimestampUnixMs: 1720656000800, SpeedMps: 58.33, RPM: 7100, Gear: 4, Throttle: 0.82, Brake: 0, Steering: -0.12, FuelLiters: 38.4,
+			PositionX: 123.4, PositionY: 5.6, PositionZ: 789.1, LapNumber: 2, CurrentLapMs: 100, LastLapMs: &lastLapMs, IsOnTrack: true},
+	}
+	ingestFrames(t, handler, "session-gaps", secondBatch)
+	ingestFrames(t, handler, "session-gaps", secondBatch)
+
+	got, err := lapRepo.ListBySession(context.Background(), "session-gaps")
+	if err != nil {
+		t.Fatalf("list completed laps: %v", err)
+	}
+	if len(got) != 1 || got[0].LapNumber != 1 || got[0].TelemetryGapCount != 1 {
+		t.Fatalf("expected completed lap 1 with one deterministic telemetry gap, got %+v", got)
+	}
+}
+
 func TestIngestDoesNotPersistRejectedFrameLapEvidence(t *testing.T) {
 	store := telemetry.NewFrameStore(100)
 	lapRepo := laps.NewMemoryRepository()
@@ -1652,6 +1685,10 @@ type failingLapRepository struct {
 }
 
 func (r failingLapRepository) UpsertCompleted(context.Context, []laps.CompletedLap) error {
+	return r.err
+}
+
+func (r failingLapRepository) UpdateTelemetryGapCount(context.Context, string, int, int) error {
 	return r.err
 }
 
