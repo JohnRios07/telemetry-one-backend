@@ -111,6 +111,78 @@ func TestCreateSessionContractValidatesShape(t *testing.T) {
 	}
 }
 
+func TestV2APIVersionMarkerIsAddedToSafeAPIv1SuccessObjects(t *testing.T) {
+	handler := newTestHandler(t)
+
+	tests := []struct {
+		name       string
+		method     string
+		path       string
+		body       string
+		wantStatus int
+		wantField  string
+	}{
+		{name: "health", method: http.MethodGet, path: "/api/v1/health", wantStatus: http.StatusOK, wantField: "status"},
+		{name: "create session", method: http.MethodPost, path: "/api/v1/sessions", body: `{"source":"flutter","game":"gt7","platform":"ps5","startedUnixMs":1720656000000}`, wantStatus: http.StatusCreated, wantField: "session"},
+		{name: "get session", method: http.MethodGet, path: "/api/v1/sessions/session-1", wantStatus: http.StatusOK, wantField: "session"},
+		{name: "ingest frames", method: http.MethodPost, path: "/api/v1/sessions/session-1/frames", body: `{"sessionId":"session-1","frames":[{"timestampUnixMs":1720656000000,"speedMps":58.33,"rpm":7100,"gear":4,"throttle":0.82,"brake":0,"steering":-0.12,"fuelLiters":38.4,"positionX":123.4,"positionY":5.6,"positionZ":789.1,"lapNumber":2,"currentLapMs":81234,"isOnTrack":true}]}`, wantStatus: http.StatusAccepted, wantField: "acceptedFrames"},
+		{name: "track detection", method: http.MethodGet, path: "/api/v1/sessions/session-1/track", wantStatus: http.StatusOK, wantField: "status"},
+		{name: "events", method: http.MethodGet, path: "/api/v1/sessions/session-1/events", wantStatus: http.StatusOK, wantField: "events"},
+		{name: "session list", method: http.MethodGet, path: "/api/v1/sessions", wantStatus: http.StatusOK, wantField: "sessions"},
+		{name: "session summary", method: http.MethodGet, path: "/api/v1/sessions/session-1/summary", wantStatus: http.StatusOK, wantField: "session"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			request := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+			handler.ServeHTTP(recorder, request)
+
+			if recorder.Code != tc.wantStatus {
+				t.Fatalf("expected status %d, got %d with body %s", tc.wantStatus, recorder.Code, recorder.Body.String())
+			}
+			response := decodeJSONMap(t, recorder.Body.Bytes())
+			assertAPIVersion(t, response)
+			if _, ok := response[tc.wantField]; !ok {
+				t.Fatalf("expected existing field %q to remain present in %+v", tc.wantField, response)
+			}
+		})
+	}
+}
+
+func TestV2APIVersionMarkerPreservesErrorAndNonObjectShapes(t *testing.T) {
+	handler := newTestHandler(t)
+
+	errorRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(errorRecorder, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/session-1/frames", strings.NewReader(`{"sessionId":"session-1","frames":[]}`)))
+	if errorRecorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d with body %s", http.StatusBadRequest, errorRecorder.Code, errorRecorder.Body.String())
+	}
+	errorResponse := decodeJSONMap(t, errorRecorder.Body.Bytes())
+	if _, ok := errorResponse["apiVersion"]; ok {
+		t.Fatalf("expected error envelope to remain unversioned, got %+v", errorResponse)
+	}
+	if _, ok := errorResponse["error"]; !ok {
+		t.Fatalf("expected existing error envelope shape, got %+v", errorResponse)
+	}
+
+	nonObject := payloadWithAPIVersion(http.StatusOK, []string{"ok"})
+	if _, ok := nonObject.([]string); !ok {
+		t.Fatalf("expected non-object payload to remain unchanged, got %#v", nonObject)
+	}
+}
+
+func TestAPIVersionDoesNotRequireAPIV2Routes(t *testing.T) {
+	handler := routes(config.Config{Addr: ":0", Env: "test"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v2/health", nil))
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected /api/v2 route to remain absent with status %d, got %d", http.StatusNotFound, recorder.Code)
+	}
+}
+
 func TestSessionLifecycleCreateGetFinish(t *testing.T) {
 	store := telemetry.NewFrameStore(10)
 	eventStore := events.NewStore(10, events.DedupOptions{})
@@ -838,6 +910,22 @@ func apiEngineerEvent(mutate func(*events.EngineerEvent)) events.EngineerEvent {
 
 func apiStringPtr(value string) *string {
 	return &value
+}
+
+func decodeJSONMap(t *testing.T, body []byte) map[string]any {
+	t.Helper()
+	var response map[string]any
+	if err := json.Unmarshal(body, &response); err != nil {
+		t.Fatalf("failed to decode JSON object: %v", err)
+	}
+	return response
+}
+
+func assertAPIVersion(t *testing.T, response map[string]any) {
+	t.Helper()
+	if got, ok := response["apiVersion"].(string); !ok || got != responseAPIVersion {
+		t.Fatalf("expected apiVersion %q, got %#v in %+v", responseAPIVersion, response["apiVersion"], response)
+	}
 }
 
 type failingEventStore struct{}

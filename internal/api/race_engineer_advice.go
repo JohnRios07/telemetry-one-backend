@@ -80,7 +80,7 @@ func raceEngineerAdviceHandler(aiSvc ai.AIService, eventStore events.Repository,
 		generatedAt := time.Now().UTC().UnixMilli()
 
 		if len(selectedEvents) == 0 {
-			writeJSON(w, http.StatusOK, raceEngineerAdviceResponse{
+			writeVersionedJSON(w, http.StatusOK, raceEngineerAdviceResponse{
 				SessionID:         sessionID,
 				Status:            raceEngineerAdviceStatusNoEvents,
 				Message:           raceEngineerNoEventsMessage,
@@ -105,7 +105,7 @@ func raceEngineerAdviceHandler(aiSvc ai.AIService, eventStore events.Repository,
 			status = ai.StatusSuccess
 		}
 
-		writeJSON(w, http.StatusOK, raceEngineerAdviceResponse{
+		writeVersionedJSON(w, http.StatusOK, raceEngineerAdviceResponse{
 			SessionID:         sessionID,
 			Status:            status,
 			Message:           gatewayResp.Summary,

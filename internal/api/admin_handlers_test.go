@@ -30,6 +30,7 @@ func TestAdminIngestStats_OpenWhenNoToken(t *testing.T) {
 		t.Fatalf("expected status %d, got %d with body %s", http.StatusOK, recorder.Code, recorder.Body.String())
 	}
 
+	assertAPIVersion(t, decodeJSONMap(t, recorder.Body.Bytes()))
 	var resp admin.IngestStatsResponse
 	if err := json.NewDecoder(recorder.Body).Decode(&resp); err != nil {
 		t.Fatalf("expected valid JSON: %v", err)
