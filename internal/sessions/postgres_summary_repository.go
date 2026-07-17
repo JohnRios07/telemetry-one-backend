@@ -38,7 +38,7 @@ func (r *PostgresSummaryRepository) List(ctx context.Context, filter SummaryFilt
 
 	query := `
 SELECT
-	s.id, s.source, s.game, s.platform, s.driver_alias, COALESCE(s.track_id, ''),
+	s.id, s.source, s.game, s.platform, s.driver_alias, COALESCE(s.track_id, ''), COALESCE(s.layout_id, ''),
 	s.started_at, s.ended_at,
 	COALESCE(fb.batches, 0),
 	COALESCE(fb.persisted, 0),
@@ -102,7 +102,7 @@ func (r *PostgresSummaryRepository) Summary(ctx context.Context, sessionID strin
 
 	query := `
 SELECT
-	s.id, s.source, s.game, s.platform, s.driver_alias, COALESCE(s.track_id, ''),
+	s.id, s.source, s.game, s.platform, s.driver_alias, COALESCE(s.track_id, ''), COALESCE(s.layout_id, ''),
 	s.started_at, s.ended_at,
 	COALESCE(fb.batches, 0),
 	COALESCE(fb.persisted, 0),
@@ -150,7 +150,7 @@ WHERE s.id = $1`
 	var detectedTrackID, detectedLayoutID string
 	err := r.pool.QueryRow(ctx, query, sessionID).Scan(
 		&item.ID, &item.Source, &item.Game, &item.Platform,
-		&item.DriverAlias, &item.TrackID,
+		&item.DriverAlias, &item.TrackID, &item.LayoutID,
 		&startedAt, &endedAt,
 		&fb.batches, &fb.persisted,
 		&fb.timeStart, &fb.timeEnd,
@@ -198,6 +198,9 @@ WHERE s.id = $1`
 	if detectedLayoutID != "" {
 		item.DetectedLayoutID = &detectedLayoutID
 	}
+	if item.LayoutID == "" {
+		item.LayoutID = detectedLayoutID
+	}
 
 	summary := &SessionDetailSummary{
 		Session:            item,
@@ -229,7 +232,7 @@ func scanSummaryItem(scanner summaryItemScanner) (SessionSummaryItem, error) {
 
 	if err := scanner.Scan(
 		&item.ID, &item.Source, &item.Game, &item.Platform,
-		&item.DriverAlias, &item.TrackID,
+		&item.DriverAlias, &item.TrackID, &item.LayoutID,
 		&startedAt, &endedAt,
 		&frameBatches, &persistedFrames,
 		&eventCount,
@@ -256,6 +259,9 @@ func scanSummaryItem(scanner summaryItemScanner) (SessionSummaryItem, error) {
 	}
 	if detectedLayoutID != "" {
 		item.DetectedLayoutID = &detectedLayoutID
+	}
+	if item.LayoutID == "" {
+		item.LayoutID = detectedLayoutID
 	}
 
 	return item, nil

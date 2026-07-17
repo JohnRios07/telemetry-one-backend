@@ -12,6 +12,7 @@ type Repository interface {
 	Update(ctx context.Context, session Session) (Session, error)
 	List(ctx context.Context) ([]Session, error)
 	SetDetectedTrackLayout(ctx context.Context, id string, trackID, layoutID string) (Session, error)
+	SetTrackLayout(ctx context.Context, id string, trackID, layoutID string) (Session, error)
 }
 
 var _ Repository = (*MemoryRepository)(nil)

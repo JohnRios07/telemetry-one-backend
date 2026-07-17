@@ -23,6 +23,7 @@ type SessionSummaryItem struct {
 	Platform         string  `json:"platform"`
 	DriverAlias      string  `json:"driverAlias,omitempty"`
 	TrackID          string  `json:"trackId,omitempty"`
+	LayoutID         string  `json:"layoutId,omitempty"`
 	Status           Status  `json:"status"`
 	StartedAt        string  `json:"startedAt"`
 	EndedAt          *string `json:"endedAt,omitempty"`

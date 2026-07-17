@@ -13,7 +13,7 @@ The backend remains the source of truth for normalized ingest validation, catalo
 - JSON field names are camelCase.
 - Unknown JSON request fields are rejected by implemented endpoints.
 - All timestamps crossing the HTTP boundary use Unix milliseconds unless a field explicitly says RFC3339.
-- Current implemented endpoints are `GET /api/v1/settings/bootstrap`, `POST /api/v1/sessions`, `POST /api/v1/sessions/{sessionId}/frames`, `GET /api/v1/sessions/{sessionId}/track`, `GET /api/v1/sessions/{sessionId}/events`, `POST /api/v1/sessions/{sessionId}/race-engineer/advice`, `GET /api/v1/sessions`, and `GET /api/v1/sessions/{sessionId}/summary`.
+- Current implemented endpoints are `GET /api/v1/settings/bootstrap`, `GET /api/v1/catalog/track-layouts`, `POST /api/v1/sessions`, `PUT /api/v1/sessions/{sessionId}/track-layout`, `POST /api/v1/sessions/{sessionId}/frames`, `GET /api/v1/sessions/{sessionId}/track`, `GET /api/v1/sessions/{sessionId}/events`, `POST /api/v1/sessions/{sessionId}/race-engineer/advice`, `GET /api/v1/sessions`, and `GET /api/v1/sessions/{sessionId}/summary`.
 - `GET /api/v1/sessions/{sessionId}/live` and `GET /api/v1/sessions/{sessionId}/analysis` are planned contracts only in this phase.
 
 ## Error Envelope
@@ -97,6 +97,16 @@ Response DTO:
 ```
 
 Flutter should treat `clientHints` as defaults to prefill UI only. They are not persisted settings. `limits` are backend-safe constraints. `capabilities` are contract flags that tell Flutter what the backend can do, not what the user has saved.
+
+## Catalog Track Layouts
+
+```http
+GET /api/v1/catalog/track-layouts
+```
+
+Status in this phase: implemented.
+
+This endpoint gives Flutter the sourced-only GT7 track/layout list. Flutter must not embed a local catalog or invent names; it should render the backend-supplied ids, names, and provenance only.
 
 Fields:
 
@@ -289,6 +299,25 @@ Flutter behavior:
 - `pending`: keep ingesting frames and keep track-dependent UI disabled or loading.
 - `detected`: display catalog-owned `trackName`/`layoutName` and use IDs for downstream analysis.
 - `low_confidence`, `ambiguous`, `unknown`: prompt for manual selection or keep unknown; do not auto-invent official names.
+
+### Manual Track Selection
+
+```http
+PUT /api/v1/sessions/{sessionId}/track-layout
+```
+
+Status in this phase: implemented.
+
+Request DTO:
+
+```json
+{
+  "trackId": "gt7_watkins_glen_international",
+  "layoutId": "gt7_layout_1240"
+}
+```
+
+Flutter should use backend catalog ids directly and keep the selected pair aligned with the current session state. The backend validates the pair against the sourced catalog, persists the effective manual override, and continues to expose `detectedTrackId` / `detectedLayoutId` as provenance.
 
 ### Planned Live Snapshot
 
@@ -576,6 +605,7 @@ Response DTO:
       "persistedFrames": 400,
       "rejectedFrames": 7,
       "eventCount": 3,
+      "layoutId": "gt7_layout_1240",
       "detectedTrackId": null,
       "detectedLayoutId": null
     }
@@ -611,10 +641,11 @@ Response DTO:
     "endedAt": "2026-07-14T12:30:00Z",
     "durationMs": 9000000,
     "frameBatches": 5,
-    "persistedFrames": 400,
-    "rejectedFrames": 7,
-    "eventCount": 3
-  },
+      "persistedFrames": 400,
+      "rejectedFrames": 7,
+      "eventCount": 3,
+      "layoutId": "gt7_layout_1240"
+    },
   "frameBatches": 5,
   "persistedFrames": 400,
   "timeRangeMs": {

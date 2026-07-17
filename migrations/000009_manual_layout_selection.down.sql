@@ -1,0 +1,1 @@
+ALTER TABLE sessions DROP COLUMN IF EXISTS layout_id;

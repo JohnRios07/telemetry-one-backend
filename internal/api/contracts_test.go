@@ -124,8 +124,10 @@ func TestV2APIVersionMarkerIsAddedToSafeAPIv1SuccessObjects(t *testing.T) {
 		wantField  string
 	}{
 		{name: "health", method: http.MethodGet, path: "/api/v1/health", wantStatus: http.StatusOK, wantField: "status"},
+		{name: "catalog track layouts", method: http.MethodGet, path: "/api/v1/catalog/track-layouts", wantStatus: http.StatusOK, wantField: "tracks"},
 		{name: "create session", method: http.MethodPost, path: "/api/v1/sessions", body: `{"source":"flutter","game":"gt7","platform":"ps5","startedUnixMs":1720656000000}`, wantStatus: http.StatusCreated, wantField: "session"},
 		{name: "get session", method: http.MethodGet, path: "/api/v1/sessions/session-1", wantStatus: http.StatusOK, wantField: "session"},
+		{name: "set track layout", method: http.MethodPut, path: "/api/v1/sessions/session-1/track-layout", body: `{"trackId":"gt7_watkins_glen_international","layoutId":"gt7_layout_1240"}`, wantStatus: http.StatusOK, wantField: "session"},
 		{name: "ingest frames", method: http.MethodPost, path: "/api/v1/sessions/session-1/frames", body: `{"sessionId":"session-1","frames":[{"timestampUnixMs":1720656000000,"speedMps":58.33,"rpm":7100,"gear":4,"throttle":0.82,"brake":0,"steering":-0.12,"fuelLiters":38.4,"positionX":123.4,"positionY":5.6,"positionZ":789.1,"lapNumber":2,"currentLapMs":81234,"isOnTrack":true}]}`, wantStatus: http.StatusAccepted, wantField: "acceptedFrames"},
 		{name: "track detection", method: http.MethodGet, path: "/api/v1/sessions/session-1/track", wantStatus: http.StatusOK, wantField: "status"},
 		{name: "events", method: http.MethodGet, path: "/api/v1/sessions/session-1/events", wantStatus: http.StatusOK, wantField: "events"},
@@ -588,6 +590,43 @@ func TestSessionLifecycleErrors(t *testing.T) {
 			t.Fatalf("expected session_finished, got status %d body %s", secondFinish.Code, secondFinish.Body.String())
 		}
 	})
+
+	t.Run("invalid manual layout selection", func(t *testing.T) {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodPut, "/api/v1/sessions/session-1/track-layout", strings.NewReader(`{"trackId":"gt7_autodromo_nazionale_monza","layoutId":"gt7_layout_1240"}`))
+		handler.ServeHTTP(recorder, request)
+
+		if recorder.Code != http.StatusBadRequest || !strings.Contains(recorder.Body.String(), "trackId and layoutId must match a sourced catalog layout") {
+			t.Fatalf("expected catalog validation error, got status %d body %s", recorder.Code, recorder.Body.String())
+		}
+	})
+}
+
+func TestSetSessionTrackLayoutContractPersistsEffectiveLayout(t *testing.T) {
+	store := telemetry.NewFrameStore(10)
+	eventStore := events.NewStore(10, events.DedupOptions{})
+	sessionRepo := sessions.NewMemoryRepository()
+	seedTestSession(t, sessionRepo, "session-layout")
+	handler := routesWithSessionRepository(config.Config{Addr: ":0", Env: "test"}, slog.New(slog.NewTextHandler(io.Discard, nil)), store, tracks.OfficialGT7SeedCatalog(), eventStore, sessionRepo)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPut, "/api/v1/sessions/session-layout/track-layout", strings.NewReader(`{"trackId":"gt7_watkins_glen_international","layoutId":"gt7_layout_1240"}`))
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d with body %s", http.StatusOK, recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), `"layoutId":"gt7_layout_1240"`) || !strings.Contains(recorder.Body.String(), `"trackId":"gt7_watkins_glen_international"`) {
+		t.Fatalf("expected effective track/layout in response, got %s", recorder.Body.String())
+	}
+
+	found, err := sessionRepo.FindByID(context.Background(), "session-layout")
+	if err != nil {
+		t.Fatalf("find session: %v", err)
+	}
+	if found.TrackID != "gt7_watkins_glen_international" || found.LayoutID != "gt7_layout_1240" {
+		t.Fatalf("expected persisted manual selection, got %+v", found)
+	}
 }
 
 func TestCreateSessionContractRejectsInvalidShape(t *testing.T) {
