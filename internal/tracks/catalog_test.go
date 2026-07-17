@@ -321,6 +321,7 @@ func TestCatalogValidateSourceOfTruthRejectsGT7TracksProvenance(t *testing.T) {
 		{name: "track list csv", sourceType: SourceTypeGT7TracksTrackListCSV},
 		{name: "raw dump", sourceType: SourceTypeGT7TracksRawDump},
 		{name: "fixture raw dump", sourceType: SourceTypeGT7TracksFixtureRawDump},
+		{name: "curated geometry", sourceType: "telemetry_one_curated_geometry"},
 	}
 
 	for _, tt := range tests {
