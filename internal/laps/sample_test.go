@@ -83,6 +83,66 @@ func TestBuildLapSamplesInterpolatesFiveMeterBucketsAndPreservesZeroVsNil(t *tes
 	}
 }
 
+func TestBuildLapSamplesPreservesOptionalRightEndpointOnExactRightEdge(t *testing.T) {
+	lap := CompletedLap{ID: "lap_session-1_1", SessionID: "session-1", LapNumber: 1, LapTimeMs: 90000, CompletedAtUnixMs: 3000}
+	left := baseSampleFrame(1000, 1, float64Ptr(0))
+	left.YawRate = nil
+	right := baseSampleFrame(2000, 1, float64Ptr(5))
+	right.YawRate = float64Ptr(0.25)
+
+	samples, ok := BuildLapSamples(lap, []telemetry.Frame{left, right}, DefaultSampleStepMeters)
+	if !ok {
+		t.Fatalf("expected samples")
+	}
+	if len(samples) != 2 {
+		t.Fatalf("expected buckets 0 and 5, got %+v", samples)
+	}
+	if samples[1].DistanceMeters != 5 {
+		t.Fatalf("expected right edge bucket at 5m, got %+v", samples[1])
+	}
+	if samples[1].YawRate == nil || *samples[1].YawRate != 0.25 {
+		t.Fatalf("expected right endpoint yaw rate 0.25 to be preserved, got %+v", samples[1].YawRate)
+	}
+}
+
+func TestInterpolateOptionalFloat64PreservesEndpointValues(t *testing.T) {
+	rightValue := float64Ptr(12.5)
+	rightZero := float64Ptr(0)
+	leftZero := float64Ptr(0)
+
+	tests := []struct {
+		name      string
+		left      *float64
+		right     *float64
+		ratio     float64
+		wantNil   bool
+		wantValue float64
+	}{
+		{name: "exact left endpoint keeps left nil", left: nil, right: rightValue, ratio: 0, wantNil: true},
+		{name: "exact right endpoint keeps right value when left missing", left: nil, right: rightValue, ratio: 1, wantValue: 12.5},
+		{name: "exact right endpoint keeps explicit zero", left: nil, right: rightZero, ratio: 1, wantValue: 0},
+		{name: "exact left endpoint keeps explicit zero", left: leftZero, right: nil, ratio: 0, wantValue: 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := interpolateOptionalFloat64(tt.left, tt.right, tt.ratio)
+			if tt.wantNil {
+				if got != nil {
+					t.Fatalf("expected nil, got %+v", *got)
+				}
+				return
+			}
+			if got == nil {
+				t.Fatalf("expected value %v, got nil", tt.wantValue)
+			}
+			if *got != tt.wantValue {
+				t.Fatalf("expected %v, got %v", tt.wantValue, *got)
+			}
+		})
+	}
+}
+
 func baseSampleFrame(timestamp int64, lapNumber int, distance *float64) telemetry.Frame {
 	return telemetry.Frame{
 		TimestampUnixMs:   timestamp,

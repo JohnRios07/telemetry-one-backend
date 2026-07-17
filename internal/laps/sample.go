@@ -190,6 +190,12 @@ func interpolationRatio(distance float64, left telemetry.Frame, right telemetry.
 func interpolateFloat64(left, right, ratio float64) float64 { return left + (right-left)*ratio }
 
 func interpolateOptionalFloat64(left, right *float64, ratio float64) *float64 {
+	if ratio <= 0 {
+		return left
+	}
+	if ratio >= 1 {
+		return right
+	}
 	if left == nil || right == nil {
 		return nil
 	}
