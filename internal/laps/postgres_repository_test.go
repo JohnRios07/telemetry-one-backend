@@ -81,3 +81,30 @@ func TestPostgresRepositoryUpsertAcceptsZeroBestLapMs(t *testing.T) {
 		t.Fatalf("expected zero best lap arg, got %+v", db.execs[0].args[5])
 	}
 }
+
+func TestPostgresRepositoryUpsertSamplesUsesLapDistanceConflictAndNullPointers(t *testing.T) {
+	zero := 0.0
+	db := &fakeLapsDB{}
+	repo := NewPostgresRepository(nil)
+	repo.pool = db
+
+	if err := repo.UpsertSamples(context.Background(), []LapSample{{LapID: "lap-1", DistanceMeters: 5, Source: LapSampleSourceExplicitLapDistance, SpeedMps: &zero, YawRate: nil}}); err != nil {
+		t.Fatalf("upsert sample: %v", err)
+	}
+
+	if len(db.execs) != 1 {
+		t.Fatalf("expected one upsert, got %d", len(db.execs))
+	}
+	if !strings.Contains(db.execs[0].sql, "ON CONFLICT (lap_id, distance_meters) DO NOTHING") {
+		t.Fatalf("expected idempotent lap/distance conflict clause, got %s", db.execs[0].sql)
+	}
+	if db.execs[0].args[0] != "lap_sample_lap-1_5" || db.execs[0].args[1] != "lap-1" || db.execs[0].args[2] != 5 {
+		t.Fatalf("unexpected insert args: %+v", db.execs[0].args)
+	}
+	if db.execs[0].args[5] == nil || *db.execs[0].args[5].(*float64) != 0 {
+		t.Fatalf("expected explicit zero speed arg, got %+v", db.execs[0].args[5])
+	}
+	if got, ok := db.execs[0].args[13].(*float64); !ok || got != nil {
+		t.Fatalf("expected nil yaw rate arg, got %+v", db.execs[0].args[13])
+	}
+}

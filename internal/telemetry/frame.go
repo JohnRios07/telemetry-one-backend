@@ -24,6 +24,7 @@ var (
 	ErrInvalidPosition         = errors.New("position fields must be finite")
 	ErrInvalidYaw              = errors.New("yaw fields must be finite when provided")
 	ErrInvalidWheelSpeed       = errors.New("wheel speed fields must be finite and zero or greater when provided")
+	ErrInvalidLapDistance      = errors.New("lapDistanceMeters must be finite and zero or greater when provided")
 	ErrInvalidLapNumber        = errors.New("lapNumber must be zero or greater")
 	ErrInvalidLapTime          = errors.New("lap time fields must be zero or greater")
 	ErrNonMonotonicTimestamp   = errors.New("timestampUnixMs must increase within a batch")
@@ -50,6 +51,7 @@ const (
 	RejectionCodeInvalidPosition         = "invalid_position"
 	RejectionCodeInvalidYaw              = "invalid_yaw"
 	RejectionCodeInvalidWheelSpeed       = "invalid_wheel_speed"
+	RejectionCodeInvalidLapDistance      = "invalid_lap_distance"
 	RejectionCodeInvalidLapNumber        = "invalid_lap_number"
 	RejectionCodeInvalidLapTime          = "invalid_lap_time"
 	RejectionCodeNonMonotonicTimestamp   = "non_monotonic_timestamp"
@@ -107,28 +109,29 @@ func SessionIDMismatchError() *RejectionError {
 }
 
 type Frame struct {
-	TimestampUnixMs int64    `json:"timestampUnixMs"`
-	SpeedMps        float64  `json:"speedMps"`
-	RPM             float64  `json:"rpm"`
-	Gear            int      `json:"gear"`
-	Throttle        float64  `json:"throttle"`
-	Brake           float64  `json:"brake"`
-	Steering        float64  `json:"steering"`
-	FuelLiters      float64  `json:"fuelLiters"`
-	PositionX       float64  `json:"positionX"`
-	PositionY       float64  `json:"positionY"`
-	PositionZ       float64  `json:"positionZ"`
-	YawRadians      *float64 `json:"yawRadians,omitempty"`
-	YawRate         *float64 `json:"yawRate,omitempty"`
-	WheelSpeedFL    *float64 `json:"wheelSpeedFL,omitempty"`
-	WheelSpeedFR    *float64 `json:"wheelSpeedFR,omitempty"`
-	WheelSpeedRL    *float64 `json:"wheelSpeedRL,omitempty"`
-	WheelSpeedRR    *float64 `json:"wheelSpeedRR,omitempty"`
-	LapNumber       int      `json:"lapNumber"`
-	CurrentLapMs    int64    `json:"currentLapMs"`
-	LastLapMs       *int64   `json:"lastLapMs,omitempty"`
-	BestLapMs       *int64   `json:"bestLapMs,omitempty"`
-	IsOnTrack       bool     `json:"isOnTrack"`
+	TimestampUnixMs   int64    `json:"timestampUnixMs"`
+	SpeedMps          float64  `json:"speedMps"`
+	RPM               float64  `json:"rpm"`
+	Gear              int      `json:"gear"`
+	Throttle          float64  `json:"throttle"`
+	Brake             float64  `json:"brake"`
+	Steering          float64  `json:"steering"`
+	FuelLiters        float64  `json:"fuelLiters"`
+	PositionX         float64  `json:"positionX"`
+	PositionY         float64  `json:"positionY"`
+	PositionZ         float64  `json:"positionZ"`
+	YawRadians        *float64 `json:"yawRadians,omitempty"`
+	YawRate           *float64 `json:"yawRate,omitempty"`
+	WheelSpeedFL      *float64 `json:"wheelSpeedFL,omitempty"`
+	WheelSpeedFR      *float64 `json:"wheelSpeedFR,omitempty"`
+	WheelSpeedRL      *float64 `json:"wheelSpeedRL,omitempty"`
+	WheelSpeedRR      *float64 `json:"wheelSpeedRR,omitempty"`
+	LapDistanceMeters *float64 `json:"lapDistanceMeters,omitempty"`
+	LapNumber         int      `json:"lapNumber"`
+	CurrentLapMs      int64    `json:"currentLapMs"`
+	LastLapMs         *int64   `json:"lastLapMs,omitempty"`
+	BestLapMs         *int64   `json:"bestLapMs,omitempty"`
+	IsOnTrack         bool     `json:"isOnTrack"`
 }
 
 type IngestBatchRequest struct {
@@ -272,6 +275,9 @@ func (f Frame) Normalize() (Frame, error) {
 	}
 	if !isOptionalFiniteNonNegative(f.WheelSpeedFL) || !isOptionalFiniteNonNegative(f.WheelSpeedFR) || !isOptionalFiniteNonNegative(f.WheelSpeedRL) || !isOptionalFiniteNonNegative(f.WheelSpeedRR) {
 		return Frame{}, reject(RejectionCodeInvalidWheelSpeed, RejectionCategoryFrame, "wheelSpeed", nil, ErrInvalidWheelSpeed)
+	}
+	if !isOptionalFiniteNonNegative(f.LapDistanceMeters) {
+		return Frame{}, reject(RejectionCodeInvalidLapDistance, RejectionCategoryFrame, "lapDistanceMeters", nil, ErrInvalidLapDistance)
 	}
 	if f.LapNumber < 0 {
 		return Frame{}, reject(RejectionCodeInvalidLapNumber, RejectionCategoryFrame, "lapNumber", nil, ErrInvalidLapNumber)
