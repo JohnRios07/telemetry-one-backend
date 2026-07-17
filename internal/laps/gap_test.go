@@ -37,6 +37,30 @@ func TestCountTelemetryGaps(t *testing.T) {
 			want: 1,
 		},
 		{
+			name: "preserves fractional even median threshold",
+			lap:  CompletedLap{LapNumber: 1},
+			frames: []telemetry.Frame{
+				gapFrame(1000, 1),
+				gapFrame(1100, 1),
+				gapFrame(1200, 1),
+				gapFrame(1301, 1),
+				gapFrame(1702, 1),
+			},
+			want: 0,
+		},
+		{
+			name: "counts gap above preserved fractional threshold",
+			lap:  CompletedLap{LapNumber: 1},
+			frames: []telemetry.Frame{
+				gapFrame(1000, 1),
+				gapFrame(1100, 1),
+				gapFrame(1200, 1),
+				gapFrame(1301, 1),
+				gapFrame(1704, 1),
+			},
+			want: 1,
+		},
+		{
 			name: "no breach returns zero",
 			lap:  CompletedLap{LapNumber: 1},
 			frames: []telemetry.Frame{

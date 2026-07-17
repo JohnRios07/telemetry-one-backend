@@ -32,7 +32,7 @@ func CountTelemetryGaps(lap CompletedLap, frames []telemetry.Frame) int {
 		return 0
 	}
 
-	threshold := telemetryGapThresholdMs(medianInt64(deltas))
+	threshold := telemetryGapThresholdMs(deltas)
 	gapCount := 0
 	for _, delta := range deltas {
 		if delta > threshold {
@@ -54,21 +54,19 @@ func positiveTimestampDeltas(frames []telemetry.Frame) []int64 {
 	return deltas
 }
 
-func medianInt64(values []int64) int64 {
+func telemetryGapThresholdMs(values []int64) int64 {
 	if len(values) == 0 {
-		return 0
+		return telemetryGapFloorMs
 	}
 	sorted := append([]int64(nil), values...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
 	mid := len(sorted) / 2
+	var threshold int64
 	if len(sorted)%2 == 1 {
-		return sorted[mid]
+		threshold = 4 * sorted[mid]
+	} else {
+		threshold = 2 * (sorted[mid-1] + sorted[mid])
 	}
-	return (sorted[mid-1] + sorted[mid]) / 2
-}
-
-func telemetryGapThresholdMs(expectedMs int64) int64 {
-	threshold := 4 * expectedMs
 	if threshold < telemetryGapFloorMs {
 		return telemetryGapFloorMs
 	}
