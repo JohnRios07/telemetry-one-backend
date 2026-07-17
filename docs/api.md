@@ -59,6 +59,39 @@ Response:
 }
 ```
 
+## Settings Bootstrap
+
+```http
+GET /api/v1/settings/bootstrap
+```
+
+Returns a whitelist-only bootstrap payload for client settings screens. The response is read-only, versioned with `apiVersion: telemetry-one.api.v2`, and only exposes safe defaults, client hints, limits, and capability flags.
+
+Response:
+
+```json
+{
+  "apiVersion": "telemetry-one.api.v2",
+  "bootstrap": {
+    "clientHints": {
+      "alias": "",
+      "units": "metric"
+    },
+    "limits": {
+      "maxBatchFrames": 600,
+      "retainedFramesPerSession": 12000
+    },
+    "capabilities": {
+      "readOnly": true,
+      "acceptsPartialIngest": true,
+      "writeApi": false
+    }
+  }
+}
+```
+
+`clientHints` are advisory only and are not persisted by the backend. `limits` reflect backend-safe operational bounds. `capabilities` describe what the backend contract supports, not user-owned settings.
+
 ## Sessions
 
 ```http

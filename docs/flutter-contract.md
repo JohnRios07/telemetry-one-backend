@@ -13,7 +13,7 @@ The backend remains the source of truth for normalized ingest validation, catalo
 - JSON field names are camelCase.
 - Unknown JSON request fields are rejected by implemented endpoints.
 - All timestamps crossing the HTTP boundary use Unix milliseconds unless a field explicitly says RFC3339.
-- Current implemented endpoints are `POST /api/v1/sessions`, `POST /api/v1/sessions/{sessionId}/frames`, `GET /api/v1/sessions/{sessionId}/track`, `GET /api/v1/sessions/{sessionId}/events`, `POST /api/v1/sessions/{sessionId}/race-engineer/advice`, `GET /api/v1/sessions`, and `GET /api/v1/sessions/{sessionId}/summary`.
+- Current implemented endpoints are `GET /api/v1/settings/bootstrap`, `POST /api/v1/sessions`, `POST /api/v1/sessions/{sessionId}/frames`, `GET /api/v1/sessions/{sessionId}/track`, `GET /api/v1/sessions/{sessionId}/events`, `POST /api/v1/sessions/{sessionId}/race-engineer/advice`, `GET /api/v1/sessions`, and `GET /api/v1/sessions/{sessionId}/summary`.
 - `GET /api/v1/sessions/{sessionId}/live` and `GET /api/v1/sessions/{sessionId}/analysis` are planned contracts only in this phase.
 
 ## Error Envelope
@@ -64,6 +64,39 @@ Request DTO:
   "startedUnixMs": 1720656000000
 }
 ```
+
+## Settings Bootstrap
+
+```http
+GET /api/v1/settings/bootstrap
+```
+
+Status in this phase: implemented.
+
+Response DTO:
+
+```json
+{
+  "apiVersion": "telemetry-one.api.v2",
+  "bootstrap": {
+    "clientHints": {
+      "alias": "",
+      "units": "metric"
+    },
+    "limits": {
+      "maxBatchFrames": 600,
+      "retainedFramesPerSession": 12000
+    },
+    "capabilities": {
+      "readOnly": true,
+      "acceptsPartialIngest": true,
+      "writeApi": false
+    }
+  }
+}
+```
+
+Flutter should treat `clientHints` as defaults to prefill UI only. They are not persisted settings. `limits` are backend-safe constraints. `capabilities` are contract flags that tell Flutter what the backend can do, not what the user has saved.
 
 Fields:
 
