@@ -1,10 +1,12 @@
 package trackbuilder
 
 import (
+	"bytes"
 	"encoding/json"
 	"math"
 	"strings"
 	"testing"
+	"time"
 
 	"telemetry-one-backend/internal/geometry"
 	"telemetry-one-backend/internal/telemetry"
@@ -35,6 +37,74 @@ func TestBuildCuratedCatalogFromIngestBatch(t *testing.T) {
 	}
 	if report.PointCount != len(layout.CenterLine) || report.LengthMeters <= 0 || math.IsNaN(report.StartEndGapMeters) {
 		t.Fatalf("unexpected report: %+v", report)
+	}
+}
+
+func TestCleanupTelemetryPointsSkipsInvalidPositions(t *testing.T) {
+	points := cleanupTelemetryPoints([]telemetry.Frame{
+		validTelemetryFrame(1, 0, 0, 0),
+		validTelemetryFrame(2, math.NaN(), 1, 0),
+		validTelemetryFrame(3, 10, 0, 0),
+		validTelemetryFrame(4, math.Inf(1), 0, 0),
+	})
+
+	if len(points) != 2 {
+		t.Fatalf("expected 2 usable points, got %d: %+v", len(points), points)
+	}
+	if points[0].X != 0 || points[1].X != 10 {
+		t.Fatalf("unexpected cleaned points: %+v", points)
+	}
+}
+
+func TestBuildFiltersInvalidPointsAndIsDeterministic(t *testing.T) {
+	request := telemetry.IngestBatchRequest{
+		SessionID: "trackbuilder",
+		Frames: []telemetry.Frame{
+			validTelemetryFrame(1, 0, 0, 0),
+			validTelemetryFrame(2, 10, 0, 0),
+			validTelemetryFrame(3, math.NaN(), 1, 0),
+			validTelemetryFrame(4, 10, 10, 0),
+			validTelemetryFrame(5, 0, 10, 0),
+			validTelemetryFrame(6, 0, 0, 0),
+		},
+	}
+
+	firstCatalog, firstReport, err := Build(request, DefaultOptions().NormalizeWithLayout("gt7_layout_1240"), tracks.OfficialGT7SeedCatalog())
+	if err != nil {
+		t.Fatalf("first build returned error: %v", err)
+	}
+	secondCatalog, secondReport, err := Build(request, DefaultOptions().NormalizeWithLayout("gt7_layout_1240"), tracks.OfficialGT7SeedCatalog())
+	if err != nil {
+		t.Fatalf("second build returned error: %v", err)
+	}
+
+	firstEncoded, err := EncodeCatalog(firstCatalog)
+	if err != nil {
+		t.Fatalf("EncodeCatalog(first) returned error: %v", err)
+	}
+	secondEncoded, err := EncodeCatalog(secondCatalog)
+	if err != nil {
+		t.Fatalf("EncodeCatalog(second) returned error: %v", err)
+	}
+	if !bytes.Equal(firstEncoded, secondEncoded) {
+		t.Fatalf("expected identical catalog JSON for identical input\nfirst: %s\nsecond: %s", firstEncoded, secondEncoded)
+	}
+	if firstReport.LengthMeters != secondReport.LengthMeters || firstReport.PointCount != secondReport.PointCount || firstReport.StartEndGapMeters != secondReport.StartEndGapMeters {
+		t.Fatalf("expected identical stable report fields, got %+v and %+v", firstReport, secondReport)
+	}
+	if math.IsNaN(firstReport.MeanDeviationMeters) != math.IsNaN(secondReport.MeanDeviationMeters) || math.IsNaN(firstReport.MaxDeviationMeters) != math.IsNaN(secondReport.MaxDeviationMeters) {
+		t.Fatalf("expected identical deviation NaN state, got %+v and %+v", firstReport, secondReport)
+	}
+
+	layout := firstCatalog.Tracks[0].Layouts[0]
+	if got := layout.Sources[len(layout.Sources)-1].RetrievedAt; got != time.UnixMilli(request.Frames[0].TimestampUnixMs).UTC().Format("2006-01-02") {
+		t.Fatalf("unexpected curated provenance date: got %q", got)
+	}
+	if len(layout.CenterLine) < 2 {
+		t.Fatalf("expected centerline points after filtering invalid input, got %+v", layout.CenterLine)
+	}
+	if firstReport.PointCount != len(layout.CenterLine) {
+		t.Fatalf("report point count should match catalog centerline, got %+v and %d", firstReport, len(layout.CenterLine))
 	}
 }
 
@@ -119,6 +189,10 @@ func convertTestPoints(points []geometryPointForTest) []geometry.Point {
 
 func testFramesLoop() []telemetry.Frame {
 	return []telemetry.Frame{{TimestampUnixMs: 1, PositionX: 0, PositionY: 0, PositionZ: 0, SpeedMps: 1, RPM: 1, LapNumber: 1, CurrentLapMs: 0, IsOnTrack: true}, {TimestampUnixMs: 2, PositionX: 10, PositionY: 0, PositionZ: 0, SpeedMps: 1, RPM: 1, LapNumber: 1, CurrentLapMs: 1, IsOnTrack: true}, {TimestampUnixMs: 3, PositionX: 10, PositionY: 10, PositionZ: 0, SpeedMps: 1, RPM: 1, LapNumber: 1, CurrentLapMs: 2, IsOnTrack: true}, {TimestampUnixMs: 4, PositionX: 0, PositionY: 10, PositionZ: 0, SpeedMps: 1, RPM: 1, LapNumber: 1, CurrentLapMs: 3, IsOnTrack: true}, {TimestampUnixMs: 5, PositionX: 0, PositionY: 0, PositionZ: 0, SpeedMps: 1, RPM: 1, LapNumber: 1, CurrentLapMs: 4, IsOnTrack: true}}
+}
+
+func validTelemetryFrame(timestamp int64, x, y, z float64) telemetry.Frame {
+	return telemetry.Frame{TimestampUnixMs: timestamp, PositionX: x, PositionY: y, PositionZ: z, SpeedMps: 1, RPM: 1, LapNumber: 1, CurrentLapMs: timestamp, IsOnTrack: true}
 }
 
 func testFramesSinglePoint() []telemetry.Frame {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"telemetry-one-backend/internal/geometry"
@@ -21,7 +22,7 @@ func Build(request telemetry.IngestBatchRequest, opts Options, seed tracks.Catal
 	if err := opts.Validate(); err != nil {
 		return tracks.Catalog{}, Report{}, err
 	}
-	if err := request.Validate(); err != nil {
+	if err := validateBuildRequest(request); err != nil {
 		return tracks.Catalog{}, Report{}, fmt.Errorf("validate ingest batch: %w", err)
 	}
 
@@ -64,6 +65,7 @@ func Build(request telemetry.IngestBatchRequest, opts Options, seed tracks.Catal
 	if len(centerlinePoints) < 2 {
 		return tracks.Catalog{}, Report{}, ErrInsufficientUsablePoint
 	}
+	retrievedAt := curatedSourceRetrievedAt(request.Frames)
 
 	generatedCatalog := tracks.Catalog{
 		CatalogVersion: tracks.CatalogVersionV1,
@@ -73,12 +75,12 @@ func Build(request telemetry.IngestBatchRequest, opts Options, seed tracks.Catal
 			ID:      track.ID,
 			Name:    track.Name,
 			Country: track.Country,
-			Sources: appendCuratedSource(track.Sources),
+			Sources: appendCuratedSource(track.Sources, retrievedAt),
 			Layouts: []tracks.CatalogLayout{{
 				ID:           layout.ID,
 				Name:         layout.Name,
 				LengthMeters: totalMeters,
-				Sources:      appendCuratedSource(layout.Sources),
+				Sources:      appendCuratedSource(layout.Sources, retrievedAt),
 				Sectors:      []tracks.Sector{},
 				Corners:      []tracks.Corner{},
 				CenterLine:   centerlinePoints,
@@ -105,6 +107,31 @@ func Build(request telemetry.IngestBatchRequest, opts Options, seed tracks.Catal
 	return generatedCatalog, report, nil
 }
 
+func validateBuildRequest(request telemetry.IngestBatchRequest) error {
+	if strings.TrimSpace(request.SessionID) == "" {
+		return telemetry.ErrMissingSessionID
+	}
+	if len(request.Frames) == 0 {
+		return telemetry.ErrEmptyFrames
+	}
+	if len(request.Frames) > telemetry.MaxBatchFrames {
+		return telemetry.ErrTooManyFrames
+	}
+
+	var previousTimestamp int64
+	for index, frame := range request.Frames {
+		if frame.TimestampUnixMs <= 0 {
+			return fmt.Errorf("frames[%d]: %w", index, telemetry.ErrInvalidTimestamp)
+		}
+		if index > 0 && frame.TimestampUnixMs <= previousTimestamp {
+			return fmt.Errorf("frames[%d]: %w", index, telemetry.ErrNonMonotonicTimestamp)
+		}
+		previousTimestamp = frame.TimestampUnixMs
+	}
+
+	return nil
+}
+
 func findSeedLayout(catalog tracks.Catalog, layoutID string) (tracks.CatalogTrack, tracks.CatalogLayout, bool) {
 	for _, track := range catalog.Tracks {
 		for _, layout := range track.Layouts {
@@ -117,12 +144,16 @@ func findSeedLayout(catalog tracks.Catalog, layoutID string) (tracks.CatalogTrac
 	return tracks.CatalogTrack{}, tracks.CatalogLayout{}, false
 }
 
-func appendCuratedSource(sources []tracks.Source) []tracks.Source {
+func curatedSourceRetrievedAt(frames []telemetry.Frame) string {
+	return time.UnixMilli(frames[0].TimestampUnixMs).UTC().Format("2006-01-02")
+}
+
+func appendCuratedSource(sources []tracks.Source, retrievedAt string) []tracks.Source {
 	cloned := append([]tracks.Source(nil), sources...)
 	cloned = append(cloned, tracks.Source{
 		URL:         "urn:telemetry-one:trackbuilder:curated-geometry",
 		SourceType:  curatedGeometrySourceType,
-		RetrievedAt: time.Now().UTC().Format("2006-01-02"),
+		RetrievedAt: retrievedAt,
 		Note:        "Curated geometry generated from telemetry ingest; review-only and not runtime approved.",
 	})
 
