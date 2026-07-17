@@ -9,10 +9,11 @@ import (
 )
 
 var (
-	ErrMissingSessionID = errors.New("sessionId is required")
-	ErrInvalidLapNumber = errors.New("lapNumber must be zero or greater")
-	ErrInvalidLapTime   = errors.New("lapTimeMs must be greater than zero")
-	ErrInvalidTimestamp = errors.New("completedAtUnixMs must be greater than zero")
+	ErrMissingSessionID   = errors.New("sessionId is required")
+	ErrInvalidLapNumber   = errors.New("lapNumber must be zero or greater")
+	ErrInvalidLapTime     = errors.New("lapTimeMs must be greater than zero")
+	ErrInvalidBestLapTime = errors.New("bestLapMs must be zero or greater")
+	ErrInvalidTimestamp   = errors.New("completedAtUnixMs must be greater than zero")
 )
 
 type CompletedLap struct {
@@ -42,8 +43,8 @@ func (lap CompletedLap) Validate() error {
 	if lap.CompletedAtUnixMs <= 0 {
 		return ErrInvalidTimestamp
 	}
-	if lap.BestLapMs != nil && *lap.BestLapMs <= 0 {
-		return ErrInvalidLapTime
+	if lap.BestLapMs != nil && *lap.BestLapMs < 0 {
+		return ErrInvalidBestLapTime
 	}
 	if lap.SampleCount != nil && *lap.SampleCount <= 0 {
 		return errors.New("sampleCount must be greater than zero")

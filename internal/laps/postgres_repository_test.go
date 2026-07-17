@@ -60,3 +60,24 @@ func TestPostgresRepositoryUpsertReturnsExecError(t *testing.T) {
 		t.Fatalf("expected exec error, got %v", err)
 	}
 }
+
+func TestPostgresRepositoryUpsertAcceptsZeroBestLapMs(t *testing.T) {
+	zero := int64(0)
+	db := &fakeLapsDB{}
+	repo := NewPostgresRepository(nil)
+	repo.pool = db
+
+	if err := repo.UpsertCompleted(context.Background(), []CompletedLap{{SessionID: "session-1", LapNumber: 2, LapTimeMs: 91234, CompletedAtUnixMs: 12345, BestLapMs: &zero}}); err != nil {
+		t.Fatalf("upsert completed lap with zero best lap ms: %v", err)
+	}
+
+	if len(db.execs) != 1 {
+		t.Fatalf("expected one upsert, got %d", len(db.execs))
+	}
+	if db.execs[0].args[5] == nil {
+		t.Fatalf("expected best lap arg to be preserved, got nil")
+	}
+	if got := db.execs[0].args[5].(*int64); got == nil || *got != 0 {
+		t.Fatalf("expected zero best lap arg, got %+v", db.execs[0].args[5])
+	}
+}

@@ -46,6 +46,25 @@ func TestExtractCompletedUsesPreviousLapAndCarriesContext(t *testing.T) {
 	}
 }
 
+func TestExtractCompletedCarriesZeroBestLapContext(t *testing.T) {
+	lastLapMs := int64(91234)
+	bestLapMs := int64(0)
+
+	got := ExtractCompleted("session-1", []telemetry.Frame{{
+		TimestampUnixMs: 1720656000000,
+		LapNumber:       3,
+		LastLapMs:       &lastLapMs,
+		BestLapMs:       &bestLapMs,
+	}})
+
+	if len(got) != 1 {
+		t.Fatalf("expected one completed lap, got %+v", got)
+	}
+	if got[0].BestLapMs == nil || *got[0].BestLapMs != 0 {
+		t.Fatalf("expected zero best lap context to be preserved, got %+v", got[0].BestLapMs)
+	}
+}
+
 func TestExtractCompletedKeepsFirstEvidencePerLap(t *testing.T) {
 	first := int64(90000)
 	duplicate := int64(91000)

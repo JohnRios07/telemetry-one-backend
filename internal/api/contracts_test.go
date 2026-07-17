@@ -233,6 +233,55 @@ func TestIngestPersistsCompletedLapsIdempotently(t *testing.T) {
 	}
 }
 
+func TestIngestPersistsCompletedLapsWithZeroBestLapMs(t *testing.T) {
+	store := telemetry.NewFrameStore(100)
+	eventStore := events.NewStore(100, events.DedupOptions{})
+	lapRepo := laps.NewMemoryRepository()
+	sessionRepo := sessions.NewMemoryRepository()
+	seedTestSession(t, sessionRepo, "session-zero-best-lap")
+	handler := routesWithLapRepository(config.Config{Addr: ":0", Env: "test"}, slog.New(slog.NewTextHandler(io.Discard, nil)), store, tracks.OfficialGT7SeedCatalog(), eventStore, lapRepo, sessionRepo)
+
+	lastLapMs := int64(91234)
+	bestLapMs := int64(0)
+	body, err := json.Marshal(telemetry.IngestBatchRequest{SessionID: "session-zero-best-lap", Frames: []telemetry.Frame{{
+		TimestampUnixMs: 1720656000000,
+		SpeedMps:        58.33,
+		RPM:             7100,
+		Gear:            4,
+		Throttle:        0.82,
+		Brake:           0,
+		Steering:        -0.12,
+		FuelLiters:      38.4,
+		PositionX:       123.4,
+		PositionY:       5.6,
+		PositionZ:       789.1,
+		LapNumber:       3,
+		CurrentLapMs:    123,
+		LastLapMs:       &lastLapMs,
+		BestLapMs:       &bestLapMs,
+		IsOnTrack:       true,
+	}}})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+
+	for i := 0; i < 2; i++ {
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/session-zero-best-lap/frames", bytes.NewReader(body)))
+		if recorder.Code != http.StatusAccepted {
+			t.Fatalf("expected ingest %d to return %d, got %d body %s", i+1, http.StatusAccepted, recorder.Code, recorder.Body.String())
+		}
+	}
+
+	got, err := lapRepo.ListBySession(context.Background(), "session-zero-best-lap")
+	if err != nil {
+		t.Fatalf("list completed laps: %v", err)
+	}
+	if len(got) != 1 || got[0].LapNumber != 2 || got[0].LapTimeMs != lastLapMs || got[0].BestLapMs == nil || *got[0].BestLapMs != 0 {
+		t.Fatalf("expected one completed lap 2 with zero best lap ms, got %+v", got)
+	}
+}
+
 func TestIngestDoesNotPersistRejectedFrameLapEvidence(t *testing.T) {
 	store := telemetry.NewFrameStore(100)
 	lapRepo := laps.NewMemoryRepository()
