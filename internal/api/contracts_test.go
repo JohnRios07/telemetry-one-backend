@@ -17,6 +17,7 @@ import (
 	"telemetry-one-backend/internal/admin"
 	"telemetry-one-backend/internal/config"
 	"telemetry-one-backend/internal/events"
+	"telemetry-one-backend/internal/laps"
 	"telemetry-one-backend/internal/sessions"
 	"telemetry-one-backend/internal/telemetry"
 	"telemetry-one-backend/internal/tracks"
@@ -180,6 +181,165 @@ func TestAPIVersionDoesNotRequireAPIV2Routes(t *testing.T) {
 
 	if recorder.Code != http.StatusNotFound {
 		t.Fatalf("expected /api/v2 route to remain absent with status %d, got %d", http.StatusNotFound, recorder.Code)
+	}
+}
+
+func TestIngestPersistsCompletedLapsIdempotently(t *testing.T) {
+	store := telemetry.NewFrameStore(100)
+	eventStore := events.NewStore(100, events.DedupOptions{})
+	lapRepo := laps.NewMemoryRepository()
+	sessionRepo := sessions.NewMemoryRepository()
+	seedTestSession(t, sessionRepo, "session-1")
+	handler := routesWithLapRepository(config.Config{Addr: ":0", Env: "test"}, slog.New(slog.NewTextHandler(io.Discard, nil)), store, tracks.OfficialGT7SeedCatalog(), eventStore, lapRepo, sessionRepo)
+
+	lastLapMs := int64(91234)
+	bestLapMs := int64(89000)
+	body, err := json.Marshal(telemetry.IngestBatchRequest{SessionID: "session-1", Frames: []telemetry.Frame{{
+		TimestampUnixMs: 1720656000000,
+		SpeedMps:        58.33,
+		RPM:             7100,
+		Gear:            4,
+		Throttle:        0.82,
+		Brake:           0,
+		Steering:        -0.12,
+		FuelLiters:      38.4,
+		PositionX:       123.4,
+		PositionY:       5.6,
+		PositionZ:       789.1,
+		LapNumber:       3,
+		CurrentLapMs:    123,
+		LastLapMs:       &lastLapMs,
+		BestLapMs:       &bestLapMs,
+		IsOnTrack:       true,
+	}}})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+
+	for i := 0; i < 2; i++ {
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/session-1/frames", bytes.NewReader(body)))
+		if recorder.Code != http.StatusAccepted {
+			t.Fatalf("expected ingest %d to return %d, got %d body %s", i+1, http.StatusAccepted, recorder.Code, recorder.Body.String())
+		}
+	}
+
+	got, err := lapRepo.ListBySession(context.Background(), "session-1")
+	if err != nil {
+		t.Fatalf("list completed laps: %v", err)
+	}
+	if len(got) != 1 || got[0].LapNumber != 2 || got[0].LapTimeMs != lastLapMs {
+		t.Fatalf("expected one completed lap 2, got %+v", got)
+	}
+}
+
+func TestIngestPersistsCompletedLapsWithZeroBestLapMs(t *testing.T) {
+	store := telemetry.NewFrameStore(100)
+	eventStore := events.NewStore(100, events.DedupOptions{})
+	lapRepo := laps.NewMemoryRepository()
+	sessionRepo := sessions.NewMemoryRepository()
+	seedTestSession(t, sessionRepo, "session-zero-best-lap")
+	handler := routesWithLapRepository(config.Config{Addr: ":0", Env: "test"}, slog.New(slog.NewTextHandler(io.Discard, nil)), store, tracks.OfficialGT7SeedCatalog(), eventStore, lapRepo, sessionRepo)
+
+	lastLapMs := int64(91234)
+	bestLapMs := int64(0)
+	body, err := json.Marshal(telemetry.IngestBatchRequest{SessionID: "session-zero-best-lap", Frames: []telemetry.Frame{{
+		TimestampUnixMs: 1720656000000,
+		SpeedMps:        58.33,
+		RPM:             7100,
+		Gear:            4,
+		Throttle:        0.82,
+		Brake:           0,
+		Steering:        -0.12,
+		FuelLiters:      38.4,
+		PositionX:       123.4,
+		PositionY:       5.6,
+		PositionZ:       789.1,
+		LapNumber:       3,
+		CurrentLapMs:    123,
+		LastLapMs:       &lastLapMs,
+		BestLapMs:       &bestLapMs,
+		IsOnTrack:       true,
+	}}})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+
+	for i := 0; i < 2; i++ {
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/session-zero-best-lap/frames", bytes.NewReader(body)))
+		if recorder.Code != http.StatusAccepted {
+			t.Fatalf("expected ingest %d to return %d, got %d body %s", i+1, http.StatusAccepted, recorder.Code, recorder.Body.String())
+		}
+	}
+
+	got, err := lapRepo.ListBySession(context.Background(), "session-zero-best-lap")
+	if err != nil {
+		t.Fatalf("list completed laps: %v", err)
+	}
+	if len(got) != 1 || got[0].LapNumber != 2 || got[0].LapTimeMs != lastLapMs || got[0].BestLapMs == nil || *got[0].BestLapMs != 0 {
+		t.Fatalf("expected one completed lap 2 with zero best lap ms, got %+v", got)
+	}
+}
+
+func TestIngestDoesNotPersistRejectedFrameLapEvidence(t *testing.T) {
+	store := telemetry.NewFrameStore(100)
+	lapRepo := laps.NewMemoryRepository()
+	sessionRepo := sessions.NewMemoryRepository()
+	seedTestSession(t, sessionRepo, "session-1")
+	handler := routesWithLapRepository(config.Config{Addr: ":0", Env: "test"}, slog.New(slog.NewTextHandler(io.Discard, nil)), store, tracks.OfficialGT7SeedCatalog(), events.NewStore(100, events.DedupOptions{}), lapRepo, sessionRepo)
+
+	body := `{"sessionId":"session-1","frames":[{"timestampUnixMs":1720656000000,"speedMps":58.33,"rpm":7100,"gear":4,"throttle":1.2,"brake":0,"steering":-0.12,"fuelLiters":38.4,"positionX":123.4,"positionY":5.6,"positionZ":789.1,"lapNumber":3,"currentLapMs":123,"lastLapMs":91234,"isOnTrack":true}]}`
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/session-1/frames", strings.NewReader(body)))
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("expected rejected ingest status %d, got %d body %s", http.StatusAccepted, recorder.Code, recorder.Body.String())
+	}
+
+	got, err := lapRepo.ListBySession(context.Background(), "session-1")
+	if err != nil {
+		t.Fatalf("list completed laps: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("expected rejected frame not to persist laps, got %+v", got)
+	}
+}
+
+func TestIngestReturnsInternalServerErrorWhenLapPersistenceFails(t *testing.T) {
+	store := telemetry.NewFrameStore(100)
+	sessionRepo := sessions.NewMemoryRepository()
+	seedTestSession(t, sessionRepo, "session-1")
+	handler := routesWithLapRepository(config.Config{Addr: ":0", Env: "test"}, slog.New(slog.NewTextHandler(io.Discard, nil)), store, tracks.OfficialGT7SeedCatalog(), events.NewStore(100, events.DedupOptions{}), failingLapRepository{err: errors.New("laps failed")}, sessionRepo)
+
+	lastLapMs := int64(91234)
+	body, err := json.Marshal(telemetry.IngestBatchRequest{SessionID: "session-1", Frames: []telemetry.Frame{{
+		TimestampUnixMs: 1720656000000,
+		SpeedMps:        58.33,
+		RPM:             7100,
+		Gear:            4,
+		Throttle:        0.82,
+		Brake:           0,
+		Steering:        -0.12,
+		FuelLiters:      38.4,
+		PositionX:       123.4,
+		PositionY:       5.6,
+		PositionZ:       789.1,
+		LapNumber:       3,
+		CurrentLapMs:    123,
+		LastLapMs:       &lastLapMs,
+		IsOnTrack:       true,
+	}}})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/session-1/frames", bytes.NewReader(body)))
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("expected status %d, got %d body %s", http.StatusInternalServerError, recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), "lap persistence error") {
+		t.Fatalf("expected explicit lap persistence error, got %s", recorder.Body.String())
 	}
 }
 
@@ -1381,6 +1541,18 @@ func newTestHandlerWithStores(t *testing.T, frameStore telemetry.Store, eventSto
 
 type failingRejectionStore struct {
 	err error
+}
+
+type failingLapRepository struct {
+	err error
+}
+
+func (r failingLapRepository) UpsertCompleted(context.Context, []laps.CompletedLap) error {
+	return r.err
+}
+
+func (r failingLapRepository) ListBySession(context.Context, string) ([]laps.CompletedLap, error) {
+	return nil, r.err
 }
 
 func (s failingRejectionStore) Append(context.Context, telemetry.RejectionSummaryRecord) error {

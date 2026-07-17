@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 
+	"telemetry-one-backend/internal/laps"
 	"telemetry-one-backend/internal/telemetry"
 )
 
@@ -135,26 +136,13 @@ type lapCompletion struct {
 }
 
 func completedLaps(frames []telemetry.Frame) []lapCompletion {
-	seen := make(map[int]struct{}, len(frames))
-	completions := make([]lapCompletion, 0, len(frames))
-	for _, frame := range frames {
-		if frame.LapNumber <= 0 || frame.LastLapMs == nil || *frame.LastLapMs <= 0 || frame.TimestampUnixMs <= 0 {
-			continue
-		}
-
-		completedLapNumber := frame.LapNumber - 1
-		if completedLapNumber < 0 {
-			continue
-		}
-		if _, ok := seen[completedLapNumber]; ok {
-			continue
-		}
-
-		seen[completedLapNumber] = struct{}{}
+	extracted := laps.ExtractCompleted("events", frames)
+	completions := make([]lapCompletion, 0, len(extracted))
+	for _, lap := range extracted {
 		completions = append(completions, lapCompletion{
-			LapNumber:       completedLapNumber,
-			CompletedLapMs:  *frame.LastLapMs,
-			TimestampUnixMs: frame.TimestampUnixMs,
+			LapNumber:       lap.LapNumber,
+			CompletedLapMs:  lap.LapTimeMs,
+			TimestampUnixMs: lap.CompletedAtUnixMs,
 		})
 	}
 
