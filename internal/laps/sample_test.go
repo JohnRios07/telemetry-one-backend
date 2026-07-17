@@ -105,6 +105,34 @@ func TestBuildLapSamplesPreservesOptionalRightEndpointOnExactRightEdge(t *testin
 	}
 }
 
+func TestBuildLapSamplesPrefersLaterFrameForDuplicateExactDistanceBucket(t *testing.T) {
+	lap := CompletedLap{ID: "lap_session-1_1", SessionID: "session-1", LapNumber: 1, LapTimeMs: 90000, CompletedAtUnixMs: 3000}
+	left := baseSampleFrame(1000, 1, float64Ptr(0))
+	duplicateEarly := baseSampleFrame(2000, 1, float64Ptr(5))
+	duplicateEarly.YawRate = nil
+	duplicateLate := baseSampleFrame(3000, 1, float64Ptr(5))
+	duplicateLate.YawRate = float64Ptr(0.75)
+	right := baseSampleFrame(4000, 1, float64Ptr(10))
+	right.YawRate = float64Ptr(1)
+
+	samples, ok := BuildLapSamples(lap, []telemetry.Frame{left, duplicateEarly, duplicateLate, right}, DefaultSampleStepMeters)
+	if !ok {
+		t.Fatalf("expected samples")
+	}
+	if len(samples) != 3 {
+		t.Fatalf("expected buckets 0, 5, 10, got %+v", samples)
+	}
+	if samples[1].DistanceMeters != 5 {
+		t.Fatalf("expected middle bucket at 5m, got %+v", samples[1])
+	}
+	if samples[1].YawRate == nil || *samples[1].YawRate != 0.75 {
+		t.Fatalf("expected later duplicate yaw rate 0.75 to be preserved, got %+v", samples[1].YawRate)
+	}
+	if samples[1].TimestampUnixMs == nil || *samples[1].TimestampUnixMs != 3000 {
+		t.Fatalf("expected later duplicate timestamp 3000 to be preserved, got %+v", samples[1].TimestampUnixMs)
+	}
+}
+
 func TestInterpolateOptionalFloat64PreservesEndpointValues(t *testing.T) {
 	rightValue := float64Ptr(12.5)
 	rightZero := float64Ptr(0)

@@ -111,6 +111,10 @@ func BuildLapSamples(lap CompletedLap, frames []telemetry.Frame, stepMeters int)
 			return nil, false
 		}
 	}
+	lapFrames = collapseDuplicateDistanceFrames(lapFrames)
+	if len(lapFrames) < 2 {
+		return nil, false
+	}
 
 	firstDistance := *lapFrames[0].LapDistanceMeters
 	lastDistance := *lapFrames[len(lapFrames)-1].LapDistanceMeters
@@ -240,4 +244,21 @@ func sortByDistance(samples []LapSample) {
 		}
 		return samples[i].DistanceMeters < samples[j].DistanceMeters
 	})
+}
+
+func collapseDuplicateDistanceFrames(frames []telemetry.Frame) []telemetry.Frame {
+	if len(frames) == 0 {
+		return frames
+	}
+
+	collapsed := frames[:1]
+	for i := 1; i < len(frames); i++ {
+		last := collapsed[len(collapsed)-1]
+		if *frames[i].LapDistanceMeters == *last.LapDistanceMeters {
+			collapsed[len(collapsed)-1] = frames[i]
+			continue
+		}
+		collapsed = append(collapsed, frames[i])
+	}
+	return collapsed
 }
