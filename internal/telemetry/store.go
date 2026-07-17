@@ -77,6 +77,7 @@ func cloneFrame(frame Frame) Frame {
 	frame.WheelSpeedFR = cloneFloat64(frame.WheelSpeedFR)
 	frame.WheelSpeedRL = cloneFloat64(frame.WheelSpeedRL)
 	frame.WheelSpeedRR = cloneFloat64(frame.WheelSpeedRR)
+	frame.LapDistanceMeters = cloneFloat64(frame.LapDistanceMeters)
 	frame.LastLapMs = cloneInt64(frame.LastLapMs)
 	frame.BestLapMs = cloneInt64(frame.BestLapMs)
 

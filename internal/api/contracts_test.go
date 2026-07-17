@@ -305,6 +305,110 @@ func TestIngestDoesNotPersistRejectedFrameLapEvidence(t *testing.T) {
 	}
 }
 
+func TestIngestSkipsLapSamplesWhenCompletedLapHasNoDistance(t *testing.T) {
+	store := telemetry.NewFrameStore(100)
+	lapRepo := laps.NewMemoryRepository()
+	sessionRepo := sessions.NewMemoryRepository()
+	seedTestSession(t, sessionRepo, "session-no-distance")
+	handler := routesWithLapAndSampleRepositories(config.Config{Addr: ":0", Env: "test"}, slog.New(slog.NewTextHandler(io.Discard, nil)), store, tracks.OfficialGT7SeedCatalog(), events.NewStore(100, events.DedupOptions{}), lapRepo, lapRepo, sessionRepo)
+
+	ingestFrames(t, handler, "session-no-distance", []telemetry.Frame{
+		completedLapFrame(1720656000000, 1, nil, nil),
+		completedLapFrame(1720656001000, 1, nil, nil),
+	})
+	lastLapMs := int64(91234)
+	ingestFrames(t, handler, "session-no-distance", []telemetry.Frame{{
+		TimestampUnixMs: 1720656002000, SpeedMps: 58.33, RPM: 7100, Gear: 4, Throttle: 0.82, Brake: 0, Steering: -0.12, FuelLiters: 38.4,
+		PositionX: 123.4, PositionY: 5.6, PositionZ: 789.1, LapNumber: 2, CurrentLapMs: 100, LastLapMs: &lastLapMs, IsOnTrack: true,
+	}})
+
+	samples, err := lapRepo.ListSamples(context.Background(), laps.NewCompletedLapID("session-no-distance", 1))
+	if err != nil {
+		t.Fatalf("list samples: %v", err)
+	}
+	if len(samples) != 0 {
+		t.Fatalf("expected no samples without explicit distance, got %+v", samples)
+	}
+}
+
+func TestIngestPersistsLapSamplesForCompletedLapWithMonotonicDistance(t *testing.T) {
+	store := telemetry.NewFrameStore(100)
+	lapRepo := laps.NewMemoryRepository()
+	sessionRepo := sessions.NewMemoryRepository()
+	seedTestSession(t, sessionRepo, "session-samples")
+	handler := routesWithLapAndSampleRepositories(config.Config{Addr: ":0", Env: "test"}, slog.New(slog.NewTextHandler(io.Discard, nil)), store, tracks.OfficialGT7SeedCatalog(), events.NewStore(100, events.DedupOptions{}), lapRepo, lapRepo, sessionRepo)
+
+	ingestFrames(t, handler, "session-samples", []telemetry.Frame{
+		completedLapFrame(1720656000000, 1, apiFloat64Ptr(0), apiFloat64Ptr(0)),
+		completedLapFrame(1720656001000, 1, apiFloat64Ptr(10), nil),
+	})
+	lastLapMs := int64(91234)
+	ingestFrames(t, handler, "session-samples", []telemetry.Frame{{
+		TimestampUnixMs: 1720656002000, SpeedMps: 58.33, RPM: 7100, Gear: 4, Throttle: 0.82, Brake: 0, Steering: -0.12, FuelLiters: 38.4,
+		PositionX: 123.4, PositionY: 5.6, PositionZ: 789.1, LapNumber: 2, CurrentLapMs: 100, LastLapMs: &lastLapMs, IsOnTrack: true,
+	}})
+
+	samples, err := lapRepo.ListSamples(context.Background(), laps.NewCompletedLapID("session-samples", 1))
+	if err != nil {
+		t.Fatalf("list samples: %v", err)
+	}
+	if len(samples) != 3 {
+		t.Fatalf("expected 0,5,10m samples, got %+v", samples)
+	}
+	if samples[0].DistanceMeters != 0 || samples[1].DistanceMeters != 5 || samples[2].DistanceMeters != 10 {
+		t.Fatalf("expected sorted 5m samples, got %+v", samples)
+	}
+	if samples[0].YawRate == nil || *samples[0].YawRate != 0 {
+		t.Fatalf("expected explicit optional zero preserved at exact bucket, got %+v", samples[0].YawRate)
+	}
+	if samples[1].YawRate != nil {
+		t.Fatalf("expected missing optional channel to stay nil during interpolation, got %+v", samples[1].YawRate)
+	}
+}
+
+func TestIngestDoesNotSampleIncompleteLap(t *testing.T) {
+	store := telemetry.NewFrameStore(100)
+	lapRepo := laps.NewMemoryRepository()
+	sessionRepo := sessions.NewMemoryRepository()
+	seedTestSession(t, sessionRepo, "session-incomplete")
+	handler := routesWithLapAndSampleRepositories(config.Config{Addr: ":0", Env: "test"}, slog.New(slog.NewTextHandler(io.Discard, nil)), store, tracks.OfficialGT7SeedCatalog(), events.NewStore(100, events.DedupOptions{}), lapRepo, lapRepo, sessionRepo)
+
+	ingestFrames(t, handler, "session-incomplete", []telemetry.Frame{
+		completedLapFrame(1720656000000, 1, apiFloat64Ptr(0), nil),
+		completedLapFrame(1720656001000, 1, apiFloat64Ptr(10), nil),
+	})
+
+	samples, err := lapRepo.ListSamples(context.Background(), laps.NewCompletedLapID("session-incomplete", 1))
+	if err != nil {
+		t.Fatalf("list samples: %v", err)
+	}
+	if len(samples) != 0 {
+		t.Fatalf("expected incomplete lap not to sample, got %+v", samples)
+	}
+}
+
+func ingestFrames(t *testing.T, handler http.Handler, sessionID string, frames []telemetry.Frame) {
+	t.Helper()
+	body, err := json.Marshal(telemetry.IngestBatchRequest{SessionID: sessionID, Frames: frames})
+	if err != nil {
+		t.Fatalf("marshal ingest body: %v", err)
+	}
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sessionID+"/frames", bytes.NewReader(body)))
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("expected ingest to return %d, got %d body %s", http.StatusAccepted, recorder.Code, recorder.Body.String())
+	}
+}
+
+func completedLapFrame(timestamp int64, lapNumber int, distance *float64, yawRate *float64) telemetry.Frame {
+	return telemetry.Frame{
+		TimestampUnixMs: timestamp, SpeedMps: float64(timestamp-1720655999990) / 100, RPM: 1000, Gear: 3, Throttle: 0.5, Brake: 0, Steering: 0, FuelLiters: 38.4,
+		PositionX: 123.4, PositionY: 5.6, PositionZ: 789.1, YawRate: yawRate, LapDistanceMeters: distance, LapNumber: lapNumber, CurrentLapMs: timestamp - 1720656000000, IsOnTrack: true,
+	}
+}
+
+func apiFloat64Ptr(value float64) *float64 { return &value }
+
 func TestIngestReturnsInternalServerErrorWhenLapPersistenceFails(t *testing.T) {
 	store := telemetry.NewFrameStore(100)
 	sessionRepo := sessions.NewMemoryRepository()

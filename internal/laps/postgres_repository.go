@@ -94,4 +94,106 @@ ORDER BY lap_number ASC, id ASC`, sessionID)
 	return cloneLaps(result), nil
 }
 
+func (r *PostgresRepository) UpsertSamples(ctx context.Context, samples []LapSample) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if r == nil || r.pool == nil || len(samples) == 0 {
+		return nil
+	}
+
+	for _, sample := range samples {
+		sample = sample.withDefaults()
+		if err := sample.Validate(); err != nil {
+			return err
+		}
+		if _, err := r.pool.Exec(ctx, `
+INSERT INTO lap_samples (
+    id, lap_id, distance_meters, source, timestamp_unix_ms,
+    speed_mps, rpm, gear, throttle, brake, steering, fuel_liters,
+    yaw_radians, yaw_rate, wheel_speed_fl, wheel_speed_fr, wheel_speed_rl, wheel_speed_rr
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+ON CONFLICT (lap_id, distance_meters) DO NOTHING`,
+			sample.ID,
+			sample.LapID,
+			sample.DistanceMeters,
+			sample.Source,
+			sample.TimestampUnixMs,
+			sample.SpeedMps,
+			sample.RPM,
+			sample.Gear,
+			sample.Throttle,
+			sample.Brake,
+			sample.Steering,
+			sample.FuelLiters,
+			sample.YawRadians,
+			sample.YawRate,
+			sample.WheelSpeedFL,
+			sample.WheelSpeedFR,
+			sample.WheelSpeedRL,
+			sample.WheelSpeedRR,
+		); err != nil {
+			return fmt.Errorf("upsert lap sample: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (r *PostgresRepository) ListSamples(ctx context.Context, lapID string) ([]LapSample, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if r == nil || r.pool == nil || lapID == "" {
+		return nil, nil
+	}
+
+	rows, err := r.pool.Query(ctx, `
+SELECT id, lap_id, distance_meters, source, timestamp_unix_ms,
+       speed_mps, rpm, gear, throttle, brake, steering, fuel_liters,
+       yaw_radians, yaw_rate, wheel_speed_fl, wheel_speed_fr, wheel_speed_rl, wheel_speed_rr
+FROM lap_samples
+WHERE lap_id = $1
+ORDER BY distance_meters ASC, id ASC`, lapID)
+	if err != nil {
+		return nil, fmt.Errorf("list lap samples: %w", err)
+	}
+	defer rows.Close()
+
+	result := make([]LapSample, 0)
+	for rows.Next() {
+		var sample LapSample
+		if err := rows.Scan(
+			&sample.ID,
+			&sample.LapID,
+			&sample.DistanceMeters,
+			&sample.Source,
+			&sample.TimestampUnixMs,
+			&sample.SpeedMps,
+			&sample.RPM,
+			&sample.Gear,
+			&sample.Throttle,
+			&sample.Brake,
+			&sample.Steering,
+			&sample.FuelLiters,
+			&sample.YawRadians,
+			&sample.YawRate,
+			&sample.WheelSpeedFL,
+			&sample.WheelSpeedFR,
+			&sample.WheelSpeedRL,
+			&sample.WheelSpeedRR,
+		); err != nil {
+			return nil, fmt.Errorf("scan lap sample: %w", err)
+		}
+		result = append(result, sample.withDefaults())
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate lap samples: %w", err)
+	}
+
+	return cloneSamples(result), nil
+}
+
 var _ Repository = (*PostgresRepository)(nil)
+var _ SampleRepository = (*PostgresRepository)(nil)

@@ -55,5 +55,5 @@ func runtimeHandler(ctx context.Context, cfg config.Config, logger *slog.Logger)
 	statsRepo := admin.NewPostgresStatsRepo(db.Pool)
 	summaryRepo := sessions.NewPostgresSummaryRepository(db.Pool, rejectionStore)
 
-	return routesWithAIAndSessionsAndLaps(cfg, logger, frameStore, catalog, eventStore, lapRepo, sessionRepo, aiSvc, statsRepo, summaryRepo, rejectionStore), db.Close, nil
+	return routesWithAIAndSessionsAndLaps(cfg, logger, frameStore, catalog, eventStore, lapRepo, lapRepo, sessionRepo, aiSvc, statsRepo, summaryRepo, rejectionStore), db.Close, nil
 }
