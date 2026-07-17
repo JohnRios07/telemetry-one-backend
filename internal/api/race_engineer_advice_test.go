@@ -95,6 +95,7 @@ func TestRaceEngineerAdviceSuccessUsesStoredEventsOnly(t *testing.T) {
 		}
 	}
 
+	assertAPIVersion(t, decodeJSONMap(t, recorder.Body.Bytes()))
 	var response raceEngineerAdviceResponse
 	decodeAdviceResponse(t, recorder, &response)
 	if response.SessionID != "session-1" || response.Status != ai.StatusSuccess || response.Message == "" {

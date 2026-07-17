@@ -7,6 +7,9 @@ The backend remains the source of truth for normalized ingest validation, catalo
 ## Versioning And Scope
 
 - HTTP base path: `/api/v1`.
+- Successful JSON object responses include the additive top-level marker `"apiVersion": "telemetry-one.api.v2"` while still being served from `/api/v1` as a temporary compatibility bridge.
+- Flutter clients must tolerate legacy responses without `apiVersion`, marked responses with `apiVersion`, and a future optional `{ "apiVersion": "telemetry-one.api.v2", "data": { ... } }` envelope. The backend does not require or emit that envelope in this slice.
+- Error envelopes remain unchanged and unmarked; Flutter should continue parsing `error.code` and `error.details` from the existing shape.
 - JSON field names are camelCase.
 - Unknown JSON request fields are rejected by implemented endpoints.
 - All timestamps crossing the HTTP boundary use Unix milliseconds unless a field explicitly says RFC3339.
@@ -77,6 +80,7 @@ Future success response DTO:
 
 ```json
 {
+  "apiVersion": "telemetry-one.api.v2",
   "session": {
     "id": "session_01j2example",
     "source": "flutter",

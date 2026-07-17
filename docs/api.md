@@ -13,6 +13,18 @@ All error responses use the same envelope:
 }
 ```
 
+## API Version Marker
+
+Current implemented `/api/v1` routes are a compatibility bridge for the frozen V2 response contract. Successful JSON object responses include the additive top-level marker:
+
+```json
+{
+  "apiVersion": "telemetry-one.api.v2"
+}
+```
+
+This slice does not add `/api/v2`, remove `/api/v1`, or require a `{ "data": ... }` envelope. Existing error envelopes remain unchanged and do not include `apiVersion`; non-object payloads are not marker-mutated. Current ID/enum constraints remain the active contract: backend-owned session IDs use the `session_` prefix, engineer events use `telemetry-one.engineer-event.v1`, and stable machine enum/code fields such as ingest rejection codes, track detection statuses/reasons, event types/severities, and advice statuses must be treated as closed to the documented values until a later enum cleanup slice.
+
 Validation failures may include stable rejection details for Flutter retry and user-facing diagnostics:
 
 ```json
@@ -40,6 +52,7 @@ Response:
 
 ```json
 {
+  "apiVersion": "telemetry-one.api.v2",
   "status": "ok",
   "env": "development",
   "time": "2026-07-11T00:00:00Z"
@@ -71,6 +84,7 @@ Future success response:
 
 ```json
 {
+  "apiVersion": "telemetry-one.api.v2",
   "session": {
     "id": "session_01j2example",
     "startedAt": "2026-07-11T00:00:00Z",

@@ -28,6 +28,8 @@ type healthResponse struct {
 	Time   string `json:"time"`
 }
 
+const responseAPIVersion = "telemetry-one.api.v2"
+
 func routes(cfg config.Config, logger *slog.Logger) http.Handler {
 	frameStore := telemetry.NewFrameStore(cfg.RetainedFramesPerSession)
 	rejectionStore := telemetry.NewMemoryRejectionSummaryStore()
@@ -74,11 +76,16 @@ func routesWithSessionRepository(cfg config.Config, logger *slog.Logger, frameSt
 
 func healthHandler(cfg config.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, healthResponse{
+		payload := healthResponse{
 			Status: "ok",
 			Env:    cfg.Env,
 			Time:   time.Now().UTC().Format(time.RFC3339),
-		})
+		}
+		if strings.HasPrefix(r.URL.Path, "/api/v1/") {
+			writeVersionedJSON(w, http.StatusOK, payload)
+			return
+		}
+		writeJSON(w, http.StatusOK, payload)
 	}
 }
 
@@ -89,6 +96,36 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	if err := json.NewEncoder(w).Encode(payload); err != nil {
 		http.Error(w, httperror.Envelope(httperror.Internal("failed to encode response")).Error.Message, http.StatusInternalServerError)
 	}
+}
+
+func writeVersionedJSON(w http.ResponseWriter, status int, payload any) {
+	writeJSON(w, status, payloadWithAPIVersion(status, payload))
+}
+
+func payloadWithAPIVersion(status int, payload any) any {
+	if status < http.StatusOK || status >= http.StatusMultipleChoices {
+		return payload
+	}
+
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return payload
+	}
+
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &object); err != nil || object == nil {
+		return payload
+	}
+	if _, exists := object["apiVersion"]; exists {
+		return payload
+	}
+
+	version, err := json.Marshal(responseAPIVersion)
+	if err != nil {
+		return payload
+	}
+	object["apiVersion"] = version
+	return object
 }
 
 func createSessionHandler(repo sessions.Repository, catalog tracks.Catalog) http.HandlerFunc {
@@ -128,7 +165,7 @@ func createSessionHandler(repo sessions.Repository, catalog tracks.Catalog) http
 			return
 		}
 
-		writeJSON(w, http.StatusCreated, sessions.Response{Session: sessions.NewDTO(session, 0, 0)})
+		writeVersionedJSON(w, http.StatusCreated, sessions.Response{Session: sessions.NewDTO(session, 0, 0)})
 	}
 }
 
@@ -146,7 +183,7 @@ func getSessionHandler(repo sessions.Repository, frameStore telemetry.Store, eve
 			return
 		}
 
-		writeJSON(w, http.StatusOK, sessions.Response{Session: dto})
+		writeVersionedJSON(w, http.StatusOK, sessions.Response{Session: dto})
 	}
 }
 
@@ -178,7 +215,7 @@ func finishSessionHandler(repo sessions.Repository, frameStore telemetry.Store, 
 			return
 		}
 
-		writeJSON(w, http.StatusOK, sessions.Response{Session: dto})
+		writeVersionedJSON(w, http.StatusOK, sessions.Response{Session: dto})
 	}
 }
 
@@ -394,7 +431,7 @@ func ingestFramesHandler(frameStore telemetry.Store, eventStore events.Repositor
 			RejectionSummary:   summary,
 		}
 
-		writeJSON(w, http.StatusAccepted, resp)
+		writeVersionedJSON(w, http.StatusAccepted, resp)
 
 		logger.Info("frames ingested",
 			"session_id", resp.SessionID,
@@ -465,7 +502,7 @@ func detectTrackHandler(frameStore telemetry.Store, catalog tracks.Catalog, sess
 		}
 
 		result := tracks.DetectTrack(frames, catalog, tracks.DetectionOptions{})
-		writeJSON(w, http.StatusOK, result)
+		writeVersionedJSON(w, http.StatusOK, result)
 	}
 }
 
@@ -489,7 +526,7 @@ func listEventsHandler(store events.Repository, sessionRepo sessions.Repository)
 			return
 		}
 
-		writeJSON(w, http.StatusOK, events.ListResponse{SessionID: query.SessionID, Events: storedEvents})
+		writeVersionedJSON(w, http.StatusOK, events.ListResponse{SessionID: query.SessionID, Events: storedEvents})
 	}
 }
 
@@ -513,7 +550,7 @@ func analyzeHandler(aiSvc ai.AIService, sessionRepo sessions.Repository) http.Ha
 			return
 		}
 
-		writeJSON(w, http.StatusOK, resp)
+		writeVersionedJSON(w, http.StatusOK, resp)
 	}
 }
 
@@ -644,7 +681,7 @@ func ingestStatsHandler(statsRepo admin.StatsRepository) http.HandlerFunc {
 			return
 		}
 
-		writeJSON(w, http.StatusOK, resp)
+		writeVersionedJSON(w, http.StatusOK, resp)
 	}
 }
 
@@ -666,7 +703,7 @@ func listSessionsHandler(summaryRepo sessions.SummaryRepository) http.HandlerFun
 			resp.Sessions = []sessions.SessionSummaryItem{}
 		}
 
-		writeJSON(w, http.StatusOK, resp)
+		writeVersionedJSON(w, http.StatusOK, resp)
 	}
 }
 
@@ -680,7 +717,7 @@ func sessionSummaryHandler(summaryRepo sessions.SummaryRepository) http.HandlerF
 			return
 		}
 
-		writeJSON(w, http.StatusOK, resp)
+		writeVersionedJSON(w, http.StatusOK, resp)
 	}
 }
 
