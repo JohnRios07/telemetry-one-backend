@@ -131,6 +131,38 @@ func TestMemorySummaryRepositorySummaryFound(t *testing.T) {
 	}
 }
 
+func TestMemorySummaryRepositoryUsesEffectiveLayoutID(t *testing.T) {
+	ctx := context.Background()
+	startedAt := time.UnixMilli(1720656000000).UTC()
+	sessionRepo := NewMemoryRepository()
+	if _, err := sessionRepo.Create(ctx, Session{
+		ID:        "session-layout",
+		Source:    "flutter",
+		Game:      "gt7",
+		Platform:  "ps5",
+		StartedAt: startedAt,
+	}); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	updated, err := sessionRepo.SetTrackLayout(ctx, "session-layout", "gt7_watkins_glen_international", "gt7_layout_1240")
+	if err != nil {
+		t.Fatalf("set track layout: %v", err)
+	}
+	updated.DetectedLayoutID = "gt7_layout_1264"
+	if _, err := sessionRepo.Update(ctx, updated); err != nil {
+		t.Fatalf("persist update: %v", err)
+	}
+
+	repo := NewMemorySummaryRepository(sessionRepo, telemetry.NewFrameStore(10), events.NewStore(10, events.DedupOptions{}))
+	summary, err := repo.Summary(ctx, "session-layout")
+	if err != nil {
+		t.Fatalf("summary: %v", err)
+	}
+	if summary.Session.LayoutID != "gt7_layout_1240" {
+		t.Fatalf("expected manual layout to win, got %q", summary.Session.LayoutID)
+	}
+}
+
 func TestMemorySummaryRepositoryAggregatesPersistedRejections(t *testing.T) {
 	sessionRepo := NewMemoryRepository()
 	frameStore := telemetry.NewFrameStore(100)

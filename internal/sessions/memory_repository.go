@@ -99,6 +99,22 @@ func (r *MemoryRepository) SetDetectedTrackLayout(_ context.Context, id string, 
 	return cloneSession(session), nil
 }
 
+func (r *MemoryRepository) SetTrackLayout(_ context.Context, id string, trackID, layoutID string) (Session, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	session, ok := r.sessions[id]
+	if !ok {
+		return Session{}, ErrNotFound
+	}
+
+	session.TrackID = trackID
+	session.LayoutID = layoutID
+	r.sessions[id] = cloneSession(session)
+
+	return cloneSession(session), nil
+}
+
 func (r *MemoryRepository) List(_ context.Context) ([]Session, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

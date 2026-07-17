@@ -48,6 +48,7 @@ type fakeSummaryRowData struct {
 	Platform         string
 	DriverAlias      string
 	TrackID          string
+	LayoutID         string
 	StartedAt        time.Time
 	EndedAt          *time.Time
 	FrameBatches     int
@@ -87,13 +88,14 @@ func (r *fakeSummaryRows) Scan(dest ...any) error {
 	*(dest[3].(*string)) = row.Platform
 	*(dest[4].(*string)) = row.DriverAlias
 	*(dest[5].(*string)) = row.TrackID
-	*(dest[6].(*time.Time)) = row.StartedAt
-	*(dest[7].(**time.Time)) = row.EndedAt
-	*(dest[8].(*int)) = row.FrameBatches
-	*(dest[9].(*int)) = row.PersistedFrames
-	*(dest[10].(*int)) = row.EventCount
-	*(dest[11].(*string)) = row.DetectedTrackID
-	*(dest[12].(*string)) = row.DetectedLayoutID
+	*(dest[6].(*string)) = row.LayoutID
+	*(dest[7].(*time.Time)) = row.StartedAt
+	*(dest[8].(**time.Time)) = row.EndedAt
+	*(dest[9].(*int)) = row.FrameBatches
+	*(dest[10].(*int)) = row.PersistedFrames
+	*(dest[11].(*int)) = row.EventCount
+	*(dest[12].(*string)) = row.DetectedTrackID
+	*(dest[13].(*string)) = row.DetectedLayoutID
 	return nil
 }
 

@@ -153,6 +153,7 @@ func (r *MemorySummaryRepository) buildItem(ctx context.Context, session Session
 		Platform:    session.Platform,
 		DriverAlias: session.DriverAlias,
 		TrackID:     session.TrackID,
+		LayoutID:    session.EffectiveLayoutID(),
 		Status:      session.Status(),
 		StartedAt:   session.StartedAt.UTC().Format(time.RFC3339),
 	}

@@ -146,6 +146,23 @@ func TestNewDTOIncludesDetectedFieldsWhenSet(t *testing.T) {
 	}
 }
 
+func TestNewDTOPrefersManualLayoutOverDetectedLayout(t *testing.T) {
+	s := Session{
+		ID:               "session-manual-layout",
+		Source:           "test",
+		Game:             "gt7",
+		Platform:         "ps5",
+		StartedAt:        time.UnixMilli(1720656000000).UTC(),
+		LayoutID:         "gt7_layout_1264",
+		DetectedLayoutID: "gt7_layout_1240",
+	}
+
+	dto := NewDTO(s, 0, 0)
+	if dto.LayoutID != "gt7_layout_1264" {
+		t.Fatalf("expected manual layout to win, got %q", dto.LayoutID)
+	}
+}
+
 func TestNewDTOOmitsDetectedFieldsWhenEmpty(t *testing.T) {
 	s := Session{
 		ID: "session-no-detect", Source: "test", Game: "gt7",
@@ -195,6 +212,39 @@ func TestMemoryRepositoryUpdatePreservesDetectedFields(t *testing.T) {
 	}
 	if found.DetectedLayoutID != "gt7_layout_1240" {
 		t.Fatalf("expected detectedLayoutId persisted, got %q", found.DetectedLayoutID)
+	}
+}
+
+func TestMemoryRepositorySetTrackLayoutUpdatesEffectiveLayout(t *testing.T) {
+	repo := NewMemoryRepository()
+	ctx := context.Background()
+	startedAt := time.UnixMilli(1720656000000).UTC()
+
+	_, err := repo.Create(ctx, Session{
+		ID: "session-track-layout", Source: "test", Game: "gt7",
+		Platform: "ps5", StartedAt: startedAt,
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	updated, err := repo.SetTrackLayout(ctx, "session-track-layout", "gt7_watkins_glen_international", "gt7_layout_1240")
+	if err != nil {
+		t.Fatalf("SetTrackLayout: %v", err)
+	}
+	if updated.TrackID != "gt7_watkins_glen_international" {
+		t.Fatalf("expected trackId set, got %q", updated.TrackID)
+	}
+	if updated.LayoutID != "gt7_layout_1240" {
+		t.Fatalf("expected layoutId set, got %q", updated.LayoutID)
+	}
+
+	found, err := repo.FindByID(ctx, "session-track-layout")
+	if err != nil {
+		t.Fatalf("find: %v", err)
+	}
+	if found.LayoutID != "gt7_layout_1240" {
+		t.Fatalf("expected stored layoutId, got %q", found.LayoutID)
 	}
 }
 
@@ -311,6 +361,28 @@ func TestPostgresRepositorySetDetectedTrackLayoutIsPartialUpdate(t *testing.T) {
 	}
 	if !strings.Contains(methodBody, "WHERE id = $1 AND detected_track_id IS NULL AND detected_layout_id IS NULL") {
 		t.Fatal("expected SetDetectedTrackLayout to use idempotent WHERE clause")
+	}
+}
+
+func TestPostgresRepositorySetTrackLayoutIsPartialUpdate(t *testing.T) {
+	content, err := os.ReadFile("postgres_repository.go")
+	if err != nil {
+		t.Fatalf("read postgres repository: %v", err)
+	}
+
+	source := string(content)
+	if !strings.Contains(source, "func (r *PostgresRepository) SetTrackLayout") {
+		t.Fatal("expected SetTrackLayout method on PostgresRepository")
+	}
+	methodStart := strings.Index(source, "func (r *PostgresRepository) SetTrackLayout")
+	methodEnd := strings.Index(source[methodStart:], "\n}\n") + methodStart + 3
+	methodBody := source[methodStart:methodEnd]
+
+	if !strings.Contains(methodBody, "SET track_id = NULLIF($2, ''), layout_id = NULLIF($3, ''), updated_at = now()") {
+		t.Fatal("expected SetTrackLayout to update only track_id/layout_id/updated_at")
+	}
+	if strings.Contains(methodBody, "SET source = $2") {
+		t.Fatal("expected SetTrackLayout not to update full session row")
 	}
 }
 

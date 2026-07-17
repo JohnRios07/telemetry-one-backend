@@ -18,8 +18,17 @@ type Session struct {
 	StartedAt        time.Time  `json:"startedAt"`
 	EndedAt          *time.Time `json:"endedAt,omitempty"`
 	TrackID          string     `json:"trackId,omitempty"`
+	LayoutID         string     `json:"layoutId,omitempty"`
 	DetectedTrackID  string     `json:"detectedTrackId,omitempty"`
 	DetectedLayoutID string     `json:"detectedLayoutId,omitempty"`
+}
+
+func (s Session) EffectiveLayoutID() string {
+	if s.LayoutID != "" {
+		return s.LayoutID
+	}
+
+	return s.DetectedLayoutID
 }
 
 func (s Session) Status() Status {
@@ -64,6 +73,7 @@ type DTO struct {
 	StartedAt        time.Time  `json:"startedAt"`
 	EndedAt          *time.Time `json:"endedAt"`
 	TrackID          string     `json:"trackId,omitempty"`
+	LayoutID         string     `json:"layoutId,omitempty"`
 	Status           Status     `json:"status"`
 	DurationMs       *int64     `json:"durationMs,omitempty"`
 	FrameCount       int        `json:"frameCount,omitempty"`
@@ -94,6 +104,7 @@ func NewDTO(session Session, frameCount int, eventCount int) DTO {
 		StartedAt:   session.StartedAt.UTC(),
 		EndedAt:     session.EndedAt,
 		TrackID:     session.TrackID,
+		LayoutID:    session.EffectiveLayoutID(),
 		Status:      session.Status(),
 		DurationMs:  session.DurationMs(),
 		FrameCount:  frameCount,

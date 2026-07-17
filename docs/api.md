@@ -23,7 +23,7 @@ Current implemented `/api/v1` routes are a compatibility bridge for the frozen V
 }
 ```
 
-This slice does not add `/api/v2`, remove `/api/v1`, or require a `{ "data": ... }` envelope. Existing error envelopes remain unchanged and do not include `apiVersion`; non-object payloads are not marker-mutated. Current ID/enum constraints remain the active contract: backend-owned session IDs use the `session_` prefix, engineer events use `telemetry-one.engineer-event.v1`, and stable machine enum/code fields such as ingest rejection codes, track detection statuses/reasons, event types/severities, and advice statuses must be treated as closed to the documented values until a later enum cleanup slice.
+This slice does not add `/api/v2`, remove `/api/v1`, or require a `{ "data": ... }` envelope. Existing error envelopes remain unchanged and do not include `apiVersion`; non-object payloads are not marker-mutated. Current ID/enum constraints remain the active contract: backend-owned session IDs use the `session_` prefix, engineer events use `telemetry-one.engineer-event.v1`, and stable machine enum/code fields such as ingest rejection codes, track detection statuses/reasons, event types/severities, and advice statuses must be treated as closed to the documented values until a later enum cleanup slice. Implemented `/api/v1` routes now also include `GET /api/v1/catalog/track-layouts` and `PUT /api/v1/sessions/{sessionId}/track-layout`.
 
 Validation failures may include stable rejection details for Flutter retry and user-facing diagnostics:
 
@@ -92,6 +92,36 @@ Response:
 
 `clientHints` are advisory only and are not persisted by the backend. `limits` reflect backend-safe operational bounds. `capabilities` describe what the backend contract supports, not user-owned settings.
 
+## Catalog Track Layouts
+
+```http
+GET /api/v1/catalog/track-layouts
+```
+
+Returns sourced-only track/layout summaries for the runtime catalog. The payload includes stable ids, display names, provenance sources, and layout lengths. It does not include geometry, sectors, corners, or telemetry-derived names.
+
+### Example
+
+```json
+{
+  "apiVersion": "telemetry-one.api.v2",
+  "catalogVersion": "telemetry-one.track-catalog.v1",
+  "tracks": [
+    {
+      "id": "gt7_watkins_glen_international",
+      "name": "Watkins Glen International",
+      "layouts": [
+        {
+          "id": "gt7_layout_1240",
+          "name": "Watkins Glen Long Course",
+          "lengthMeters": 5423
+        }
+      ]
+    }
+  ]
+}
+```
+
 ## Sessions
 
 ```http
@@ -133,7 +163,22 @@ Required fields:
 - `platform`: platform identifier, for example `ps5`.
 - `startedUnixMs`: session start timestamp in Unix milliseconds.
 
-`trackId` is optional because GT7 UDP does not provide authoritative track names. When present, it must come from Telemetry One catalog metadata or explicit user selection, not from raw UDP fields.
+`trackId` is optional because GT7 UDP does not provide authoritative track names. When present, it must come from Telemetry One catalog metadata or explicit user selection, not from raw UDP fields. The effective layout can later be overridden through `PUT /api/v1/sessions/{sessionId}/track-layout`; reads surface that effective layout as `layoutId` while preserving detected provenance in `detectedLayoutId`.
+
+```http
+PUT /api/v1/sessions/{sessionId}/track-layout
+```
+
+Request:
+
+```json
+{
+  "trackId": "gt7_watkins_glen_international",
+  "layoutId": "gt7_layout_1240"
+}
+```
+
+The manual pair must exist in the sourced catalog and the layout must belong to the selected track. The backend persists the pair on the session record and returns the standard versioned session response.
 
 ### Session Validation
 
@@ -727,6 +772,7 @@ Query parameters are optional. Omitted values use the defaults below. Present va
       "persistedFrames": 400,
       "rejectedFrames": 7,
       "eventCount": 3,
+      "layoutId": "gt7_layout_1240",
       "detectedTrackId": "gt7_watkins_glen_international",
       "detectedLayoutId": "gt7_layout_1240"
     }
@@ -734,7 +780,7 @@ Query parameters are optional. Omitted values use the defaults below. Present va
 }
 ```
 
-`rejectedFrames` is the per-session total from persisted successful-ingest diagnostics. It is `0` when no diagnostics exist. `detectedTrackId` and `detectedLayoutId` are populated when the ingest pipeline detects and persists track/layout IDs to the session after a completed lap is observed. They remain null/omitted when detection has not run, has not produced a confident result, or when an explicit `trackId` was set at session creation (manual selection is not overridden).
+`rejectedFrames` is the per-session total from persisted successful-ingest diagnostics. It is `0` when no diagnostics exist. `layoutId` is the effective session layout: it prefers the manual override when present and otherwise falls back to the detected layout. `detectedTrackId` and `detectedLayoutId` remain provenance/history from detection.
 
 ### Session Summary
 
@@ -763,6 +809,7 @@ Returns aggregate counts and derived metrics for a single session. Session must 
     "persistedFrames": 400,
     "rejectedFrames": 7,
     "eventCount": 3,
+    "layoutId": "gt7_layout_1240",
     "detectedTrackId": "gt7_watkins_glen_international",
     "detectedLayoutId": "gt7_layout_1240"
   },
@@ -786,6 +833,6 @@ Returns aggregate counts and derived metrics for a single session. Session must 
 
 `timeRangeMs` is present only when at least one frame batch exists. In memory mode, `frameBatches` is `0`, `timeRangeMs` is derived from retained frames (if any), and `aiAuditLogCount` is always `0`.
 
-`session.rejectedFrames` is always scoped to the requested session. `rejectionSummary` is detail-only and is omitted when no persisted rejection diagnostics exist. Reasons are merged across successful ingest requests and ordered by count descending, then code ascending. Admin stats intentionally do not expose rejection diagnostics.
+`session.rejectedFrames` is always scoped to the requested session. `session.layoutId` is the effective session layout. `rejectionSummary` is detail-only and is omitted when no persisted rejection diagnostics exist. Reasons are merged across successful ingest requests and ordered by count descending, then code ascending. Admin stats intentionally do not expose rejection diagnostics.
 
 ## Planned V1 Endpoints
