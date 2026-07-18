@@ -30,6 +30,7 @@ const (
 	DefaultAIProvider                  = "fake"
 	DefaultOpenRouterBaseURL           = "https://openrouter.ai/api/v1"
 	DefaultSkipInvalidApprovedGeometry = false
+	DefaultEnableSessionExport         = false
 )
 
 type Config struct {
@@ -42,6 +43,7 @@ type Config struct {
 	DatabaseURL                 string
 	AdminToken                  string
 	SkipInvalidApprovedGeometry bool
+	EnableSessionExport         bool
 
 	AIMaxPromptChars         int
 	AIMaxCompletionTokens    int
@@ -128,6 +130,7 @@ func Load() (Config, error) {
 		RetainedFramesPerSession:    retainedFramesPerSession,
 		DatabaseURL:                 stringEnv("TELEMETRY_ONE_DATABASE_URL", DefaultDatabaseURL),
 		SkipInvalidApprovedGeometry: boolEnv("TELEMETRY_ONE_SKIP_INVALID_APPROVED_GEOMETRY", DefaultSkipInvalidApprovedGeometry),
+		EnableSessionExport:         boolEnv("TELEMETRY_ONE_ENABLE_SESSION_EXPORT", DefaultEnableSessionExport),
 
 		AIMaxPromptChars:         aiMaxPromptChars,
 		AIMaxCompletionTokens:    aiMaxCompletionTokens,

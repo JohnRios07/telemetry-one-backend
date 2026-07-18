@@ -33,6 +33,19 @@ func TestWriteRequestReturnsCloseError(t *testing.T) {
 	}
 }
 
+func TestMarshalRequestReturnsExactJSON(t *testing.T) {
+	request := telemetry.IngestBatchRequest{SessionID: "session-1", Frames: []telemetry.Frame{{TimestampUnixMs: 1, SpeedMps: 1, RPM: 1, Gear: 1, Throttle: 0, Brake: 0, Steering: 0, FuelLiters: 1, PositionX: 0, PositionY: 0, PositionZ: 0, LapNumber: 1, CurrentLapMs: 0, IsOnTrack: true}}}
+
+	data, err := MarshalRequest(request)
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+
+	if string(data) != `{"sessionId":"session-1","frames":[{"timestampUnixMs":1,"speedMps":1,"rpm":1,"gear":1,"throttle":0,"brake":0,"steering":0,"fuelLiters":1,"positionX":0,"positionY":0,"positionZ":0,"lapNumber":1,"currentLapMs":0,"isOnTrack":true}]}` {
+		t.Fatalf("unexpected JSON output: %s", string(data))
+	}
+}
+
 func TestWriteRequestFileWritesJSONAtomically(t *testing.T) {
 	output := filepath.Join(t.TempDir(), "export.json")
 	request := telemetry.IngestBatchRequest{SessionID: "session-1", Frames: []telemetry.Frame{{TimestampUnixMs: 1, SpeedMps: 1, RPM: 1, Gear: 1, Throttle: 0, Brake: 0, Steering: 0, FuelLiters: 1, PositionX: 0, PositionY: 0, PositionZ: 0, LapNumber: 1, CurrentLapMs: 0, IsOnTrack: true}}}

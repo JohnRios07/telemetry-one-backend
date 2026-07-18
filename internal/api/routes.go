@@ -18,6 +18,7 @@ import (
 	"telemetry-one-backend/internal/events"
 	"telemetry-one-backend/internal/laps"
 	"telemetry-one-backend/internal/platform/httperror"
+	"telemetry-one-backend/internal/sessionexport"
 	"telemetry-one-backend/internal/sessions"
 	"telemetry-one-backend/internal/telemetry"
 	"telemetry-one-backend/internal/tracks"
@@ -90,6 +91,7 @@ func routesWithLapAndSampleRepositories(cfg config.Config, logger *slog.Logger, 
 	summaryRepo := sessions.NewMemorySummaryRepository(sessionRepo, frameStore, eventStore, rejectionStore)
 	mux.HandleFunc("GET /api/v1/sessions", listSessionsHandler(summaryRepo))
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/summary", sessionSummaryHandler(summaryRepo))
+	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/export/trackbuilder", sessionExportHandler(cfg, sessionexport.Exporter{SessionReader: sessionRepo, FrameReader: frameStore}))
 
 	return loggingMiddleware(logger, mux)
 }
