@@ -35,8 +35,18 @@ func TestBuildCuratedCatalogFromIngestBatch(t *testing.T) {
 	if len(layout.CenterLine) < 2 {
 		t.Fatalf("expected centerline points, got %+v", layout.CenterLine)
 	}
-	if report.PointCount != len(layout.CenterLine) || report.LengthMeters <= 0 || math.IsNaN(report.StartEndGapMeters) {
+	_, seedLayout, ok := findSeedLayout(tracks.OfficialGT7SeedCatalog(), "gt7_layout_1240")
+	if !ok {
+		t.Fatal("expected seed layout to resolve")
+	}
+	if report.LayoutID != layout.ID || report.LayoutName != layout.Name {
+		t.Fatalf("unexpected layout identity in report: %+v", report)
+	}
+	if report.PointCount != len(layout.CenterLine) || report.TelemetryPathLengthMeters <= 0 || math.IsNaN(report.StartEndGapMeters) {
 		t.Fatalf("unexpected report: %+v", report)
+	}
+	if report.CatalogLengthMeters != seedLayout.LengthMeters || report.DeltaMeters != report.TelemetryPathLengthMeters-report.CatalogLengthMeters {
+		t.Fatalf("unexpected catalog delta in report: %+v", report)
 	}
 }
 
@@ -89,8 +99,11 @@ func TestBuildFiltersInvalidPointsAndIsDeterministic(t *testing.T) {
 	if !bytes.Equal(firstEncoded, secondEncoded) {
 		t.Fatalf("expected identical catalog JSON for identical input\nfirst: %s\nsecond: %s", firstEncoded, secondEncoded)
 	}
-	if firstReport.LengthMeters != secondReport.LengthMeters || firstReport.PointCount != secondReport.PointCount || firstReport.StartEndGapMeters != secondReport.StartEndGapMeters {
+	if firstReport.TelemetryPathLengthMeters != secondReport.TelemetryPathLengthMeters || firstReport.PointCount != secondReport.PointCount || firstReport.StartEndGapMeters != secondReport.StartEndGapMeters {
 		t.Fatalf("expected identical stable report fields, got %+v and %+v", firstReport, secondReport)
+	}
+	if firstReport.CatalogLengthMeters != secondReport.CatalogLengthMeters || firstReport.DeltaMeters != secondReport.DeltaMeters || firstReport.DeltaPct != secondReport.DeltaPct {
+		t.Fatalf("expected identical catalog comparison fields, got %+v and %+v", firstReport, secondReport)
 	}
 	if math.IsNaN(firstReport.MeanDeviationMeters) != math.IsNaN(secondReport.MeanDeviationMeters) || math.IsNaN(firstReport.MaxDeviationMeters) != math.IsNaN(secondReport.MaxDeviationMeters) {
 		t.Fatalf("expected identical deviation NaN state, got %+v and %+v", firstReport, secondReport)
@@ -135,7 +148,7 @@ func TestBuildAcceptsRequestsLargerThanIngestBatchLimit(t *testing.T) {
 	if len(catalog.Tracks) != 1 || len(catalog.Tracks[0].Layouts) != 1 {
 		t.Fatalf("expected generated catalog for long request, got %+v", catalog.Tracks)
 	}
-	if report.PointCount < 2 || report.LengthMeters <= 0 {
+	if report.PointCount < 2 || report.TelemetryPathLengthMeters <= 0 {
 		t.Fatalf("unexpected report for long request: %+v", report)
 	}
 }
@@ -172,9 +185,9 @@ func TestRDPAndResampleKeepAccumulatedMetersIncreasing(t *testing.T) {
 }
 
 func TestReportStringIncludesMetricsAndNAToDeviations(t *testing.T) {
-	report := Report{LengthMeters: 123.45, PointCount: 8, StartEndGapMeters: 1.23, MeanDeviationMeters: math.NaN(), MaxDeviationMeters: math.NaN()}
+	report := Report{LayoutID: "layout", LayoutName: "Layout", TelemetryPathLengthMeters: 123.45, CatalogLengthMeters: 120.00, DeltaMeters: 3.45, DeltaPct: 2.88, PointCount: 8, StartEndGapMeters: 1.23, MeanDeviationMeters: math.NaN(), MaxDeviationMeters: math.NaN()}
 	text := report.String()
-	for _, want := range []string{"length:", "points:", "start-end gap:", "deviation vs catalog: n/a"} {
+	for _, want := range []string{"layoutId:", "layoutName:", "telemetry/generated path length meters:", "catalogLengthMeters:", "deltaMeters:", "deltaPct:", "points:", "start-end gap:", "deviation vs catalog centerline: n/a"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("expected %q in report %q", want, text)
 		}

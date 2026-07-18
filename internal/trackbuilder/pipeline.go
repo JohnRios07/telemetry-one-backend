@@ -93,11 +93,16 @@ func Build(request telemetry.IngestBatchRequest, opts Options, seed tracks.Catal
 	}
 
 	report := Report{
-		LengthMeters:        totalMeters,
-		PointCount:          len(centerlinePoints),
-		StartEndGapMeters:   geometry.Distance(toGeometryPoint(centerlinePoints[0]), toGeometryPoint(centerlinePoints[len(centerlinePoints)-1])),
-		MeanDeviationMeters: math.NaN(),
-		MaxDeviationMeters:  math.NaN(),
+		LayoutID:                  layout.ID,
+		LayoutName:                layout.Name,
+		TelemetryPathLengthMeters: totalMeters,
+		CatalogLengthMeters:       layout.LengthMeters,
+		DeltaMeters:               totalMeters - layout.LengthMeters,
+		DeltaPct:                  deltaPct(totalMeters, layout.LengthMeters),
+		PointCount:                len(centerlinePoints),
+		StartEndGapMeters:         geometry.Distance(toGeometryPoint(centerlinePoints[0]), toGeometryPoint(centerlinePoints[len(centerlinePoints)-1])),
+		MeanDeviationMeters:       math.NaN(),
+		MaxDeviationMeters:        math.NaN(),
 	}
 	if mean, max, ok := deviationAgainstBaseline(layout.CenterLine, centerlinePoints); ok {
 		report.MeanDeviationMeters = mean
@@ -203,6 +208,13 @@ func trackPointsToGeometry(points []tracks.Point) []geometry.Point {
 	}
 
 	return converted
+}
+
+func deltaPct(telemetryPathMeters, catalogLengthMeters float64) float64 {
+	if catalogLengthMeters <= 0 || !isFinite(catalogLengthMeters) {
+		return math.NaN()
+	}
+	return (telemetryPathMeters - catalogLengthMeters) / catalogLengthMeters * 100
 }
 
 func EncodeCatalog(catalog tracks.Catalog) ([]byte, error) {

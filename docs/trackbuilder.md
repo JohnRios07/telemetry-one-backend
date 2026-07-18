@@ -27,10 +27,30 @@ Flags:
 
 The CLI writes a separate human-readable closing report to `stderr` with:
 
-- length
+- layout ID and name
+- telemetry/generated path length in meters
+- catalog length in meters from the selected seed layout
+- delta meters and delta percent between telemetry path length and catalog length
 - point count
 - start/end gap
-- deviation vs catalog when a comparable baseline centerline exists
+- deviation vs catalog centerline when a comparable baseline centerline exists
+
+Example:
+
+```text
+trackbuilder closing report
+layoutId: gt7_layout_1240
+layoutName: Fuji Speedway
+telemetry/generated path length meters: 1234.56m
+catalogLengthMeters: 1240.00m
+deltaMeters: -5.44m
+deltaPct: -0.44%
+points: 182
+start-end gap: 0.83m
+deviation vs catalog centerline: mean 1.12m max 4.57m
+```
+
+The key distinction is that `telemetry/generated path length meters` is the measured path produced from ingest, while `catalogLengthMeters` is the official seed-layout value. They are intentionally reported separately so length mismatch diagnostics are not confused with the catalog schema field.
 
 ## Promotion Caveat
 
