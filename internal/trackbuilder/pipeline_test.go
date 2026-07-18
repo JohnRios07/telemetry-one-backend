@@ -111,7 +111,7 @@ func TestSourceRoughnessMetricsSummarizeShortAndJaggedPaths(t *testing.T) {
 	})
 
 	t.Run("jagged path", func(t *testing.T) {
-		points := []geometry.Point{{X: 0, Y: 0, Z: 0}, {X: 1, Y: 0, Z: 0}, {X: 1, Y: 1, Z: 0}, {X: 2, Y: 1, Z: 0}, {X: 2, Y: 2, Z: 0}}
+		points := []geometry.Point{{X: 0, Y: 0, Z: 0}, {X: 1, Y: 0, Z: 0}, {X: 1, Y: 0, Z: 1}, {X: 2, Y: 0, Z: 1}, {X: 2, Y: 0, Z: 2}}
 		count, min, p50, p95, max, heading, perMeter := sourceRoughnessMetrics(points)
 		if count != 4 {
 			t.Fatalf("expected 4 segments, got %d", count)
@@ -126,6 +126,17 @@ func TestSourceRoughnessMetricsSummarizeShortAndJaggedPaths(t *testing.T) {
 		}
 		if perMeter != 67.5 {
 			t.Fatalf("expected 67.5 degrees per meter, got %.4f", perMeter)
+		}
+	})
+
+	t.Run("vertical changes do not add planar heading change", func(t *testing.T) {
+		points := []geometry.Point{{X: 0, Y: 0, Z: 0}, {X: 1, Y: 0, Z: 0}, {X: 1, Y: 10, Z: 0}, {X: 2, Y: 10, Z: 0}}
+		count, _, _, _, _, heading, perMeter := sourceRoughnessMetrics(points)
+		if count != 3 {
+			t.Fatalf("expected 3 segments, got %d", count)
+		}
+		if heading != 0 || perMeter != 0 {
+			t.Fatalf("expected vertical-only changes to produce zero planar heading change, got heading=%.4f perMeter=%.4f", heading, perMeter)
 		}
 	})
 }
@@ -254,7 +265,7 @@ func TestRDPAndResampleKeepAccumulatedMetersIncreasing(t *testing.T) {
 func TestReportStringIncludesMetricsAndNAToDeviations(t *testing.T) {
 	report := Report{LayoutID: "layout", LayoutName: "Layout", SourcePointCount: 5, SourceSegmentCount: 4, SourceSegmentLengthMinMeters: 0.10, SourceSegmentLengthP50Meters: 1.20, SourceSegmentLengthP95Meters: 2.30, SourceSegmentLengthMaxMeters: 3.40, SourceHeadingChangeDegrees: 45.67, SourceHeadingChangePerMeter: 0.12, SourcePathLengthMeters: 120.12, SimplifiedPointCount: 3, SimplificationDroppedPoints: 2, GeneratedPointCount: 8, GeneratedPathLengthMeters: 123.45, CatalogLengthMeters: 120.00, DeltaMeters: 3.45, DeltaPct: 2.88, StartEndGapMeters: 1.23, MeanDeviationMeters: math.NaN(), MaxDeviationMeters: math.NaN()}
 	text := report.String()
-	for _, want := range []string{"layoutId:", "layoutName:", "source point count:", "source segment count:", "source segment length meters:", "source heading change:", "source path length meters:", "simplified point count:", "simplification dropped points:", "generated point count:", "generated path length meters:", "catalogLengthMeters:", "deltaMeters:", "deltaPct:", "start-end gap:", "deviation vs catalog centerline: n/a"} {
+	for _, want := range []string{"layoutId:", "layoutName:", "source point count:", "source segment count:", "source segment length meters:", "source planar heading change (X/Z):", "source path length meters:", "simplified point count:", "simplification dropped points:", "generated point count:", "generated path length meters:", "catalogLengthMeters:", "deltaMeters:", "deltaPct:", "start-end gap:", "deviation vs catalog centerline: n/a"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("expected %q in report %q", want, text)
 		}

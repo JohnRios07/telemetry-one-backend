@@ -7,6 +7,8 @@ import (
 	"telemetry-one-backend/internal/geometry"
 )
 
+const planarLengthEpsilon = 1e-9
+
 func sourceRoughnessMetrics(points []geometry.Point) (segmentCount int, minMeters, p50Meters, p95Meters, maxMeters, totalHeadingChangeDegrees, headingChangeDegreesPerMeter float64) {
 	if len(points) < 2 {
 		return 0, 0, 0, 0, 0, 0, 0
@@ -71,9 +73,26 @@ func headingChangeDegrees(points []geometry.Point) float64 {
 	}
 
 	totalRadians := 0.0
-	previous := vectorBetween(points[0], points[1])
+	previous, ok := planarVectorBetween(points[0], points[1])
+	if !ok {
+		for i := 1; i < len(points)-1; i++ {
+			candidate, candidateOK := planarVectorBetween(points[i], points[i+1])
+			if candidateOK {
+				previous = candidate
+				ok = true
+				break
+			}
+		}
+	}
+	if !ok {
+		return 0
+	}
+
 	for i := 1; i < len(points)-1; i++ {
-		next := vectorBetween(points[i], points[i+1])
+		next, nextOK := planarVectorBetween(points[i], points[i+1])
+		if !nextOK {
+			continue
+		}
 		angle, ok := angleBetween(previous, next)
 		if ok {
 			totalRadians += angle
@@ -84,24 +103,24 @@ func headingChangeDegrees(points []geometry.Point) float64 {
 	return totalRadians * 180 / math.Pi
 }
 
-func vectorBetween(start geometry.Point, end geometry.Point) geometry.Point {
-	return geometry.Point{X: end.X - start.X, Y: end.Y - start.Y, Z: end.Z - start.Z}
+func planarVectorBetween(start geometry.Point, end geometry.Point) (geometry.Point, bool) {
+	v := geometry.Point{X: end.X - start.X, Z: end.Z - start.Z}
+	if math.Hypot(v.X, v.Z) <= planarLengthEpsilon {
+		return geometry.Point{}, false
+	}
+
+	return v, true
 }
 
 func angleBetween(a geometry.Point, b geometry.Point) (float64, bool) {
-	lengthA := math.Sqrt(a.X*a.X + a.Y*a.Y + a.Z*a.Z)
-	lengthB := math.Sqrt(b.X*b.X + b.Y*b.Y + b.Z*b.Z)
-	if lengthA <= 0 || lengthB <= 0 {
+	lengthA := math.Hypot(a.X, a.Z)
+	lengthB := math.Hypot(b.X, b.Z)
+	if lengthA <= planarLengthEpsilon || lengthB <= planarLengthEpsilon {
 		return 0, false
 	}
 
-	cosine := (a.X*b.X + a.Y*b.Y + a.Z*b.Z) / (lengthA * lengthB)
-	if cosine < -1 {
-		cosine = -1
-	}
-	if cosine > 1 {
-		cosine = 1
-	}
+	dot := a.X*b.X + a.Z*b.Z
+	cross := a.X*b.Z - a.Z*b.X
 
-	return math.Acos(cosine), true
+	return math.Atan2(math.Abs(cross), dot), true
 }

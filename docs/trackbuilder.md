@@ -31,7 +31,7 @@ The CLI writes a separate human-readable closing report to `stderr` with:
 - source point count after invalid-frame filtering
 - source segment count after filtering duplicate coordinates
 - source segment length summary (min/p50/p95/max)
-- source heading change total and per meter
+- source planar heading change in X/Z total and per meter
 - source path length in meters before simplification and resampling
 - simplified point count after RDP simplification
 - simplification dropped points versus the cleaned source
@@ -51,7 +51,7 @@ layoutName: Fuji Speedway
 source point count: 182
 source segment count: 181
 source segment length meters: min 0.83m p50 6.41m p95 18.52m max 42.10m
-source heading change: 1428.44deg total, 1.1743deg/m
+source planar heading change (X/Z): 1428.44deg total, 1.1570deg/m
 source path length meters: 1234.56m
 simplified point count: 96
 simplification dropped points: 86
@@ -66,7 +66,7 @@ deviation vs catalog centerline: mean 1.12m max 4.57m
 
 The key distinction is that `source path length meters` measures the usable telemetry polyline before simplification/resampling, while `generated path length meters` measures the final centerline written into the curated catalog. `catalogLengthMeters` remains the official seed-layout value. They are intentionally reported separately so length mismatch diagnostics are not confused with the catalog schema field.
 
-The new source roughness metrics are report-only diagnostics. They are meant to surface telemetry zigzags and short noisy segments without changing the generated catalog geometry.
+The new source roughness metrics are report-only diagnostics. They are meant to surface telemetry zigzags and short noisy segments without changing the generated catalog geometry. Heading change is measured in the plan view (X/Z) so vertical-only motion does not inflate the diagnostic.
 
 ## Promotion Caveat
 

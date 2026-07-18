@@ -38,7 +38,7 @@ func (r Report) String() string {
 	fmt.Fprintf(&b, "source point count: %d\n", r.SourcePointCount)
 	fmt.Fprintf(&b, "source segment count: %d\n", r.SourceSegmentCount)
 	fmt.Fprintf(&b, "source segment length meters: min %.2fm p50 %.2fm p95 %.2fm max %.2fm\n", r.SourceSegmentLengthMinMeters, r.SourceSegmentLengthP50Meters, r.SourceSegmentLengthP95Meters, r.SourceSegmentLengthMaxMeters)
-	fmt.Fprintf(&b, "source heading change: %.2fdeg total, %.4fdeg/m\n", r.SourceHeadingChangeDegrees, r.SourceHeadingChangePerMeter)
+	fmt.Fprintf(&b, "source planar heading change (X/Z): %.2fdeg total, %.4fdeg/m\n", r.SourceHeadingChangeDegrees, r.SourceHeadingChangePerMeter)
 	fmt.Fprintf(&b, "source path length meters: %.2fm\n", r.SourcePathLengthMeters)
 	fmt.Fprintf(&b, "simplified point count: %d\n", r.SimplifiedPointCount)
 	fmt.Fprintf(&b, "simplification dropped points: %d\n", r.SimplificationDroppedPoints)
