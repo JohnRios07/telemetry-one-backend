@@ -114,9 +114,6 @@ func validateBuildRequest(request telemetry.IngestBatchRequest) error {
 	if len(request.Frames) == 0 {
 		return telemetry.ErrEmptyFrames
 	}
-	if len(request.Frames) > telemetry.MaxBatchFrames {
-		return telemetry.ErrTooManyFrames
-	}
 
 	var previousTimestamp int64
 	for index, frame := range request.Frames {
