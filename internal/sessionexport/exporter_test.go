@@ -123,6 +123,25 @@ func TestExporterExportPreservesFrameOrdering(t *testing.T) {
 	}
 }
 
+func TestExporterExportPreservesLongSessions(t *testing.T) {
+	frames := make([]telemetry.Frame, 0, telemetry.MaxBatchFrames+1)
+	for i := 0; i < telemetry.MaxBatchFrames+1; i++ {
+		frames = append(frames, validExportFrame(int64(i+1)))
+	}
+	exporter := Exporter{SessionReader: fakeSessionReader{session: finishedSession()}, FrameReader: fakeFrameReader{frames: frames}}
+
+	result, err := exporter.Export(context.Background(), "session-1")
+	if err != nil {
+		t.Fatalf("export long session: %v", err)
+	}
+	if got := len(result.Request.Frames); got != len(frames) {
+		t.Fatalf("expected all frames to be preserved, got %d want %d", got, len(frames))
+	}
+	if result.Request.Frames[len(result.Request.Frames)-1].TimestampUnixMs != frames[len(frames)-1].TimestampUnixMs {
+		t.Fatalf("expected export to preserve final frame, got %+v", result.Request.Frames[len(result.Request.Frames)-1])
+	}
+}
+
 func finishedSession() sessions.Session {
 	ended := time.UnixMilli(1720656123456).UTC()
 	return sessions.Session{ID: "session-1", StartedAt: time.UnixMilli(1720656000000).UTC(), EndedAt: &ended}

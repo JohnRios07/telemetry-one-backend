@@ -121,6 +121,25 @@ func TestBuildRejectsInvalidOptionsAndInsufficientPoints(t *testing.T) {
 	}
 }
 
+func TestBuildAcceptsRequestsLargerThanIngestBatchLimit(t *testing.T) {
+	frames := make([]telemetry.Frame, 0, telemetry.MaxBatchFrames+1)
+	for i := 0; i < telemetry.MaxBatchFrames+1; i++ {
+		frames = append(frames, validTelemetryFrame(int64(i+1), float64(i), 0, 0))
+	}
+
+	request := telemetry.IngestBatchRequest{SessionID: "trackbuilder", Frames: frames}
+	catalog, report, err := Build(request, DefaultOptions().NormalizeWithLayout("gt7_layout_1240"), tracks.OfficialGT7SeedCatalog())
+	if err != nil {
+		t.Fatalf("build returned error for long request: %v", err)
+	}
+	if len(catalog.Tracks) != 1 || len(catalog.Tracks[0].Layouts) != 1 {
+		t.Fatalf("expected generated catalog for long request, got %+v", catalog.Tracks)
+	}
+	if report.PointCount < 2 || report.LengthMeters <= 0 {
+		t.Fatalf("unexpected report for long request: %+v", report)
+	}
+}
+
 func TestSmoothPointsUsesCircularWrapForClosedLayouts(t *testing.T) {
 	points := []geometryPointForTest{{X: 0, Y: 0, Z: 0}, {X: 10, Y: 0, Z: 0}, {X: 10, Y: 10, Z: 0}, {X: 0, Y: 10, Z: 0}, {X: 0, Y: 0, Z: 0}}
 	converted := convertTestPoints(points)
