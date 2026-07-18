@@ -399,6 +399,49 @@
       ]
     },
     {
+      "id": "gt7_brands_hatch",
+      "name": "Brands Hatch",
+      "country": "United Kingdom",
+      "sources": [
+        {
+          "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+          "sourceType": "official_gran_turismo_tracklist_asset",
+          "retrievedAt": "2026-07-12",
+          "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+          "sourceType": "gt7info_course_csv",
+          "retrievedAt": "2026-07-15",
+          "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+        }
+      ],
+      "layouts": [
+        {
+          "id": "gt7_layout_346",
+          "name": "Brands Hatch Indy Circuit",
+          "lengthMeters": 1944,
+          "sources": [
+            {
+              "url": "https://www.gran-turismo.com/common/dist/gt7/tracklist/assets/tracks.gb-DLTcO0kl.js",
+              "sourceType": "official_gran_turismo_tracklist_asset",
+              "retrievedAt": "2026-07-12",
+              "note": "official Gran Turismo generated tracklist asset; public first-party source for layout ID, name, length, and cornerCount"
+            },
+            {
+              "url": "https://raw.githubusercontent.com/ddm999/gt7info/web-new/_data/db/course.csv",
+              "sourceType": "gt7info_course_csv",
+              "retrievedAt": "2026-07-15",
+              "note": "gt7info course.csv fields: ID, Name, Base, Country, Category, Length, IsReverse, IsOval, NumCorners; NumCorners is used only to generate ordinal Corner 1..N labels, not named/ranged corners"
+            }
+          ],
+          "sectors": [],
+          "corners": [],
+          "centerLine": []
+        }
+      ]
+    },
+    {
       "id": "gt7_yas_marina_circuit",
       "name": "Yas Marina Circuit",
       "country": "United Arab Emirates",
