@@ -16,6 +16,7 @@ import (
 	"telemetry-one-backend/internal/ai"
 	"telemetry-one-backend/internal/config"
 	"telemetry-one-backend/internal/events"
+	"telemetry-one-backend/internal/laps"
 	"telemetry-one-backend/internal/sessions"
 	"telemetry-one-backend/internal/telemetry"
 	"telemetry-one-backend/internal/tracks"
@@ -729,6 +730,85 @@ func TestHealthEndpointRejectsWrongMethod(t *testing.T) {
 				t.Fatalf("expected status %d for %s, got %d", http.StatusMethodNotAllowed, method, recorder.Code)
 			}
 		})
+	}
+}
+
+func TestRuntimeRouterSessionExportDisabled(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	frameStore := telemetry.NewFrameStore(100)
+	eventStore := events.NewStore(100, events.DedupOptions{})
+	sessionRepo := sessions.NewMemoryRepository()
+	seedTestSession(t, sessionRepo, "session-export")
+	if _, err := sessionRepo.End(context.Background(), "session-export", time.Now().UTC()); err != nil {
+		t.Fatalf("finish session: %v", err)
+	}
+	if err := frameStore.Append(context.Background(), "session-export", []telemetry.Frame{exportFrame(1), exportFrame(2)}); err != nil {
+		t.Fatalf("seed export frames: %v", err)
+	}
+
+	handler := routesWithAIAndSessionsAndLaps(
+		config.Config{Addr: ":0", Env: "test"},
+		logger,
+		frameStore,
+		tracks.OfficialGT7SeedCatalog(),
+		eventStore,
+		laps.NewMemoryRepository(),
+		laps.NewMemoryRepository(),
+		sessionRepo,
+		&noopAIService{},
+		admin.NewMemoryStatsRepo(sessionRepo, frameStore),
+		sessions.NewMemorySummaryRepository(sessionRepo, frameStore, eventStore, telemetry.NewMemoryRejectionSummaryStore()),
+	)
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/sessions/session-export/export/trackbuilder", nil))
+
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("expected status %d, got %d with body %s", http.StatusForbidden, recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), `"forbidden"`) {
+		t.Fatalf("expected forbidden API error, got %s", recorder.Body.String())
+	}
+}
+
+func TestRuntimeRouterSessionExportEnabled(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	frameStore := telemetry.NewFrameStore(100)
+	eventStore := events.NewStore(100, events.DedupOptions{})
+	sessionRepo := sessions.NewMemoryRepository()
+	seedTestSession(t, sessionRepo, "session-export")
+	if _, err := sessionRepo.End(context.Background(), "session-export", time.Now().UTC()); err != nil {
+		t.Fatalf("finish session: %v", err)
+	}
+	if err := frameStore.Append(context.Background(), "session-export", []telemetry.Frame{exportFrame(1), exportFrame(2)}); err != nil {
+		t.Fatalf("seed export frames: %v", err)
+	}
+
+	handler := routesWithAIAndSessionsAndLaps(
+		config.Config{Addr: ":0", Env: "test", EnableSessionExport: true},
+		logger,
+		frameStore,
+		tracks.OfficialGT7SeedCatalog(),
+		eventStore,
+		laps.NewMemoryRepository(),
+		laps.NewMemoryRepository(),
+		sessionRepo,
+		&noopAIService{},
+		admin.NewMemoryStatsRepo(sessionRepo, frameStore),
+		sessions.NewMemorySummaryRepository(sessionRepo, frameStore, eventStore, telemetry.NewMemoryRejectionSummaryStore()),
+	)
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/sessions/session-export/export/trackbuilder", nil))
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d with body %s", http.StatusOK, recorder.Code, recorder.Body.String())
+	}
+	if got := recorder.Header().Get("Content-Disposition"); got != `attachment; filename="session-session-export-trackbuilder.json"` {
+		t.Fatalf("unexpected content disposition: %q", got)
+	}
+	if strings.Contains(recorder.Body.String(), `"error"`) {
+		t.Fatalf("expected raw export JSON, got %s", recorder.Body.String())
 	}
 }
 
