@@ -100,6 +100,36 @@ func TestCleanupTelemetryPointsSkipsInvalidPositions(t *testing.T) {
 	}
 }
 
+func TestSourceRoughnessMetricsSummarizeShortAndJaggedPaths(t *testing.T) {
+	t.Run("short inputs", func(t *testing.T) {
+		if count, min, p50, p95, max, heading, perMeter := sourceRoughnessMetrics(nil); count != 0 || min != 0 || p50 != 0 || p95 != 0 || max != 0 || heading != 0 || perMeter != 0 {
+			t.Fatalf("expected zero metrics for empty input, got %d %.2f %.2f %.2f %.2f %.2f %.4f", count, min, p50, p95, max, heading, perMeter)
+		}
+		if count, min, p50, p95, max, heading, perMeter := sourceRoughnessMetrics([]geometry.Point{{X: 1, Y: 2, Z: 3}}); count != 0 || min != 0 || p50 != 0 || p95 != 0 || max != 0 || heading != 0 || perMeter != 0 {
+			t.Fatalf("expected zero metrics for single point input, got %d %.2f %.2f %.2f %.2f %.2f %.4f", count, min, p50, p95, max, heading, perMeter)
+		}
+	})
+
+	t.Run("jagged path", func(t *testing.T) {
+		points := []geometry.Point{{X: 0, Y: 0, Z: 0}, {X: 1, Y: 0, Z: 0}, {X: 1, Y: 1, Z: 0}, {X: 2, Y: 1, Z: 0}, {X: 2, Y: 2, Z: 0}}
+		count, min, p50, p95, max, heading, perMeter := sourceRoughnessMetrics(points)
+		if count != 4 {
+			t.Fatalf("expected 4 segments, got %d", count)
+		}
+		for _, got := range []float64{min, p50, p95, max} {
+			if got != 1 {
+				t.Fatalf("expected unit segment lengths, got min=%.2f p50=%.2f p95=%.2f max=%.2f", min, p50, p95, max)
+			}
+		}
+		if heading != 270 {
+			t.Fatalf("expected 270 degrees of heading change, got %.2f", heading)
+		}
+		if perMeter != 67.5 {
+			t.Fatalf("expected 67.5 degrees per meter, got %.4f", perMeter)
+		}
+	})
+}
+
 func TestBuildFiltersInvalidPointsAndIsDeterministic(t *testing.T) {
 	request := telemetry.IngestBatchRequest{
 		SessionID: "trackbuilder",
@@ -138,6 +168,9 @@ func TestBuildFiltersInvalidPointsAndIsDeterministic(t *testing.T) {
 	}
 	if firstReport.CatalogLengthMeters != secondReport.CatalogLengthMeters || firstReport.DeltaMeters != secondReport.DeltaMeters || firstReport.DeltaPct != secondReport.DeltaPct {
 		t.Fatalf("expected identical catalog comparison fields, got %+v and %+v", firstReport, secondReport)
+	}
+	if firstReport.SourceSegmentCount != secondReport.SourceSegmentCount || firstReport.SourceSegmentLengthMinMeters != secondReport.SourceSegmentLengthMinMeters || firstReport.SourceSegmentLengthP50Meters != secondReport.SourceSegmentLengthP50Meters || firstReport.SourceSegmentLengthP95Meters != secondReport.SourceSegmentLengthP95Meters || firstReport.SourceSegmentLengthMaxMeters != secondReport.SourceSegmentLengthMaxMeters || firstReport.SourceHeadingChangeDegrees != secondReport.SourceHeadingChangeDegrees || firstReport.SourceHeadingChangePerMeter != secondReport.SourceHeadingChangePerMeter {
+		t.Fatalf("expected identical roughness metrics, got %+v and %+v", firstReport, secondReport)
 	}
 	if math.IsNaN(firstReport.MeanDeviationMeters) != math.IsNaN(secondReport.MeanDeviationMeters) || math.IsNaN(firstReport.MaxDeviationMeters) != math.IsNaN(secondReport.MaxDeviationMeters) {
 		t.Fatalf("expected identical deviation NaN state, got %+v and %+v", firstReport, secondReport)
@@ -219,9 +252,9 @@ func TestRDPAndResampleKeepAccumulatedMetersIncreasing(t *testing.T) {
 }
 
 func TestReportStringIncludesMetricsAndNAToDeviations(t *testing.T) {
-	report := Report{LayoutID: "layout", LayoutName: "Layout", SourcePointCount: 5, SourcePathLengthMeters: 120.12, SimplifiedPointCount: 3, SimplificationDroppedPoints: 2, GeneratedPointCount: 8, GeneratedPathLengthMeters: 123.45, CatalogLengthMeters: 120.00, DeltaMeters: 3.45, DeltaPct: 2.88, StartEndGapMeters: 1.23, MeanDeviationMeters: math.NaN(), MaxDeviationMeters: math.NaN()}
+	report := Report{LayoutID: "layout", LayoutName: "Layout", SourcePointCount: 5, SourceSegmentCount: 4, SourceSegmentLengthMinMeters: 0.10, SourceSegmentLengthP50Meters: 1.20, SourceSegmentLengthP95Meters: 2.30, SourceSegmentLengthMaxMeters: 3.40, SourceHeadingChangeDegrees: 45.67, SourceHeadingChangePerMeter: 0.12, SourcePathLengthMeters: 120.12, SimplifiedPointCount: 3, SimplificationDroppedPoints: 2, GeneratedPointCount: 8, GeneratedPathLengthMeters: 123.45, CatalogLengthMeters: 120.00, DeltaMeters: 3.45, DeltaPct: 2.88, StartEndGapMeters: 1.23, MeanDeviationMeters: math.NaN(), MaxDeviationMeters: math.NaN()}
 	text := report.String()
-	for _, want := range []string{"layoutId:", "layoutName:", "source point count:", "source path length meters:", "simplified point count:", "simplification dropped points:", "generated point count:", "generated path length meters:", "catalogLengthMeters:", "deltaMeters:", "deltaPct:", "start-end gap:", "deviation vs catalog centerline: n/a"} {
+	for _, want := range []string{"layoutId:", "layoutName:", "source point count:", "source segment count:", "source segment length meters:", "source heading change:", "source path length meters:", "simplified point count:", "simplification dropped points:", "generated point count:", "generated path length meters:", "catalogLengthMeters:", "deltaMeters:", "deltaPct:", "start-end gap:", "deviation vs catalog centerline: n/a"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("expected %q in report %q", want, text)
 		}
