@@ -20,6 +20,8 @@ func TestConsumerInputValidateAcceptsStructuredEngineerEvents(t *testing.T) {
 func TestConsumerInputValidateAcceptsDerivedSignalsWithoutEvents(t *testing.T) {
 	input := validConsumerInput()
 	input.Events = nil
+	input.Session.Track = nil
+	input.Session.Layout = nil
 	input.Signals = []Signal{{Kind: "lap_pace_regression", Severity: events.SeverityMedium, Summary: "Latest completed lap is slower than the session best."}}
 
 	if err := input.Validate(); err != nil {

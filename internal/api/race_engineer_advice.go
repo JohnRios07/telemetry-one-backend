@@ -79,7 +79,7 @@ func raceEngineerAdviceHandler(aiSvc ai.AIService, eventStore events.Repository,
 		}
 
 		completedLaps := listRaceEngineerAdviceCompletedLaps(r.Context(), lapRepo, sessionID)
-		derivedSignals := buildRaceEngineerAdviceSignals(storedEvents, completedLaps)
+		derivedSignals := buildRaceEngineerAdviceSignals(storedEvents, completedLaps, request.SinceUnixMs)
 		selectedEvents := selectRaceEngineerAdviceEvents(storedEvents, request.SinceUnixMs, maxEvents)
 		window := buildRaceEngineerAdviceWindow(request.SinceUnixMs, maxEvents, selectedEvents, len(derivedSignals), false)
 		generatedAt := time.Now().UTC().UnixMilli()
@@ -226,9 +226,9 @@ func buildRaceEngineerAdviceGatewayRequest(ctx context.Context, session sessions
 				SessionID: session.ID,
 				Track:     track,
 				Layout:    layout,
-				},
-				Events: inputEvents,
-				Signals: derivedSignals,
+			},
+			Events:  inputEvents,
+			Signals: derivedSignals,
 			Safety: ai.SafetyMetadata{
 				RedactionPolicy: "structured engineer events, derived metrics, and derived signals only; raw telemetry frames, provider keys, prompts, and model configuration are not accepted from clients",
 				AllowedInputKinds: []string{

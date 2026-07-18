@@ -30,7 +30,7 @@ const (
 
 	AllowedInputEngineerEvents = "engineer_events"
 	AllowedInputDerivedMetrics = "derived_metrics"
-	AllowedInputDerivedSignals  = "derived_signals"
+	AllowedInputDerivedSignals = "derived_signals"
 	AllowedInputCatalogRefs    = "catalog_refs"
 	AllowedInputSessionContext = "session_context"
 	UnknownStateExplicit       = "unknown_states_explicit"
@@ -56,10 +56,10 @@ type EventEnvelope struct {
 }
 
 type Signal struct {
-	Kind     string           `json:"kind"`
-	Severity events.Severity  `json:"severity"`
-	Summary  string           `json:"summary"`
-	Details  []string         `json:"details,omitempty"`
+	Kind     string          `json:"kind"`
+	Severity events.Severity `json:"severity"`
+	Summary  string          `json:"summary"`
+	Details  []string        `json:"details,omitempty"`
 }
 
 type SafetyMetadata struct {
@@ -121,12 +121,6 @@ func (i ConsumerInput) Validate() error {
 func (s SessionContext) Validate() error {
 	if s.SessionID == "" {
 		return ErrMissingSessionID
-	}
-	if err := s.Track.Validate(); err != nil {
-		return err
-	}
-	if err := s.Layout.Validate(); err != nil {
-		return err
 	}
 
 	return nil

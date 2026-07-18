@@ -24,19 +24,54 @@ func listRaceEngineerAdviceCompletedLaps(ctx context.Context, lapRepo laps.Repos
 	return completedLaps
 }
 
-func buildRaceEngineerAdviceSignals(storedEvents []events.EngineerEvent, completedLaps []laps.CompletedLap) []ai.Signal {
+func buildRaceEngineerAdviceSignals(storedEvents []events.EngineerEvent, completedLaps []laps.CompletedLap, sinceUnixMs *int64) []ai.Signal {
+	filteredEvents := filterRaceEngineerAdviceEventsBySince(storedEvents, sinceUnixMs)
+	filteredLaps := filterRaceEngineerAdviceCompletedLapsBySince(completedLaps, sinceUnixMs)
+
 	signals := make([]ai.Signal, 0, 3)
-	if signal := buildLapPaceRegressionSignal(completedLaps); signal != nil {
+	if signal := buildLapPaceRegressionSignal(filteredLaps); signal != nil {
 		signals = append(signals, *signal)
 	}
-	if signal := buildTelemetryGapSignal(completedLaps); signal != nil {
+	if signal := buildTelemetryGapSignal(filteredLaps); signal != nil {
 		signals = append(signals, *signal)
 	}
-	if signal := buildOffTrackSignal(storedEvents); signal != nil {
+	if signal := buildOffTrackSignal(filteredEvents); signal != nil {
 		signals = append(signals, *signal)
 	}
 
 	return signals
+}
+
+func filterRaceEngineerAdviceCompletedLapsBySince(completedLaps []laps.CompletedLap, sinceUnixMs *int64) []laps.CompletedLap {
+	if sinceUnixMs == nil {
+		return completedLaps
+	}
+
+	filtered := make([]laps.CompletedLap, 0, len(completedLaps))
+	for _, lap := range completedLaps {
+		if lap.CompletedAtUnixMs < *sinceUnixMs {
+			continue
+		}
+		filtered = append(filtered, lap)
+	}
+
+	return filtered
+}
+
+func filterRaceEngineerAdviceEventsBySince(storedEvents []events.EngineerEvent, sinceUnixMs *int64) []events.EngineerEvent {
+	if sinceUnixMs == nil {
+		return storedEvents
+	}
+
+	filtered := make([]events.EngineerEvent, 0, len(storedEvents))
+	for _, event := range storedEvents {
+		if event.TimestampUnixMs < *sinceUnixMs {
+			continue
+		}
+		filtered = append(filtered, event)
+	}
+
+	return filtered
 }
 
 func buildLapPaceRegressionSignal(completedLaps []laps.CompletedLap) *ai.Signal {
