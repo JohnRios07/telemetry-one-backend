@@ -41,13 +41,14 @@ This output is review-only. It is not runtime truth and must not be auto-promote
 Use `export-session-frames` to turn a persisted backend session into the exact `telemetry.IngestBatchRequest` JSON that `trackbuilder` consumes.
 
 ```bash
-export-session-frames -session-id session-123 -output ingest.json
+export-session-frames -session-id session_01KXSTFTPV5G3KT61TTSVGR405 -lap-number 3 -output ingest.json
 trackbuilder -input ingest.json -layout-id gt7_layout_1240 -output catalog.json
 ```
 
 Flags:
 
 - `-session-id`: required session ID to export
+- `-lap-number`: optional lap number to export; omit to export all frames
 - `-output`: required JSON output path
 - `-database-url`: optional Postgres URL; falls back to `TELEMETRY_ONE_DATABASE_URL`
 - `-allow-active-session`: opt in to exporting an unfinished session snapshot
@@ -63,4 +64,5 @@ The backend also exposes `GET /api/v1/sessions/{sessionId}/export/trackbuilder` 
 - The endpoint is disabled by default and only works when `TELEMETRY_ONE_ENABLE_SESSION_EXPORT=true`.
 - Success returns the raw `telemetry.IngestBatchRequest` JSON body with `Content-Type: application/json`.
 - The response is not wrapped in the normal API envelope, so treat it as raw telemetry.
+- Add `?lapNumber=3` to export a single complete lap batch, for example `session_01KXSTFTPV5G3KT61TTSVGR405`.
 - Active sessions are rejected; do not use this endpoint as an ad hoc ingestion or debugging shortcut.

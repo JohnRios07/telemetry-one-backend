@@ -36,9 +36,12 @@ type Result struct {
 	Session sessions.Session
 }
 
-func (e Exporter) Export(ctx context.Context, sessionID string) (Result, error) {
+func (e Exporter) Export(ctx context.Context, sessionID string, lapNumber *int) (Result, error) {
 	if e.SessionReader == nil || e.FrameReader == nil {
 		return Result{}, ErrMissingExporterDependency
+	}
+	if lapNumber != nil && *lapNumber < 0 {
+		return Result{}, telemetry.ErrInvalidLapNumber
 	}
 
 	session, err := e.SessionReader.FindByID(ctx, sessionID)
@@ -57,19 +60,39 @@ func (e Exporter) Export(ctx context.Context, sessionID string) (Result, error) 
 	if err != nil {
 		return Result{}, fmt.Errorf("load frames for %q: %w", session.ID, err)
 	}
-	if len(frames) == 0 {
+
+	filteredFrames := filterFrames(frames, lapNumber)
+	if len(filteredFrames) == 0 {
+		if lapNumber != nil {
+			return Result{}, fmt.Errorf("%w: %s lap %d", ErrEmptyFrames, session.ID, *lapNumber)
+		}
 		return Result{}, fmt.Errorf("%w: %s", ErrEmptyFrames, session.ID)
 	}
-	if err := validateTimestamps(frames); err != nil {
+	if err := validateTimestamps(filteredFrames); err != nil {
 		return Result{}, err
 	}
 
 	request := telemetry.IngestBatchRequest{
 		SessionID: session.ID,
-		Frames:    append([]telemetry.Frame(nil), frames...),
+		Frames:    filteredFrames,
 	}
 
 	return Result{Request: request, Session: session}, nil
+}
+
+func filterFrames(frames []telemetry.Frame, lapNumber *int) []telemetry.Frame {
+	if lapNumber == nil {
+		return append([]telemetry.Frame(nil), frames...)
+	}
+
+	filtered := make([]telemetry.Frame, 0, len(frames))
+	for _, frame := range frames {
+		if frame.LapNumber == *lapNumber {
+			filtered = append(filtered, frame)
+		}
+	}
+
+	return filtered
 }
 
 func validateTimestamps(frames []telemetry.Frame) error {

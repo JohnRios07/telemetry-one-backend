@@ -37,7 +37,7 @@ func (r fakeFrameReader) Frames(context.Context, string) ([]telemetry.Frame, err
 func TestExporterExportRejectsMissingSession(t *testing.T) {
 	exporter := Exporter{SessionReader: fakeSessionReader{err: sessions.ErrNotFound}, FrameReader: fakeFrameReader{frames: []telemetry.Frame{validExportFrame(1)}}}
 
-	_, err := exporter.Export(context.Background(), "missing")
+	_, err := exporter.Export(context.Background(), "missing", nil)
 
 	if !errors.Is(err, ErrMissingSession) {
 		t.Fatalf("expected missing-session error, got %v", err)
@@ -50,7 +50,7 @@ func TestExporterExportRejectsActiveSessionByDefault(t *testing.T) {
 		FrameReader:   fakeFrameReader{frames: []telemetry.Frame{validExportFrame(1)}},
 	}
 
-	_, err := exporter.Export(context.Background(), "session-1")
+	_, err := exporter.Export(context.Background(), "session-1", nil)
 
 	if !errors.Is(err, ErrActiveSessionBlocked) {
 		t.Fatalf("expected active-session error, got %v", err)
@@ -65,7 +65,7 @@ func TestExporterExportAllowsActiveSessionWhenOptedIn(t *testing.T) {
 		AllowActiveSession: true,
 	}
 
-	result, err := exporter.Export(context.Background(), "session-1")
+	result, err := exporter.Export(context.Background(), "session-1", nil)
 
 	if err != nil {
 		t.Fatalf("export active session: %v", err)
@@ -84,7 +84,7 @@ func TestExporterExportRejectsEmptyFrames(t *testing.T) {
 		FrameReader:   fakeFrameReader{frames: nil},
 	}
 
-	_, err := exporter.Export(context.Background(), "session-1")
+	_, err := exporter.Export(context.Background(), "session-1", nil)
 
 	if !errors.Is(err, ErrEmptyFrames) {
 		t.Fatalf("expected empty-frames error, got %v", err)
@@ -100,7 +100,7 @@ func TestExporterExportRejectsNonMonotonicTimestamps(t *testing.T) {
 		}},
 	}
 
-	_, err := exporter.Export(context.Background(), "session-1")
+	_, err := exporter.Export(context.Background(), "session-1", nil)
 
 	if !errors.Is(err, ErrNonMonotonicTimestamps) {
 		t.Fatalf("expected monotonicity error, got %v", err)
@@ -111,7 +111,7 @@ func TestExporterExportPreservesFrameOrdering(t *testing.T) {
 	frames := []telemetry.Frame{validExportFrame(1), validExportFrame(2), validExportFrame(3)}
 	exporter := Exporter{SessionReader: fakeSessionReader{session: finishedSession()}, FrameReader: fakeFrameReader{frames: frames}}
 
-	result, err := exporter.Export(context.Background(), "session-1")
+	result, err := exporter.Export(context.Background(), "session-1", nil)
 	if err != nil {
 		t.Fatalf("export frames: %v", err)
 	}
@@ -130,7 +130,7 @@ func TestExporterExportPreservesLongSessions(t *testing.T) {
 	}
 	exporter := Exporter{SessionReader: fakeSessionReader{session: finishedSession()}, FrameReader: fakeFrameReader{frames: frames}}
 
-	result, err := exporter.Export(context.Background(), "session-1")
+	result, err := exporter.Export(context.Background(), "session-1", nil)
 	if err != nil {
 		t.Fatalf("export long session: %v", err)
 	}
@@ -139,6 +139,51 @@ func TestExporterExportPreservesLongSessions(t *testing.T) {
 	}
 	if result.Request.Frames[len(result.Request.Frames)-1].TimestampUnixMs != frames[len(frames)-1].TimestampUnixMs {
 		t.Fatalf("expected export to preserve final frame, got %+v", result.Request.Frames[len(result.Request.Frames)-1])
+	}
+}
+
+func TestExporterExportFiltersByLapNumber(t *testing.T) {
+	frames := []telemetry.Frame{
+		frameWithLap(1, 1),
+		frameWithLap(2, 3),
+		frameWithLap(3, 3),
+		frameWithLap(4, 4),
+	}
+	exporter := Exporter{SessionReader: fakeSessionReader{session: finishedSession()}, FrameReader: fakeFrameReader{frames: frames}}
+	lapNumber := 3
+
+	result, err := exporter.Export(context.Background(), "session-1", &lapNumber)
+	if err != nil {
+		t.Fatalf("export filtered frames: %v", err)
+	}
+	if got := result.Request.SessionID; got != "session-1" {
+		t.Fatalf("unexpected session id: %s", got)
+	}
+	if got := len(result.Request.Frames); got != 2 {
+		t.Fatalf("expected 2 frames for lap 3, got %d", got)
+	}
+	if result.Request.Frames[0].TimestampUnixMs != 2 || result.Request.Frames[1].TimestampUnixMs != 3 {
+		t.Fatalf("expected lap order to be preserved, got %#v", result.Request.Frames)
+	}
+}
+
+func TestExporterExportRejectsMissingLapNumber(t *testing.T) {
+	exporter := Exporter{SessionReader: fakeSessionReader{session: finishedSession()}, FrameReader: fakeFrameReader{frames: []telemetry.Frame{frameWithLap(1, 1), frameWithLap(2, 2)}}}
+	lapNumber := 3
+
+	_, err := exporter.Export(context.Background(), "session-1", &lapNumber)
+	if !errors.Is(err, ErrEmptyFrames) {
+		t.Fatalf("expected empty-frames error for missing lap, got %v", err)
+	}
+}
+
+func TestExporterExportRejectsInvalidLapNumberFilter(t *testing.T) {
+	exporter := Exporter{SessionReader: fakeSessionReader{session: finishedSession()}, FrameReader: fakeFrameReader{frames: []telemetry.Frame{validExportFrame(1)}}}
+	lapNumber := -1
+
+	_, err := exporter.Export(context.Background(), "session-1", &lapNumber)
+	if !errors.Is(err, telemetry.ErrInvalidLapNumber) {
+		t.Fatalf("expected invalid lap number error, got %v", err)
 	}
 }
 
@@ -152,6 +197,10 @@ func activeSession() sessions.Session {
 }
 
 func validExportFrame(timestamp int64) telemetry.Frame {
+	return frameWithLap(timestamp, 1)
+}
+
+func frameWithLap(timestamp int64, lapNumber int) telemetry.Frame {
 	return telemetry.Frame{
 		TimestampUnixMs: timestamp,
 		SpeedMps:        58.33,
@@ -164,7 +213,7 @@ func validExportFrame(timestamp int64) telemetry.Frame {
 		PositionX:       123.4,
 		PositionY:       5.6,
 		PositionZ:       789.1,
-		LapNumber:       1,
+		LapNumber:       lapNumber,
 		CurrentLapMs:    81234,
 		IsOnTrack:       true,
 	}

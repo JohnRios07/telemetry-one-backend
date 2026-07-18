@@ -52,7 +52,7 @@ func run(args []string, stdout io.Writer, stderr io.Writer) error {
 	flags := flag.NewFlagSet("export-session-frames", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	flags.Usage = func() {
-		fmt.Fprintf(flags.Output(), "Usage: export-session-frames -session-id <id> -output <path> [-database-url <url>] [-allow-active-session]\n\n")
+		fmt.Fprintf(flags.Output(), "Usage: export-session-frames -session-id <id> -output <path> [-database-url <url>] [-allow-active-session] [-lap-number <n>]\n\n")
 		fmt.Fprintln(flags.Output(), "Exports persisted session frames as telemetry.IngestBatchRequest JSON for cmd/trackbuilder.")
 		fmt.Fprintln(flags.Output(), "The command is read-only and fails closed for active sessions unless explicitly opted in.")
 		flags.PrintDefaults()
@@ -62,15 +62,33 @@ func run(args []string, stdout io.Writer, stderr io.Writer) error {
 	var outputPath string
 	var databaseURL string
 	var allowActive bool
+	var lapNumber int
 	flags.StringVar(&sessionID, "session-id", "", "session id to export")
 	flags.StringVar(&outputPath, "output", "", "output JSON path")
 	flags.StringVar(&databaseURL, "database-url", "", "postgres connection string; defaults to TELEMETRY_ONE_DATABASE_URL")
 	flags.BoolVar(&allowActive, "allow-active-session", false, "allow exporting an active session snapshot")
+	flags.IntVar(&lapNumber, "lap-number", -1, "optional lap number to export; omit to export all frames")
+	flags.IntVar(&lapNumber, "lapNumber", -1, "alias for -lap-number")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
 		}
 		return newExitError(exitUsageOrConfig, err)
+	}
+
+	lapNumberProvided := false
+	flags.Visit(func(f *flag.Flag) {
+		if f.Name == "lap-number" || f.Name == "lapNumber" {
+			lapNumberProvided = true
+		}
+	})
+	if lapNumberProvided && lapNumber < 0 {
+		return newExitError(exitUsageOrConfig, fmt.Errorf("lap-number must be zero or greater"))
+	}
+
+	var lapFilter *int
+	if lapNumberProvided {
+		lapFilter = &lapNumber
 	}
 
 	if strings.TrimSpace(sessionID) == "" {
@@ -93,7 +111,7 @@ func run(args []string, stdout io.Writer, stderr io.Writer) error {
 		defer pool.Close()
 	}
 
-	result, err := exportSession(ctx, pool, sessionID, allowActive)
+	result, err := exportSession(ctx, pool, sessionID, allowActive, lapFilter)
 	if err != nil {
 		return classifyExportError(err)
 	}
@@ -137,13 +155,13 @@ func openReadOnlyPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, e
 	return pool, nil
 }
 
-func exportSessionFrames(ctx context.Context, pool *pgxpool.Pool, sessionID string, allowActive bool) (sessionexport.Result, error) {
+func exportSessionFrames(ctx context.Context, pool *pgxpool.Pool, sessionID string, allowActive bool, lapNumber *int) (sessionexport.Result, error) {
 	exporter := sessionexport.Exporter{
 		SessionReader:      sessions.NewPostgresRepository(pool),
 		FrameReader:        telemetry.NewPostgresStore(pool),
 		AllowActiveSession: allowActive,
 	}
-	return exporter.Export(ctx, sessionID)
+	return exporter.Export(ctx, sessionID, lapNumber)
 }
 
 func classifyExitCode(err error) int {
@@ -164,6 +182,8 @@ func classifyExportError(err error) error {
 		return newExitError(exitMissingData, err)
 	case errors.Is(err, sessionexport.ErrActiveSessionBlocked):
 		return newExitError(exitActiveBlocked, err)
+	case errors.Is(err, telemetry.ErrInvalidLapNumber):
+		return newExitError(exitUsageOrConfig, err)
 	case errors.Is(err, sessionexport.ErrEmptyFrames):
 		return newExitError(exitMissingData, err)
 	case errors.Is(err, sessionexport.ErrNonMonotonicTimestamps):

@@ -4,12 +4,14 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"telemetry-one-backend/internal/config"
 	"telemetry-one-backend/internal/platform/httperror"
 	"telemetry-one-backend/internal/sessionexport"
 	"telemetry-one-backend/internal/sessions"
+	"telemetry-one-backend/internal/telemetry"
 )
 
 func sessionExportHandler(cfg config.Config, exporter sessionexport.Exporter) http.HandlerFunc {
@@ -19,7 +21,13 @@ func sessionExportHandler(cfg config.Config, exporter sessionexport.Exporter) ht
 			return
 		}
 
-		result, err := exporter.Export(r.Context(), r.PathValue("sessionId"))
+		lapNumber, err := sessionExportLapNumber(r)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, httperror.Envelope(httperror.BadRequest(err.Error())))
+			return
+		}
+
+		result, err := exporter.Export(r.Context(), r.PathValue("sessionId"), lapNumber)
 		if err != nil {
 			writeSessionExportError(w, err)
 			return
@@ -38,13 +46,27 @@ func sessionExportHandler(cfg config.Config, exporter sessionexport.Exporter) ht
 	}
 }
 
+func sessionExportLapNumber(r *http.Request) (*int, error) {
+	raw := strings.TrimSpace(r.URL.Query().Get("lapNumber"))
+	if raw == "" {
+		return nil, nil
+	}
+
+	parsed, err := strconv.Atoi(raw)
+	if err != nil {
+		return nil, fmt.Errorf("lapNumber must be a non-negative integer")
+	}
+
+	return &parsed, nil
+}
+
 func writeSessionExportError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, sessionexport.ErrMissingSession), errors.Is(err, sessions.ErrNotFound):
 		writeJSON(w, http.StatusNotFound, httperror.Envelope(httperror.Error{Code: "session_not_found", Message: err.Error()}))
 	case errors.Is(err, sessionexport.ErrActiveSessionBlocked):
 		writeJSON(w, http.StatusConflict, httperror.Envelope(httperror.Error{Code: "session_export_blocked", Message: "session is still active"}))
-	case errors.Is(err, sessionexport.ErrEmptyFrames), errors.Is(err, sessionexport.ErrNonMonotonicTimestamps):
+	case errors.Is(err, telemetry.ErrInvalidLapNumber), errors.Is(err, sessionexport.ErrEmptyFrames), errors.Is(err, sessionexport.ErrNonMonotonicTimestamps):
 		writeJSON(w, http.StatusBadRequest, httperror.Envelope(httperror.BadRequest(err.Error())))
 	default:
 		writeJSON(w, http.StatusInternalServerError, httperror.Envelope(httperror.Internal("session export failed")))
