@@ -13,6 +13,7 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("TELEMETRY_ONE_SHUTDOWN_TIMEOUT", "")
 	t.Setenv("TELEMETRY_ONE_RETAINED_FRAMES_PER_SESSION", "")
 	t.Setenv("TELEMETRY_ONE_DATABASE_URL", "")
+	t.Setenv("TELEMETRY_ONE_ENABLE_SESSION_EXPORT", "")
 	t.Setenv("TELEMETRY_ONE_AI_MAX_PROMPT_CHARS", "")
 	t.Setenv("TELEMETRY_ONE_AI_MAX_COMPLETION_TOKENS", "")
 	t.Setenv("TELEMETRY_ONE_AI_MAX_EVENTS_PER_REQUEST", "")
@@ -108,6 +109,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.SkipInvalidApprovedGeometry != DefaultSkipInvalidApprovedGeometry {
 		t.Fatalf("expected skip-invalid-approved-geometry default %v, got %v", DefaultSkipInvalidApprovedGeometry, cfg.SkipInvalidApprovedGeometry)
 	}
+	if cfg.EnableSessionExport != DefaultEnableSessionExport {
+		t.Fatalf("expected session export default %v, got %v", DefaultEnableSessionExport, cfg.EnableSessionExport)
+	}
 }
 
 func TestLoadEnvironmentOverrides(t *testing.T) {
@@ -119,6 +123,7 @@ func TestLoadEnvironmentOverrides(t *testing.T) {
 	t.Setenv("TELEMETRY_ONE_RETAINED_FRAMES_PER_SESSION", "42")
 	t.Setenv("TELEMETRY_ONE_DATABASE_URL", "postgres://telemetry:secret@localhost:5432/telemetry_one?sslmode=disable")
 	t.Setenv("TELEMETRY_ONE_SKIP_INVALID_APPROVED_GEOMETRY", "true")
+	t.Setenv("TELEMETRY_ONE_ENABLE_SESSION_EXPORT", "true")
 
 	cfg, err := Load()
 	if err != nil {
@@ -148,6 +153,22 @@ func TestLoadEnvironmentOverrides(t *testing.T) {
 	}
 	if !cfg.SkipInvalidApprovedGeometry {
 		t.Fatal("expected skip-invalid-approved-geometry override to load")
+	}
+	if !cfg.EnableSessionExport {
+		t.Fatal("expected session export override to load")
+	}
+}
+
+func TestLoadSessionExportFlagFalse(t *testing.T) {
+	t.Setenv("TELEMETRY_ONE_ENABLE_SESSION_EXPORT", "false")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("expected config to load: %v", err)
+	}
+
+	if cfg.EnableSessionExport {
+		t.Fatal("expected session export flag to stay false")
 	}
 }
 

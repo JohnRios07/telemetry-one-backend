@@ -55,3 +55,12 @@ Flags:
 The exporter is read-only, preserves persisted frame order, and fails closed for active sessions unless the explicit opt-in flag is present.
 
 If active-session export is enabled, the CLI prints a warning to `stderr` because the snapshot may be incomplete.
+
+## HTTP Export
+
+The backend also exposes `GET /api/v1/sessions/{sessionId}/export/trackbuilder` for controlled export workflows.
+
+- The endpoint is disabled by default and only works when `TELEMETRY_ONE_ENABLE_SESSION_EXPORT=true`.
+- Success returns the raw `telemetry.IngestBatchRequest` JSON body with `Content-Type: application/json`.
+- The response is not wrapped in the normal API envelope, so treat it as raw telemetry.
+- Active sessions are rejected; do not use this endpoint as an ad hoc ingestion or debugging shortcut.

@@ -41,6 +41,15 @@ func WriteRequestFile(outputPath string, request telemetry.IngestBatchRequest) (
 	return nil
 }
 
+func MarshalRequest(request telemetry.IngestBatchRequest) ([]byte, error) {
+	encoded, err := json.Marshal(request)
+	if err != nil {
+		return nil, fmt.Errorf("marshal export request: %w", err)
+	}
+
+	return encoded, nil
+}
+
 func writeRequest(w io.WriteCloser, request telemetry.IngestBatchRequest) (err error) {
 	defer func() {
 		if closeErr := w.Close(); closeErr != nil && err == nil {
@@ -48,9 +57,9 @@ func writeRequest(w io.WriteCloser, request telemetry.IngestBatchRequest) (err e
 		}
 	}()
 
-	encoded, err := json.Marshal(request)
+	encoded, err := MarshalRequest(request)
 	if err != nil {
-		return fmt.Errorf("marshal export request: %w", err)
+		return err
 	}
 	if _, err := w.Write(encoded); err != nil {
 		return fmt.Errorf("write export request: %w", err)
