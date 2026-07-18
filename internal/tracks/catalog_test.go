@@ -447,6 +447,16 @@ func TestGT7OfficialSeedCatalogSourceOfTruthValidatesWithEnumeratedCorners(t *te
 	if err := catalog.ValidateSourceOfTruth(); err != nil {
 		t.Fatalf("expected official seed source-of-truth metadata to validate, got %v", err)
 	}
+	tsukuba := requireLayout(t, catalog, "gt7_layout_471")
+	if tsukuba.Name != "Tsukuba Circuit" || tsukuba.LengthMeters != 2045 {
+		t.Fatalf("unexpected Tsukuba metadata: %+v", tsukuba)
+	}
+	if len(tsukuba.Sectors) != 0 || len(tsukuba.CenterLine) != 0 {
+		t.Fatalf("expected Tsukuba seed layout to omit sectors and centerline, got %+v %+v", tsukuba.Sectors, tsukuba.CenterLine)
+	}
+	if len(tsukuba.Corners) != 8 {
+		t.Fatalf("expected Tsukuba to have 8 enumerated corners, got %d", len(tsukuba.Corners))
+	}
 	layout := requireLayout(t, catalog, "gt7_layout_1248")
 	if len(layout.Corners) != 12 {
 		t.Fatalf("expected Nurburgring Sprint to have 12 enumerated corners, got %d", len(layout.Corners))
