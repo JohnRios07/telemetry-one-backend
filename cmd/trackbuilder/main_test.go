@@ -22,7 +22,7 @@ func TestRunWritesCatalogJSONToStdoutAndReportToStderr(t *testing.T) {
 	if !strings.Contains(stderr.String(), "closing report") {
 		t.Fatalf("expected report on stderr, got %q", stderr.String())
 	}
-	for _, want := range []string{"layoutId:", "source point count:", "source path length meters:", "generated point count:", "generated path length meters:", "catalogLengthMeters:", "deltaMeters:", "deltaPct:"} {
+	for _, want := range []string{"layoutId:", "source point count:", "source segment count:", "source segment length meters:", "source planar heading change (X/Z):", "source path length meters:", "generated point count:", "generated path length meters:", "catalogLengthMeters:", "deltaMeters:", "deltaPct:"} {
 		if !strings.Contains(stderr.String(), want) {
 			t.Fatalf("expected %q in stderr report, got %q", want, stderr.String())
 		}
