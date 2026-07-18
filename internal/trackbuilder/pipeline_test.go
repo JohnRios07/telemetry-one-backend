@@ -40,6 +40,23 @@ func TestBuildCuratedCatalogFromIngestBatch(t *testing.T) {
 	}
 }
 
+func TestBuildResolvesTsukubaSeedLayout(t *testing.T) {
+	request := telemetry.IngestBatchRequest{SessionID: "trackbuilder", Frames: testFramesLoop()}
+	catalog, report, err := Build(request, DefaultOptions().NormalizeWithLayout("gt7_layout_471"), tracks.OfficialGT7SeedCatalog())
+	if err != nil {
+		t.Fatalf("build returned error: %v", err)
+	}
+	if got := catalog.Tracks[0].ID; got != "gt7_tsukuba_circuit" {
+		t.Fatalf("expected Tsukuba track to resolve, got %q", got)
+	}
+	if got := catalog.Tracks[0].Layouts[0].ID; got != "gt7_layout_471" {
+		t.Fatalf("expected Tsukuba layout to resolve, got %q", got)
+	}
+	if report.PointCount != len(catalog.Tracks[0].Layouts[0].CenterLine) {
+		t.Fatalf("unexpected report/catalog mismatch: %+v %+v", report, catalog.Tracks[0].Layouts[0])
+	}
+}
+
 func TestCleanupTelemetryPointsSkipsInvalidPositions(t *testing.T) {
 	points := cleanupTelemetryPoints([]telemetry.Frame{
 		validTelemetryFrame(1, 0, 0, 0),
