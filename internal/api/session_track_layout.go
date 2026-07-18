@@ -57,7 +57,7 @@ func sessionTrackLayoutHandler(sessionRepo sessions.Repository, catalog tracks.C
 		}
 
 		// Preserve the same success-object shape as other session reads.
-		dto, err := sessionDTO(r, updated, frameStore, eventStore)
+		dto, err := sessionDTO(r, updated, frameStore, eventStore, catalog)
 		if err != nil {
 			writeSessionDTOError(w, err)
 			return

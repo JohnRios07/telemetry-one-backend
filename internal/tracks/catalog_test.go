@@ -16,6 +16,77 @@ func TestCatalogValidateAcceptsValidCatalog(t *testing.T) {
 	}
 }
 
+func TestCatalogPrepareApprovedGeometryFailFastOrSkipInvalid(t *testing.T) {
+	base := validCatalog()
+	base.ApprovedGeometry = ApprovedGeometryManifest{Layouts: []ApprovedGeometryLayout{
+		{
+			TrackID:      "synthetic_dev_track",
+			LayoutID:     "synthetic_dev_loop",
+			LengthMeters: 1300,
+			CenterLine: []Point{
+				{Index: 0, X: 0, Y: 0, Z: 0, AccumulatedMeters: 0},
+				{Index: 1, X: 400, Y: 0, Z: 0, AccumulatedMeters: 400},
+				{Index: 2, X: 400, Y: 250, Z: 0, AccumulatedMeters: 650},
+				{Index: 3, X: 0, Y: 250, Z: 0, AccumulatedMeters: 1050},
+				{Index: 4, X: 0, Y: 0, Z: 0, AccumulatedMeters: 1300},
+			},
+		},
+		{
+			TrackID:      "synthetic_dev_track",
+			LayoutID:     "synthetic_dev_invalid",
+			LengthMeters: 1300,
+			CenterLine: []Point{
+				{Index: 0, X: 0, Y: 0, Z: 0, AccumulatedMeters: 0},
+				{Index: 1, X: 1, Y: 0, Z: 0, AccumulatedMeters: 0},
+			},
+		},
+	}}
+
+	if _, err := base.PrepareApprovedGeometry(false); err == nil {
+		t.Fatal("expected invalid approved geometry to fail fast by default")
+	}
+
+	prepared, err := base.PrepareApprovedGeometry(true)
+	if err != nil {
+		t.Fatalf("expected skip-invalid approved geometry to succeed: %v", err)
+	}
+	if got := len(prepared.ApprovedGeometry.Layouts); got != 1 {
+		t.Fatalf("expected one approved geometry layout after skip-invalid, got %d", got)
+	}
+}
+
+func TestCatalogLayoutCapabilitiesUseApprovedGeometryOverlay(t *testing.T) {
+	catalog := OfficialGT7SeedCatalog()
+	catalog.ApprovedGeometry = ApprovedGeometryManifest{Layouts: []ApprovedGeometryLayout{{
+		TrackID:      "gt7_watkins_glen_international",
+		LayoutID:     "gt7_layout_1240",
+		LengthMeters: 5423,
+		CenterLine: []Point{
+			{Index: 0, X: 0, Y: 0, Z: 0, AccumulatedMeters: 0},
+			{Index: 1, X: 2000, Y: 0, Z: 0, AccumulatedMeters: 2000},
+			{Index: 2, X: 506, Y: 1323, Z: 0, AccumulatedMeters: 4000},
+			{Index: 3, X: 0, Y: 0, Z: 0, AccumulatedMeters: 5423},
+		},
+	}}}
+
+	caps := catalog.LayoutCapabilities("gt7_watkins_glen_international", "gt7_layout_1240")
+	if caps.Detection.State != CapabilityStateAvailable {
+		t.Fatalf("expected detection available, got %+v", caps.Detection)
+	}
+	if caps.DistanceDelta.State != CapabilityStateAvailable {
+		t.Fatalf("expected distanceDelta available, got %+v", caps.DistanceDelta)
+	}
+	if caps.MicroSectors.State != CapabilityStatePartial {
+		t.Fatalf("expected microSectors partial, got %+v", caps.MicroSectors)
+	}
+	if caps.CornerAnalysis.State != CapabilityStatePartial {
+		t.Fatalf("expected cornerAnalysis partial for enumerated catalog corners, got %+v", caps.CornerAnalysis)
+	}
+	if caps.OfficialCornerNames.State != CapabilityStatePartial {
+		t.Fatalf("expected officialCornerNames partial for enumerated catalog corners, got %+v", caps.OfficialCornerNames)
+	}
+}
+
 func TestCatalogValidateVersionHandling(t *testing.T) {
 	tests := []struct {
 		name    string

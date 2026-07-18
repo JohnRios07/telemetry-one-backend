@@ -40,6 +40,7 @@ Environment variables:
 | `TELEMETRY_ONE_RETAINED_FRAMES_PER_SESSION` | `12000` | Maximum accepted normalized frames retained in memory per session. |
 | `TELEMETRY_ONE_DATABASE_URL` | `` | Optional Postgres URL. When set, sessions use durable Postgres persistence and embedded migrations run at startup. When empty, sessions stay in-memory. |
 | `TELEMETRY_ONE_ADMIN_TOKEN` | `` | Optional admin auth token. When set, `GET /api/v1/admin/ingest-stats` requires `Authorization: Bearer <token>`. When empty, the endpoint is open. |
+| `TELEMETRY_ONE_SKIP_INVALID_APPROVED_GEOMETRY` | `false` | When `true`, invalid runtime-approved geometry entries are skipped during startup instead of failing closed. |
 
 ## Service Conventions
 
