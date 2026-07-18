@@ -122,13 +122,13 @@ func readIngestBatch(path string) (telemetry.IngestBatchRequest, error) {
 
 	file, err := os.Open(path)
 	if err != nil {
-		return telemetry.IngestBatchRequest{}, fmt.Errorf("open input: %w", err)
+		return telemetry.IngestBatchRequest{}, fmt.Errorf("open input %s: %w", path, err)
 	}
 	defer file.Close()
 
 	var request telemetry.IngestBatchRequest
 	if err := json.NewDecoder(file).Decode(&request); err != nil {
-		return telemetry.IngestBatchRequest{}, fmt.Errorf("decode ingest batch: %w", err)
+		return telemetry.IngestBatchRequest{}, fmt.Errorf("decode ingest batch %s: %w", path, err)
 	}
 
 	return request, nil

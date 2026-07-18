@@ -119,6 +119,27 @@ func TestRunWritesTelemetryBaselineJSONToStdoutAndReportToStderr(t *testing.T) {
 	}
 }
 
+func TestRunBaselineReportsMalformedInputPath(t *testing.T) {
+	good := writeIngestFixture(t)
+	badDir := t.TempDir()
+	bad := filepath.Join(badDir, "broken-baseline.json")
+	if err := os.WriteFile(bad, []byte(`{"sessionId":`), 0o600); err != nil {
+		t.Fatalf("write malformed fixture: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := run([]string{"-baseline", "-input", good, "-input", bad, "-layout-id", "gt7_layout_1240"}, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("expected malformed input error")
+	}
+	for _, want := range []string{"decode ingest batch", bad} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("expected %q in error, got %v", want, err)
+		}
+	}
+}
+
 func writeIngestFixture(t *testing.T) string {
 	t.Helper()
 	return writeIngestRequest(t, telemetry.IngestBatchRequest{SessionID: "trackbuilder", Frames: []telemetry.Frame{{TimestampUnixMs: 1, PositionX: 0, PositionY: 0, PositionZ: 0, SpeedMps: 1, RPM: 1, LapNumber: 1, CurrentLapMs: 0, IsOnTrack: true}, {TimestampUnixMs: 2, PositionX: 10, PositionY: 0, PositionZ: 0, SpeedMps: 1, RPM: 1, LapNumber: 1, CurrentLapMs: 1, IsOnTrack: true}, {TimestampUnixMs: 3, PositionX: 10, PositionY: 10, PositionZ: 0, SpeedMps: 1, RPM: 1, LapNumber: 1, CurrentLapMs: 2, IsOnTrack: true}, {TimestampUnixMs: 4, PositionX: 0, PositionY: 10, PositionZ: 0, SpeedMps: 1, RPM: 1, LapNumber: 1, CurrentLapMs: 3, IsOnTrack: true}, {TimestampUnixMs: 5, PositionX: 0, PositionY: 0, PositionZ: 0, SpeedMps: 1, RPM: 1, LapNumber: 1, CurrentLapMs: 4, IsOnTrack: true}}})
