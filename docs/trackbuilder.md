@@ -28,10 +28,14 @@ Flags:
 The CLI writes a separate human-readable closing report to `stderr` with:
 
 - layout ID and name
-- telemetry/generated path length in meters
+- source point count after invalid-frame filtering
+- source path length in meters before simplification and resampling
+- simplified point count after RDP simplification
+- simplification dropped points versus the cleaned source
+- generated point count in the final centerline
+- generated path length in meters after the pipeline output
 - catalog length in meters from the selected seed layout
 - delta meters and delta percent between telemetry path length and catalog length
-- point count
 - start/end gap
 - deviation vs catalog centerline when a comparable baseline centerline exists
 
@@ -41,16 +45,20 @@ Example:
 trackbuilder closing report
 layoutId: gt7_layout_1240
 layoutName: Fuji Speedway
-telemetry/generated path length meters: 1234.56m
+source point count: 182
+source path length meters: 1234.56m
+simplified point count: 96
+simplification dropped points: 86
+generated point count: 96
+generated path length meters: 1234.56m
 catalogLengthMeters: 1240.00m
 deltaMeters: -5.44m
 deltaPct: -0.44%
-points: 182
 start-end gap: 0.83m
 deviation vs catalog centerline: mean 1.12m max 4.57m
 ```
 
-The key distinction is that `telemetry/generated path length meters` is the measured path produced from ingest, while `catalogLengthMeters` is the official seed-layout value. They are intentionally reported separately so length mismatch diagnostics are not confused with the catalog schema field.
+The key distinction is that `source path length meters` measures the usable telemetry polyline before simplification/resampling, while `generated path length meters` measures the final centerline written into the curated catalog. `catalogLengthMeters` remains the official seed-layout value. They are intentionally reported separately so length mismatch diagnostics are not confused with the catalog schema field.
 
 ## Promotion Caveat
 

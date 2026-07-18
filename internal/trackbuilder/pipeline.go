@@ -35,6 +35,7 @@ func Build(request telemetry.IngestBatchRequest, opts Options, seed tracks.Catal
 	if len(cleaned) < 2 {
 		return tracks.Catalog{}, Report{}, ErrInsufficientUsablePoint
 	}
+	sourcePathLengthMeters := polylineLength(cleaned, false)
 
 	closed := isClosedLoop(cleaned)
 	smoothed, err := smoothPoints(cleaned, opts.SmoothingWindow, closed)
@@ -93,16 +94,20 @@ func Build(request telemetry.IngestBatchRequest, opts Options, seed tracks.Catal
 	}
 
 	report := Report{
-		LayoutID:                  layout.ID,
-		LayoutName:                layout.Name,
-		TelemetryPathLengthMeters: totalMeters,
-		CatalogLengthMeters:       layout.LengthMeters,
-		DeltaMeters:               totalMeters - layout.LengthMeters,
-		DeltaPct:                  deltaPct(totalMeters, layout.LengthMeters),
-		PointCount:                len(centerlinePoints),
-		StartEndGapMeters:         geometry.Distance(toGeometryPoint(centerlinePoints[0]), toGeometryPoint(centerlinePoints[len(centerlinePoints)-1])),
-		MeanDeviationMeters:       math.NaN(),
-		MaxDeviationMeters:        math.NaN(),
+		LayoutID:                    layout.ID,
+		LayoutName:                  layout.Name,
+		SourcePointCount:            len(cleaned),
+		SourcePathLengthMeters:      sourcePathLengthMeters,
+		SimplifiedPointCount:        len(simplified),
+		SimplificationDroppedPoints: len(cleaned) - len(simplified),
+		GeneratedPointCount:         len(centerlinePoints),
+		GeneratedPathLengthMeters:   totalMeters,
+		CatalogLengthMeters:         layout.LengthMeters,
+		DeltaMeters:                 totalMeters - layout.LengthMeters,
+		DeltaPct:                    deltaPct(totalMeters, layout.LengthMeters),
+		StartEndGapMeters:           geometry.Distance(toGeometryPoint(centerlinePoints[0]), toGeometryPoint(centerlinePoints[len(centerlinePoints)-1])),
+		MeanDeviationMeters:         math.NaN(),
+		MaxDeviationMeters:          math.NaN(),
 	}
 	if mean, max, ok := deviationAgainstBaseline(layout.CenterLine, centerlinePoints); ok {
 		report.MeanDeviationMeters = mean
