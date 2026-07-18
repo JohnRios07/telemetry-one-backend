@@ -35,3 +35,23 @@ The CLI writes a separate human-readable closing report to `stderr` with:
 ## Promotion Caveat
 
 This output is review-only. It is not runtime truth and must not be auto-promoted into the production catalog.
+
+## Exporting Session Frames
+
+Use `export-session-frames` to turn a persisted backend session into the exact `telemetry.IngestBatchRequest` JSON that `trackbuilder` consumes.
+
+```bash
+export-session-frames -session-id session-123 -output ingest.json
+trackbuilder -input ingest.json -layout-id gt7_layout_1240 -output catalog.json
+```
+
+Flags:
+
+- `-session-id`: required session ID to export
+- `-output`: required JSON output path
+- `-database-url`: optional Postgres URL; falls back to `TELEMETRY_ONE_DATABASE_URL`
+- `-allow-active-session`: opt in to exporting an unfinished session snapshot
+
+The exporter is read-only, preserves persisted frame order, and fails closed for active sessions unless the explicit opt-in flag is present.
+
+If active-session export is enabled, the CLI prints a warning to `stderr` because the snapshot may be incomplete.
