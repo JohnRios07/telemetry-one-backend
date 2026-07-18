@@ -324,12 +324,11 @@ func enrichSessionDTO(dto sessions.DTO, session sessions.Session, catalog tracks
 }
 
 func sessionTrackCapabilities(session sessions.Session, catalog tracks.Catalog) (tracks.LayoutCapabilities, bool) {
-	trackID := session.DetectedTrackID
-	layoutID := session.DetectedLayoutID
-	if trackID == "" || layoutID == "" {
-		trackID = session.TrackID
-		layoutID = ""
+	trackID := session.TrackID
+	if trackID == "" {
+		trackID = session.DetectedTrackID
 	}
+	layoutID := session.EffectiveLayoutID()
 	if trackID == "" || layoutID == "" {
 		return tracks.LayoutCapabilities{}, false
 	}

@@ -607,7 +607,23 @@ func TestSetSessionTrackLayoutContractPersistsEffectiveLayout(t *testing.T) {
 	eventStore := events.NewStore(10, events.DedupOptions{})
 	sessionRepo := sessions.NewMemoryRepository()
 	seedTestSession(t, sessionRepo, "session-layout")
-	handler := routesWithSessionRepository(config.Config{Addr: ":0", Env: "test"}, slog.New(slog.NewTextHandler(io.Discard, nil)), store, tracks.OfficialGT7SeedCatalog(), eventStore, sessionRepo)
+	catalog := tracks.OfficialGT7SeedCatalog()
+	catalog.ApprovedGeometry = tracks.ApprovedGeometryManifest{Layouts: []tracks.ApprovedGeometryLayout{{
+		TrackID:      "gt7_watkins_glen_international",
+		LayoutID:     "gt7_layout_1240",
+		LengthMeters: 5423,
+		CenterLine: []tracks.Point{
+			{Index: 0, X: 0, Y: 0, Z: 0, AccumulatedMeters: 0},
+			{Index: 1, X: 2000, Y: 0, Z: 0, AccumulatedMeters: 2000},
+			{Index: 2, X: 506, Y: 1323, Z: 0, AccumulatedMeters: 4000},
+			{Index: 3, X: 0, Y: 0, Z: 0, AccumulatedMeters: 5423},
+		},
+	}}}
+	handler := routesWithSessionRepository(config.Config{Addr: ":0", Env: "test"}, slog.New(slog.NewTextHandler(io.Discard, nil)), store, catalog, eventStore, sessionRepo)
+
+	if _, err := sessionRepo.SetDetectedTrackLayout(context.Background(), "session-layout", "gt7_trial_mountain_circuit", "gt7_layout_1024"); err != nil {
+		t.Fatalf("seed detected layout: %v", err)
+	}
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPut, "/api/v1/sessions/session-layout/track-layout", strings.NewReader(`{"trackId":"gt7_watkins_glen_international","layoutId":"gt7_layout_1240"}`))
@@ -616,8 +632,26 @@ func TestSetSessionTrackLayoutContractPersistsEffectiveLayout(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected status %d, got %d with body %s", http.StatusOK, recorder.Code, recorder.Body.String())
 	}
-	if !strings.Contains(recorder.Body.String(), `"layoutId":"gt7_layout_1240"`) || !strings.Contains(recorder.Body.String(), `"trackId":"gt7_watkins_glen_international"`) {
-		t.Fatalf("expected effective track/layout in response, got %s", recorder.Body.String())
+
+	var response struct {
+		Session struct {
+			TrackID           string                     `json:"trackId"`
+			LayoutID          string                     `json:"layoutId"`
+			TrackCapabilities *tracks.LayoutCapabilities `json:"trackCapabilities"`
+		} `json:"session"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v body %s", err, recorder.Body.String())
+	}
+	if response.Session.TrackID != "gt7_watkins_glen_international" || response.Session.LayoutID != "gt7_layout_1240" {
+		t.Fatalf("expected effective track/layout in response, got %+v", response.Session)
+	}
+	if response.Session.TrackCapabilities == nil {
+		t.Fatal("expected trackCapabilities in response")
+	}
+	wantCaps := catalog.LayoutCapabilities("gt7_watkins_glen_international", "gt7_layout_1240")
+	if *response.Session.TrackCapabilities != wantCaps {
+		t.Fatalf("expected manual layout capabilities %+v, got %+v", wantCaps, *response.Session.TrackCapabilities)
 	}
 
 	found, err := sessionRepo.FindByID(context.Background(), "session-layout")
