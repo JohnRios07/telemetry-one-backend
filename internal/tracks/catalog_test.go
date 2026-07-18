@@ -447,6 +447,13 @@ func TestGT7OfficialSeedCatalogSourceOfTruthValidatesWithEnumeratedCorners(t *te
 	if err := catalog.ValidateSourceOfTruth(); err != nil {
 		t.Fatalf("expected official seed source-of-truth metadata to validate, got %v", err)
 	}
+	brandsHatch := requireLayout(t, catalog, "gt7_layout_346")
+	if brandsHatch.Name != "Brands Hatch Indy Circuit" || brandsHatch.LengthMeters != 1944 {
+		t.Fatalf("unexpected Brands Hatch metadata: %+v", brandsHatch)
+	}
+	if len(brandsHatch.Sectors) != 0 || len(brandsHatch.Corners) != 0 || len(brandsHatch.CenterLine) != 0 {
+		t.Fatalf("expected Brands Hatch seed layout to omit sectors, corners, and centerline, got %+v %+v %+v", brandsHatch.Sectors, brandsHatch.Corners, brandsHatch.CenterLine)
+	}
 	tsukuba := requireLayout(t, catalog, "gt7_layout_471")
 	if tsukuba.Name != "Tsukuba Circuit" || tsukuba.LengthMeters != 2045 {
 		t.Fatalf("unexpected Tsukuba metadata: %+v", tsukuba)

@@ -67,6 +67,23 @@ func TestBuildResolvesTsukubaSeedLayout(t *testing.T) {
 	}
 }
 
+func TestBuildResolvesBrandsHatchIndySeedLayout(t *testing.T) {
+	request := telemetry.IngestBatchRequest{SessionID: "trackbuilder", Frames: testFramesLoop()}
+	catalog, report, err := Build(request, DefaultOptions().NormalizeWithLayout("gt7_layout_346"), tracks.OfficialGT7SeedCatalog())
+	if err != nil {
+		t.Fatalf("build returned error: %v", err)
+	}
+	if got := catalog.Tracks[0].ID; got != "gt7_brands_hatch" {
+		t.Fatalf("expected Brands Hatch track to resolve, got %q", got)
+	}
+	if got := catalog.Tracks[0].Layouts[0].ID; got != "gt7_layout_346" {
+		t.Fatalf("expected Brands Hatch Indy layout to resolve, got %q", got)
+	}
+	if got := report.LayoutName; got != "Brands Hatch Indy Circuit" {
+		t.Fatalf("expected report to preserve layout name, got %q", got)
+	}
+}
+
 func TestCleanupTelemetryPointsSkipsInvalidPositions(t *testing.T) {
 	points := cleanupTelemetryPoints([]telemetry.Frame{
 		validTelemetryFrame(1, 0, 0, 0),
