@@ -65,6 +65,33 @@ func TestSessionExportReturnsRawJSONAndHeaders(t *testing.T) {
 	}
 }
 
+func TestSessionExportFiltersLapNumber(t *testing.T) {
+	frames := []telemetry.Frame{exportFrameAt(10, 2), exportFrameAt(20, 3), exportFrameAt(30, 3), exportFrameAt(40, 4)}
+	sessionRepo, frameStore := finishedExportSession(t, "session-1", frames, true)
+	handler := sessionExportTestHandler(t, config.Config{Addr: ":0", Env: "test", EnableSessionExport: true}, sessionRepo, frameStore)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/session-1/export/trackbuilder?lapNumber=3", nil)
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d with body %s", http.StatusOK, recorder.Code, recorder.Body.String())
+	}
+	var payload telemetry.IngestBatchRequest
+	if err := json.NewDecoder(recorder.Body).Decode(&payload); err != nil {
+		t.Fatalf("expected raw ingest JSON: %v", err)
+	}
+	if got := len(payload.Frames); got != 2 {
+		t.Fatalf("expected 2 filtered frames, got %d", got)
+	}
+	if payload.Frames[0].LapNumber != 3 || payload.Frames[1].LapNumber != 3 {
+		t.Fatalf("expected only lap 3 frames, got %#v", payload.Frames)
+	}
+	if payload.Frames[0].TimestampUnixMs != 20 || payload.Frames[1].TimestampUnixMs != 30 {
+		t.Fatalf("expected lap order preserved, got %#v", payload.Frames)
+	}
+}
+
 func TestSessionExportRejectsMissingSession(t *testing.T) {
 	handler := sessionExportTestHandler(t, config.Config{Addr: ":0", Env: "test", EnableSessionExport: true}, sessions.NewMemoryRepository(), telemetry.NewFrameStore(100))
 
@@ -109,8 +136,23 @@ func TestSessionExportRejectsEmptyFrames(t *testing.T) {
 	}
 }
 
+func TestSessionExportRejectsNegativeLapNumber(t *testing.T) {
+	sessionRepo, frameStore := finishedExportSession(t, "session-1", exportFrames(10, 20), true)
+	handler := sessionExportTestHandler(t, config.Config{Addr: ":0", Env: "test", EnableSessionExport: true}, sessionRepo, frameStore)
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/sessions/session-1/export/trackbuilder?lapNumber=-1", nil))
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d with body %s", http.StatusBadRequest, recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), "lapNumber must be zero or greater") {
+		t.Fatalf("expected invalid lap number rejection, got %s", recorder.Body.String())
+	}
+}
+
 func TestSessionExportRejectsNonMonotonicFrames(t *testing.T) {
-	sessionRepo, frameStore := finishedExportSession(t, "session-1", []telemetry.Frame{exportFrame(10), exportFrame(10)}, true)
+	sessionRepo, frameStore := finishedExportSession(t, "session-1", []telemetry.Frame{exportFrameAt(10, 1), exportFrameAt(10, 1)}, true)
 	handler := sessionExportTestHandler(t, config.Config{Addr: ":0", Env: "test", EnableSessionExport: true}, sessionRepo, frameStore)
 
 	recorder := httptest.NewRecorder()
@@ -171,6 +213,8 @@ func exportFrames(timestamps ...int64) []telemetry.Frame {
 	return frames
 }
 
-func exportFrame(timestamp int64) telemetry.Frame {
-	return telemetry.Frame{TimestampUnixMs: timestamp, SpeedMps: 58.33, RPM: 7100, Gear: 4, Throttle: 0.7, Brake: 0.2, Steering: -0.12, FuelLiters: 38.4, PositionX: 123.4, PositionY: 5.6, PositionZ: 789.1, LapNumber: 1, CurrentLapMs: 81234, IsOnTrack: true}
+func exportFrame(timestamp int64) telemetry.Frame { return exportFrameAt(timestamp, 1) }
+
+func exportFrameAt(timestamp int64, lapNumber int) telemetry.Frame {
+	return telemetry.Frame{TimestampUnixMs: timestamp, SpeedMps: 58.33, RPM: 7100, Gear: 4, Throttle: 0.7, Brake: 0.2, Steering: -0.12, FuelLiters: 38.4, PositionX: 123.4, PositionY: 5.6, PositionZ: 789.1, LapNumber: lapNumber, CurrentLapMs: 81234, IsOnTrack: true}
 }

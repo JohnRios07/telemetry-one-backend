@@ -43,7 +43,7 @@ func TestExporterIntegration_PreservesPersistedOrder(t *testing.T) {
 	}
 
 	exporter := sessionexport.Exporter{SessionReader: repo, FrameReader: store}
-	result, err := exporter.Export(ctx, created.ID)
+	result, err := exporter.Export(ctx, created.ID, nil)
 	if err != nil {
 		t.Fatalf("export: %v", err)
 	}
