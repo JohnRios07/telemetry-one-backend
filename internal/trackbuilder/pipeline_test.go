@@ -48,6 +48,9 @@ func TestBuildCuratedCatalogFromIngestBatch(t *testing.T) {
 	if report.CatalogLengthMeters != seedLayout.LengthMeters || report.DeltaMeters != report.GeneratedPathLengthMeters-report.CatalogLengthMeters {
 		t.Fatalf("unexpected catalog delta in report: %+v", report)
 	}
+	if report.SourceLocalChordWindowCount == 0 || report.SourceLocalChordWindowPoints != 4 {
+		t.Fatalf("expected local chord diagnostics in report: %+v", report)
+	}
 }
 
 func TestBuildResolvesTsukubaSeedLayout(t *testing.T) {
@@ -141,15 +144,40 @@ func TestSourceRoughnessMetricsSummarizeShortAndJaggedPaths(t *testing.T) {
 	})
 }
 
+func TestSourceChordExcessMetricsSummarizeLocalWindowedPaths(t *testing.T) {
+	t.Run("short inputs", func(t *testing.T) {
+		if count, ratioAvg, ratioP50, ratioP95, ratioMax, excessAvg, excessP50, excessP95, excessMax := sourceChordExcessMetrics(nil); count != 0 || !math.IsNaN(ratioAvg) || !math.IsNaN(ratioP50) || !math.IsNaN(ratioP95) || !math.IsNaN(ratioMax) || !math.IsNaN(excessAvg) || !math.IsNaN(excessP50) || !math.IsNaN(excessP95) || !math.IsNaN(excessMax) {
+			t.Fatalf("expected NaN metrics for empty input, got %d %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f", count, ratioAvg, ratioP50, ratioP95, ratioMax, excessAvg, excessP50, excessP95, excessMax)
+		}
+		if count, ratioAvg, ratioP50, ratioP95, ratioMax, excessAvg, excessP50, excessP95, excessMax := sourceChordExcessMetrics([]geometry.Point{{X: 1, Y: 2, Z: 3}, {X: 2, Y: 2, Z: 3}, {X: 3, Y: 2, Z: 3}}); count != 0 || !math.IsNaN(ratioAvg) || !math.IsNaN(ratioP50) || !math.IsNaN(ratioP95) || !math.IsNaN(ratioMax) || !math.IsNaN(excessAvg) || !math.IsNaN(excessP50) || !math.IsNaN(excessP95) || !math.IsNaN(excessMax) {
+			t.Fatalf("expected NaN metrics for insufficient input, got %d %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f", count, ratioAvg, ratioP50, ratioP95, ratioMax, excessAvg, excessP50, excessP95, excessMax)
+		}
+	})
+
+	t.Run("square path", func(t *testing.T) {
+		points := []geometry.Point{{X: 0, Y: 0, Z: 0}, {X: 10, Y: 0, Z: 0}, {X: 10, Y: 0, Z: 10}, {X: 0, Y: 0, Z: 10}, {X: 0, Y: 0, Z: 0}}
+		count, ratioAvg, ratioP50, ratioP95, ratioMax, excessAvg, excessP50, excessP95, excessMax := sourceChordExcessMetrics(points)
+		if count != 1 {
+			t.Fatalf("expected 1 local window, got %d", count)
+		}
+		if ratioAvg != 3 || ratioP50 != 3 || ratioP95 != 3 || ratioMax != 3 {
+			t.Fatalf("expected ratio 3 for square window, got avg=%.4f p50=%.4f p95=%.4f max=%.4f", ratioAvg, ratioP50, ratioP95, ratioMax)
+		}
+		if excessAvg != 20 || excessP50 != 20 || excessP95 != 20 || excessMax != 20 {
+			t.Fatalf("expected excess 20 for square window, got avg=%.4f p50=%.4f p95=%.4f max=%.4f", excessAvg, excessP50, excessP95, excessMax)
+		}
+	})
+}
+
 func TestBuildFiltersInvalidPointsAndIsDeterministic(t *testing.T) {
 	request := telemetry.IngestBatchRequest{
 		SessionID: "trackbuilder",
 		Frames: []telemetry.Frame{
 			validTelemetryFrame(1, 0, 0, 0),
 			validTelemetryFrame(2, 10, 0, 0),
-			validTelemetryFrame(3, math.NaN(), 1, 0),
-			validTelemetryFrame(4, 10, 10, 0),
-			validTelemetryFrame(5, 0, 10, 0),
+			validTelemetryFrame(3, math.NaN(), 0, 1),
+			validTelemetryFrame(4, 10, 0, 10),
+			validTelemetryFrame(5, 0, 0, 10),
 			validTelemetryFrame(6, 0, 0, 0),
 		},
 	}
@@ -182,6 +210,9 @@ func TestBuildFiltersInvalidPointsAndIsDeterministic(t *testing.T) {
 	}
 	if firstReport.SourceSegmentCount != secondReport.SourceSegmentCount || firstReport.SourceSegmentLengthMinMeters != secondReport.SourceSegmentLengthMinMeters || firstReport.SourceSegmentLengthP50Meters != secondReport.SourceSegmentLengthP50Meters || firstReport.SourceSegmentLengthP95Meters != secondReport.SourceSegmentLengthP95Meters || firstReport.SourceSegmentLengthMaxMeters != secondReport.SourceSegmentLengthMaxMeters || firstReport.SourceHeadingChangeDegrees != secondReport.SourceHeadingChangeDegrees || firstReport.SourceHeadingChangePerMeter != secondReport.SourceHeadingChangePerMeter {
 		t.Fatalf("expected identical roughness metrics, got %+v and %+v", firstReport, secondReport)
+	}
+	if firstReport.SourceLocalChordWindowPoints != secondReport.SourceLocalChordWindowPoints || firstReport.SourceLocalChordWindowCount != secondReport.SourceLocalChordWindowCount || firstReport.SourceLocalChordRatioAvg != secondReport.SourceLocalChordRatioAvg || firstReport.SourceLocalChordRatioP50 != secondReport.SourceLocalChordRatioP50 || firstReport.SourceLocalChordRatioP95 != secondReport.SourceLocalChordRatioP95 || firstReport.SourceLocalChordRatioMax != secondReport.SourceLocalChordRatioMax || firstReport.SourceLocalChordExcessAvg != secondReport.SourceLocalChordExcessAvg || firstReport.SourceLocalChordExcessP50 != secondReport.SourceLocalChordExcessP50 || firstReport.SourceLocalChordExcessP95 != secondReport.SourceLocalChordExcessP95 || firstReport.SourceLocalChordExcessMax != secondReport.SourceLocalChordExcessMax {
+		t.Fatalf("expected identical local chord metrics, got %+v and %+v", firstReport, secondReport)
 	}
 	if math.IsNaN(firstReport.MeanDeviationMeters) != math.IsNaN(secondReport.MeanDeviationMeters) || math.IsNaN(firstReport.MaxDeviationMeters) != math.IsNaN(secondReport.MaxDeviationMeters) {
 		t.Fatalf("expected identical deviation NaN state, got %+v and %+v", firstReport, secondReport)
@@ -263,9 +294,9 @@ func TestRDPAndResampleKeepAccumulatedMetersIncreasing(t *testing.T) {
 }
 
 func TestReportStringIncludesMetricsAndNAToDeviations(t *testing.T) {
-	report := Report{LayoutID: "layout", LayoutName: "Layout", SourcePointCount: 5, SourceSegmentCount: 4, SourceSegmentLengthMinMeters: 0.10, SourceSegmentLengthP50Meters: 1.20, SourceSegmentLengthP95Meters: 2.30, SourceSegmentLengthMaxMeters: 3.40, SourceHeadingChangeDegrees: 45.67, SourceHeadingChangePerMeter: 0.12, SourcePathLengthMeters: 120.12, SimplifiedPointCount: 3, SimplificationDroppedPoints: 2, GeneratedPointCount: 8, GeneratedPathLengthMeters: 123.45, CatalogLengthMeters: 120.00, DeltaMeters: 3.45, DeltaPct: 2.88, StartEndGapMeters: 1.23, MeanDeviationMeters: math.NaN(), MaxDeviationMeters: math.NaN()}
+	report := Report{LayoutID: "layout", LayoutName: "Layout", SourcePointCount: 5, SourceSegmentCount: 4, SourceSegmentLengthMinMeters: 0.10, SourceSegmentLengthP50Meters: 1.20, SourceSegmentLengthP95Meters: 2.30, SourceSegmentLengthMaxMeters: 3.40, SourceHeadingChangeDegrees: 45.67, SourceHeadingChangePerMeter: 0.12, SourceLocalChordWindowPoints: 4, SourceLocalChordWindowCount: 1, SourceLocalChordRatioAvg: 1.23, SourceLocalChordRatioP50: 1.20, SourceLocalChordRatioP95: 1.30, SourceLocalChordRatioMax: 1.40, SourceLocalChordExcessAvg: 0.56, SourceLocalChordExcessP50: 0.50, SourceLocalChordExcessP95: 0.70, SourceLocalChordExcessMax: 0.80, SourcePathLengthMeters: 120.12, SimplifiedPointCount: 3, SimplificationDroppedPoints: 2, GeneratedPointCount: 8, GeneratedPathLengthMeters: 123.45, CatalogLengthMeters: 120.00, DeltaMeters: 3.45, DeltaPct: 2.88, StartEndGapMeters: 1.23, MeanDeviationMeters: math.NaN(), MaxDeviationMeters: math.NaN()}
 	text := report.String()
-	for _, want := range []string{"layoutId:", "layoutName:", "source point count:", "source segment count:", "source segment length meters:", "source planar heading change (X/Z):", "source path length meters:", "simplified point count:", "simplification dropped points:", "generated point count:", "generated path length meters:", "catalogLengthMeters:", "deltaMeters:", "deltaPct:", "start-end gap:", "deviation vs catalog centerline: n/a"} {
+	for _, want := range []string{"layoutId:", "layoutName:", "source point count:", "source segment count:", "source segment length meters:", "source planar heading change (X/Z):", "source local chord excess (4-point windows):", "source path length meters:", "simplified point count:", "simplification dropped points:", "generated point count:", "generated path length meters:", "catalogLengthMeters:", "deltaMeters:", "deltaPct:", "start-end gap:", "deviation vs catalog centerline: n/a"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("expected %q in report %q", want, text)
 		}
@@ -298,7 +329,7 @@ func convertTestPoints(points []geometryPointForTest) []geometry.Point {
 }
 
 func testFramesLoop() []telemetry.Frame {
-	return []telemetry.Frame{{TimestampUnixMs: 1, PositionX: 0, PositionY: 0, PositionZ: 0, SpeedMps: 1, RPM: 1, LapNumber: 1, CurrentLapMs: 0, IsOnTrack: true}, {TimestampUnixMs: 2, PositionX: 10, PositionY: 0, PositionZ: 0, SpeedMps: 1, RPM: 1, LapNumber: 1, CurrentLapMs: 1, IsOnTrack: true}, {TimestampUnixMs: 3, PositionX: 10, PositionY: 10, PositionZ: 0, SpeedMps: 1, RPM: 1, LapNumber: 1, CurrentLapMs: 2, IsOnTrack: true}, {TimestampUnixMs: 4, PositionX: 0, PositionY: 10, PositionZ: 0, SpeedMps: 1, RPM: 1, LapNumber: 1, CurrentLapMs: 3, IsOnTrack: true}, {TimestampUnixMs: 5, PositionX: 0, PositionY: 0, PositionZ: 0, SpeedMps: 1, RPM: 1, LapNumber: 1, CurrentLapMs: 4, IsOnTrack: true}}
+	return []telemetry.Frame{{TimestampUnixMs: 1, PositionX: 0, PositionY: 0, PositionZ: 0, SpeedMps: 1, RPM: 1, LapNumber: 1, CurrentLapMs: 0, IsOnTrack: true}, {TimestampUnixMs: 2, PositionX: 10, PositionY: 0, PositionZ: 0, SpeedMps: 1, RPM: 1, LapNumber: 1, CurrentLapMs: 1, IsOnTrack: true}, {TimestampUnixMs: 3, PositionX: 10, PositionY: 0, PositionZ: 10, SpeedMps: 1, RPM: 1, LapNumber: 1, CurrentLapMs: 2, IsOnTrack: true}, {TimestampUnixMs: 4, PositionX: 0, PositionY: 0, PositionZ: 10, SpeedMps: 1, RPM: 1, LapNumber: 1, CurrentLapMs: 3, IsOnTrack: true}, {TimestampUnixMs: 5, PositionX: 0, PositionY: 0, PositionZ: 0, SpeedMps: 1, RPM: 1, LapNumber: 1, CurrentLapMs: 4, IsOnTrack: true}}
 }
 
 func validTelemetryFrame(timestamp int64, x, y, z float64) telemetry.Frame {

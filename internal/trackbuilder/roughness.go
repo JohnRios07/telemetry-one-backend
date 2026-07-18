@@ -8,6 +8,7 @@ import (
 )
 
 const planarLengthEpsilon = 1e-9
+const sourceChordExcessWindowPoints = 4
 
 func sourceRoughnessMetrics(points []geometry.Point) (segmentCount int, minMeters, p50Meters, p95Meters, maxMeters, totalHeadingChangeDegrees, headingChangeDegreesPerMeter float64) {
 	if len(points) < 2 {
@@ -40,6 +41,45 @@ func sourceRoughnessMetrics(points []geometry.Point) (segmentCount int, minMeter
 	}
 
 	return segmentCount, minMeters, p50Meters, p95Meters, maxMeters, totalHeadingChangeDegrees, headingChangeDegreesPerMeter
+}
+
+func sourceChordExcessMetrics(points []geometry.Point) (windowCount int, ratioAvg, ratioP50, ratioP95, ratioMax, excessAvg, excessP50, excessP95, excessMax float64) {
+	if len(points) < sourceChordExcessWindowPoints {
+		return 0, math.NaN(), math.NaN(), math.NaN(), math.NaN(), math.NaN(), math.NaN(), math.NaN(), math.NaN()
+	}
+
+	analysis := points
+	if len(analysis) > 2 && samePoint(analysis[0], analysis[len(analysis)-1]) {
+		analysis = analysis[:len(analysis)-1]
+	}
+	if len(analysis) < sourceChordExcessWindowPoints {
+		return 0, math.NaN(), math.NaN(), math.NaN(), math.NaN(), math.NaN(), math.NaN(), math.NaN(), math.NaN()
+	}
+
+	ratios := make([]float64, 0, len(analysis)-sourceChordExcessWindowPoints+1)
+	excesses := make([]float64, 0, len(analysis)-sourceChordExcessWindowPoints+1)
+	for i := 0; i+sourceChordExcessWindowPoints <= len(analysis); i++ {
+		pathMeters, chordMeters, ok := planarWindowPathAndChord(analysis[i : i+sourceChordExcessWindowPoints])
+		if !ok {
+			continue
+		}
+		ratio := pathMeters / chordMeters
+		if !isFinite(ratio) {
+			continue
+		}
+		ratios = append(ratios, ratio)
+		excesses = append(excesses, pathMeters-chordMeters)
+	}
+
+	if len(ratios) == 0 {
+		return 0, math.NaN(), math.NaN(), math.NaN(), math.NaN(), math.NaN(), math.NaN(), math.NaN(), math.NaN()
+	}
+
+	windowCount = len(ratios)
+	ratioAvg, ratioP50, ratioP95, ratioMax = summarizeWindowSeries(ratios)
+	excessAvg, excessP50, excessP95, excessMax = summarizeWindowSeries(excesses)
+
+	return windowCount, ratioAvg, ratioP50, ratioP95, ratioMax, excessAvg, excessP50, excessP95, excessMax
 }
 
 func percentileSorted(values []float64, pct float64) float64 {
@@ -123,4 +163,42 @@ func angleBetween(a geometry.Point, b geometry.Point) (float64, bool) {
 	cross := a.X*b.Z - a.Z*b.X
 
 	return math.Atan2(math.Abs(cross), dot), true
+}
+
+func planarWindowPathAndChord(points []geometry.Point) (pathMeters, chordMeters float64, ok bool) {
+	if len(points) < 2 {
+		return 0, 0, false
+	}
+
+	for i := 0; i < len(points)-1; i++ {
+		segment := planarDistanceBetween(points[i], points[i+1])
+		if !isFinite(segment) || segment <= planarLengthEpsilon {
+			return 0, 0, false
+		}
+		pathMeters += segment
+	}
+	chordMeters = planarDistanceBetween(points[0], points[len(points)-1])
+	if !isFinite(pathMeters) || !isFinite(chordMeters) || chordMeters <= planarLengthEpsilon {
+		return 0, 0, false
+	}
+
+	return pathMeters, chordMeters, true
+}
+
+func planarDistanceBetween(a geometry.Point, b geometry.Point) float64 {
+	return math.Hypot(b.X-a.X, b.Z-a.Z)
+}
+
+func summarizeWindowSeries(values []float64) (avg, p50, p95, max float64) {
+	if len(values) == 0 {
+		return math.NaN(), math.NaN(), math.NaN(), math.NaN()
+	}
+
+	avg, _, max, _ = summarizeFloatSeries(values)
+	sorted := append([]float64(nil), values...)
+	sort.Float64s(sorted)
+	p50 = percentileSorted(sorted, 0.50)
+	p95 = percentileSorted(sorted, 0.95)
+
+	return avg, p50, p95, max
 }

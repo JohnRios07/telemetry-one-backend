@@ -37,6 +37,7 @@ func Build(request telemetry.IngestBatchRequest, opts Options, seed tracks.Catal
 	}
 	sourcePathLengthMeters := polylineLength(cleaned, false)
 	sourceSegmentCount, sourceSegmentMinMeters, sourceSegmentP50Meters, sourceSegmentP95Meters, sourceSegmentMaxMeters, sourceHeadingChangeDegrees, sourceHeadingChangePerMeter := sourceRoughnessMetrics(cleaned)
+	sourceLocalChordWindowCount, sourceLocalChordRatioAvg, sourceLocalChordRatioP50, sourceLocalChordRatioP95, sourceLocalChordRatioMax, sourceLocalChordExcessAvg, sourceLocalChordExcessP50, sourceLocalChordExcessP95, sourceLocalChordExcessMax := sourceChordExcessMetrics(cleaned)
 
 	closed := isClosedLoop(cleaned)
 	smoothed, err := smoothPoints(cleaned, opts.SmoothingWindow, closed)
@@ -105,6 +106,16 @@ func Build(request telemetry.IngestBatchRequest, opts Options, seed tracks.Catal
 		SourceSegmentLengthMaxMeters: sourceSegmentMaxMeters,
 		SourceHeadingChangeDegrees:   sourceHeadingChangeDegrees,
 		SourceHeadingChangePerMeter:  sourceHeadingChangePerMeter,
+		SourceLocalChordWindowPoints: sourceChordExcessWindowPoints,
+		SourceLocalChordWindowCount:  sourceLocalChordWindowCount,
+		SourceLocalChordRatioAvg:     sourceLocalChordRatioAvg,
+		SourceLocalChordRatioP50:     sourceLocalChordRatioP50,
+		SourceLocalChordRatioP95:     sourceLocalChordRatioP95,
+		SourceLocalChordRatioMax:     sourceLocalChordRatioMax,
+		SourceLocalChordExcessAvg:    sourceLocalChordExcessAvg,
+		SourceLocalChordExcessP50:    sourceLocalChordExcessP50,
+		SourceLocalChordExcessP95:    sourceLocalChordExcessP95,
+		SourceLocalChordExcessMax:    sourceLocalChordExcessMax,
 		SourcePathLengthMeters:       sourcePathLengthMeters,
 		SimplifiedPointCount:         len(simplified),
 		SimplificationDroppedPoints:  len(cleaned) - len(simplified),

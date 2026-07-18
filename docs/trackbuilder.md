@@ -32,6 +32,7 @@ The CLI writes a separate human-readable closing report to `stderr` with:
 - source segment count after filtering duplicate coordinates
 - source segment length summary (min/p50/p95/max)
 - source planar heading change in X/Z total and per meter
+- source local chord excess on 4-point windows: path/chord ratio and excess meters, summarized as avg/p50/p95/max
 - source path length in meters before simplification and resampling
 - simplified point count after RDP simplification
 - simplification dropped points versus the cleaned source
@@ -52,6 +53,7 @@ source point count: 182
 source segment count: 181
 source segment length meters: min 0.83m p50 6.41m p95 18.52m max 42.10m
 source planar heading change (X/Z): 1428.44deg total, 1.1570deg/m
+source local chord excess (4-point windows): ratio avg 1.0184 p50 1.0102 p95 1.0571 max 1.1243; excess meters avg 0.42m p50 0.18m p95 1.07m max 2.18m
 source path length meters: 1234.56m
 simplified point count: 96
 simplification dropped points: 86
@@ -66,7 +68,7 @@ deviation vs catalog centerline: mean 1.12m max 4.57m
 
 The key distinction is that `source path length meters` measures the usable telemetry polyline before simplification/resampling, while `generated path length meters` measures the final centerline written into the curated catalog. `catalogLengthMeters` remains the official seed-layout value. They are intentionally reported separately so length mismatch diagnostics are not confused with the catalog schema field.
 
-The new source roughness metrics are report-only diagnostics. They are meant to surface telemetry zigzags and short noisy segments without changing the generated catalog geometry. Heading change is measured in the plan view (X/Z) so vertical-only motion does not inflate the diagnostic.
+The new source roughness metrics are report-only diagnostics. They are meant to surface telemetry zigzags and short noisy segments without changing the generated catalog geometry. Heading change and local chord excess are measured in the plan view (X/Z) so vertical-only motion does not inflate the diagnostics. The local chord ratio is a heuristic: higher values can mean tight curvature or noisy micro-zigzags, but it does not prove bad telemetry on its own.
 
 ## Promotion Caveat
 
