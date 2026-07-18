@@ -73,6 +73,16 @@ func routesWithLapRepository(cfg config.Config, logger *slog.Logger, frameStore 
 	return routesWithLapAndSampleRepositories(cfg, logger, frameStore, catalog, eventStore, lapRepo, sampleRepo, sessionRepo)
 }
 
+func registerSessionRoutes(mux *http.ServeMux, cfg config.Config, frameStore telemetry.Store, catalog tracks.Catalog, eventStore events.Repository, sessionRepo sessions.Repository) {
+	mux.HandleFunc("POST /api/v1/sessions", createSessionHandler(sessionRepo, catalog))
+	mux.HandleFunc("GET /api/v1/sessions/{sessionId}", getSessionHandler(sessionRepo, frameStore, eventStore, catalog))
+	mux.HandleFunc("PUT /api/v1/sessions/{sessionId}/track-layout", sessionTrackLayoutHandler(sessionRepo, catalog, frameStore, eventStore))
+	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/finish", finishSessionHandler(sessionRepo, frameStore, eventStore, catalog))
+	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/track", detectTrackHandler(frameStore, catalog, sessionRepo))
+	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/events", listEventsHandler(eventStore, sessionRepo))
+	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/export/trackbuilder", sessionExportHandler(cfg, sessionexport.Exporter{SessionReader: sessionRepo, FrameReader: frameStore}))
+}
+
 func routesWithLapAndSampleRepositories(cfg config.Config, logger *slog.Logger, frameStore telemetry.Store, catalog tracks.Catalog, eventStore events.Repository, lapRepo laps.Repository, sampleRepo laps.SampleRepository, sessionRepo sessions.Repository) http.Handler {
 	rejectionStore := telemetry.NewMemoryRejectionSummaryStore()
 	mux := http.NewServeMux()
@@ -80,18 +90,12 @@ func routesWithLapAndSampleRepositories(cfg config.Config, logger *slog.Logger, 
 	mux.HandleFunc("GET /api/v1/health", healthHandler(cfg))
 	mux.HandleFunc("GET /api/v1/settings/bootstrap", settingsBootstrapHandler(cfg))
 	mux.HandleFunc("GET /api/v1/catalog/track-layouts", catalogTrackLayoutsHandler(catalog))
-	mux.HandleFunc("POST /api/v1/sessions", createSessionHandler(sessionRepo, catalog))
-	mux.HandleFunc("GET /api/v1/sessions/{sessionId}", getSessionHandler(sessionRepo, frameStore, eventStore, catalog))
-	mux.HandleFunc("PUT /api/v1/sessions/{sessionId}/track-layout", sessionTrackLayoutHandler(sessionRepo, catalog, frameStore, eventStore))
-	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/finish", finishSessionHandler(sessionRepo, frameStore, eventStore, catalog))
+	registerSessionRoutes(mux, cfg, frameStore, catalog, eventStore, sessionRepo)
 	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/frames", ingestFramesHandler(frameStore, eventStore, lapRepo, sampleRepo, sessionRepo, catalog, logger, rejectionStore))
-	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/track", detectTrackHandler(frameStore, catalog, sessionRepo))
-	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/events", listEventsHandler(eventStore, sessionRepo))
 
 	summaryRepo := sessions.NewMemorySummaryRepository(sessionRepo, frameStore, eventStore, rejectionStore)
 	mux.HandleFunc("GET /api/v1/sessions", listSessionsHandler(summaryRepo))
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/summary", sessionSummaryHandler(summaryRepo))
-	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/export/trackbuilder", sessionExportHandler(cfg, sessionexport.Exporter{SessionReader: sessionRepo, FrameReader: frameStore}))
 
 	return loggingMiddleware(logger, mux)
 }
@@ -701,13 +705,8 @@ func routesWithAIAndSessionsAndLaps(cfg config.Config, logger *slog.Logger, fram
 	mux.HandleFunc("GET /api/v1/health", healthHandler(cfg))
 	mux.HandleFunc("GET /api/v1/settings/bootstrap", settingsBootstrapHandler(cfg))
 	mux.HandleFunc("GET /api/v1/catalog/track-layouts", catalogTrackLayoutsHandler(catalog))
-	mux.HandleFunc("POST /api/v1/sessions", createSessionHandler(sessionRepo, catalog))
-	mux.HandleFunc("GET /api/v1/sessions/{sessionId}", getSessionHandler(sessionRepo, frameStore, eventStore, catalog))
-	mux.HandleFunc("PUT /api/v1/sessions/{sessionId}/track-layout", sessionTrackLayoutHandler(sessionRepo, catalog, frameStore, eventStore))
-	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/finish", finishSessionHandler(sessionRepo, frameStore, eventStore, catalog))
+	registerSessionRoutes(mux, cfg, frameStore, catalog, eventStore, sessionRepo)
 	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/frames", ingestFramesHandler(frameStore, eventStore, lapRepo, sampleRepo, sessionRepo, catalog, logger, rejectionStore))
-	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/track", detectTrackHandler(frameStore, catalog, sessionRepo))
-	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/events", listEventsHandler(eventStore, sessionRepo))
 	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/analyze", analyzeHandler(aiSvc, sessionRepo))
 	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/race-engineer/advice", raceEngineerAdviceHandler(aiSvc, eventStore, sessionRepo, frameStore, catalog))
 	mux.Handle("GET /api/v1/admin/ingest-stats", adminAuthMiddleware(cfg, ingestStatsHandler(statsRepo)))
