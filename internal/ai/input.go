@@ -15,8 +15,10 @@ var (
 	ErrUnsupportedContract     = errors.New("ai input contractVersion is not supported")
 	ErrMissingSessionContext   = errors.New("ai input session context is required")
 	ErrMissingSessionID        = errors.New("ai input sessionId is required")
-	ErrMissingEvents           = errors.New("ai input must contain at least one engineer event")
+	ErrMissingEvents           = errors.New("ai input must contain at least one engineer event or derived signal")
 	ErrInvalidEvent            = errors.New("ai input contains invalid engineer event")
+	ErrMissingSignalKind       = errors.New("ai input signal kind is required")
+	ErrMissingSignalSummary    = errors.New("ai input signal summary is required")
 	ErrRawTelemetryField       = errors.New("ai input must not contain raw telemetry fields")
 	ErrMissingRedactionPolicy  = errors.New("ai input redaction policy is required")
 	ErrMissingAllowedInputKind = errors.New("ai input allowedInputKinds is required")
@@ -28,6 +30,7 @@ const (
 
 	AllowedInputEngineerEvents = "engineer_events"
 	AllowedInputDerivedMetrics = "derived_metrics"
+	AllowedInputDerivedSignals  = "derived_signals"
 	AllowedInputCatalogRefs    = "catalog_refs"
 	AllowedInputSessionContext = "session_context"
 	UnknownStateExplicit       = "unknown_states_explicit"
@@ -37,6 +40,7 @@ type ConsumerInput struct {
 	ContractVersion string          `json:"contractVersion"`
 	Session         SessionContext  `json:"session"`
 	Events          []EventEnvelope `json:"events"`
+	Signals         []Signal        `json:"signals,omitempty"`
 	Safety          SafetyMetadata  `json:"safety"`
 	Constraints     []string        `json:"constraints,omitempty"`
 }
@@ -49,6 +53,13 @@ type SessionContext struct {
 
 type EventEnvelope struct {
 	Event events.EngineerEvent `json:"event"`
+}
+
+type Signal struct {
+	Kind     string           `json:"kind"`
+	Severity events.Severity  `json:"severity"`
+	Summary  string           `json:"summary"`
+	Details  []string         `json:"details,omitempty"`
 }
 
 type SafetyMetadata struct {
@@ -87,12 +98,17 @@ func (i ConsumerInput) Validate() error {
 	if err := i.Session.Validate(); err != nil {
 		return err
 	}
-	if len(i.Events) == 0 {
+	if len(i.Events) == 0 && len(i.Signals) == 0 {
 		return ErrMissingEvents
 	}
 	for index, envelope := range i.Events {
 		if err := envelope.Event.Validate(); err != nil {
 			return fmt.Errorf("%w at events[%d]: %v", ErrInvalidEvent, index, err)
+		}
+	}
+	for index, signal := range i.Signals {
+		if err := signal.Validate(); err != nil {
+			return fmt.Errorf("%w at signals[%d]: %v", ErrInvalidEvent, index, err)
 		}
 	}
 	if err := i.Safety.Validate(); err != nil {
@@ -132,9 +148,22 @@ func (s SafetyMetadata) Validate() error {
 	return nil
 }
 
+func (s Signal) Validate() error {
+	if s.Kind == "" {
+		return ErrMissingSignalKind
+	}
+	if s.Summary == "" {
+		return ErrMissingSignalSummary
+	}
+	if s.Severity != "" && s.Severity != events.SeverityLow && s.Severity != events.SeverityMedium && s.Severity != events.SeverityHigh {
+		return events.ErrUnsupportedSeverity
+	}
+	return nil
+}
+
 func allowedInputKind(kind string) bool {
 	switch kind {
-	case AllowedInputEngineerEvents, AllowedInputDerivedMetrics, AllowedInputCatalogRefs, AllowedInputSessionContext, UnknownStateExplicit:
+	case AllowedInputEngineerEvents, AllowedInputDerivedMetrics, AllowedInputDerivedSignals, AllowedInputCatalogRefs, AllowedInputSessionContext, UnknownStateExplicit:
 		return true
 	default:
 		return false

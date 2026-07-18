@@ -49,6 +49,7 @@ func (s *Service) Analyze(ctx context.Context, req GatewayRequest) (GatewayRespo
 	prompts := s.builder.Build(req)
 
 	promptCharCount := len(prompts.SystemPrompt) + len(prompts.UserPrompt)
+	analysisItemCount := len(req.Input.Events) + len(req.Input.Signals)
 	providerReq := ProviderRequest{
 		Model: s.model,
 		Messages: []Message{
@@ -59,7 +60,7 @@ func (s *Service) Analyze(ctx context.Context, req GatewayRequest) (GatewayRespo
 		MaxTokens:   s.controller.Budget.MaxCompletionTokens,
 	}
 
-	resp, err := s.controller.Execute(ctx, req.Input.Session.SessionID, req.Mode, promptCharCount, len(req.Input.Events), providerReq, s.adapter)
+	resp, err := s.controller.Execute(ctx, req.Input.Session.SessionID, req.Mode, promptCharCount, analysisItemCount, providerReq, s.adapter)
 	if err != nil {
 		return GatewayResponse{}, err
 	}
@@ -67,6 +68,7 @@ func (s *Service) Analyze(ctx context.Context, req GatewayRequest) (GatewayRespo
 	return GatewayResponse{
 		Summary:          resp.Content,
 		ReferencedEvents: extractEventIDs(req.Input.Events),
+		Signals:          req.Input.Signals,
 		ProviderInfo: ProviderResultInfo{
 			Model:        resp.Model,
 			FinishReason: resp.FinishReason,

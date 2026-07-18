@@ -708,7 +708,7 @@ func routesWithAIAndSessionsAndLaps(cfg config.Config, logger *slog.Logger, fram
 	registerSessionRoutes(mux, cfg, frameStore, catalog, eventStore, sessionRepo)
 	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/frames", ingestFramesHandler(frameStore, eventStore, lapRepo, sampleRepo, sessionRepo, catalog, logger, rejectionStore))
 	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/analyze", analyzeHandler(aiSvc, sessionRepo))
-	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/race-engineer/advice", raceEngineerAdviceHandler(aiSvc, eventStore, sessionRepo, frameStore, catalog))
+	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/race-engineer/advice", raceEngineerAdviceHandler(aiSvc, eventStore, lapRepo, sessionRepo, frameStore, catalog))
 	mux.Handle("GET /api/v1/admin/ingest-stats", adminAuthMiddleware(cfg, ingestStatsHandler(statsRepo)))
 	mux.HandleFunc("GET /api/v1/sessions", listSessionsHandler(summaryRepo))
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/summary", sessionSummaryHandler(summaryRepo))

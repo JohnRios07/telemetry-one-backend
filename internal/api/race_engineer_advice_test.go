@@ -16,6 +16,7 @@ import (
 	"telemetry-one-backend/internal/ai"
 	"telemetry-one-backend/internal/config"
 	"telemetry-one-backend/internal/events"
+	"telemetry-one-backend/internal/laps"
 	"telemetry-one-backend/internal/sessions"
 	"telemetry-one-backend/internal/telemetry"
 	"telemetry-one-backend/internal/tracks"
@@ -138,6 +139,54 @@ func TestRaceEngineerAdviceNoEventsSkipsProvider(t *testing.T) {
 	}
 	if len(response.ReferencedEvents) != 0 || response.Window.ProviderCalled || response.Window.SelectedEventCount != 0 {
 		t.Fatalf("unexpected no-events metadata: %+v", response)
+	}
+}
+
+func TestRaceEngineerAdviceUsesDerivedSignalsWithoutGeometry(t *testing.T) {
+	eventStore := events.NewStore(100, events.DedupOptions{})
+	lapRepo := laps.NewMemoryRepository()
+	ctx := context.Background()
+	if err := lapRepo.UpsertCompleted(ctx, []laps.CompletedLap{
+		{SessionID: "session-signal", LapNumber: 1, LapTimeMs: 92100, CompletedAtUnixMs: 1720656000000, TelemetryGapCount: 0},
+		{SessionID: "session-signal", LapNumber: 2, LapTimeMs: 97800, CompletedAtUnixMs: 1720656060000, TelemetryGapCount: 2},
+		{SessionID: "session-signal", LapNumber: 3, LapTimeMs: 100400, CompletedAtUnixMs: 1720656120000, TelemetryGapCount: 1},
+	}); err != nil {
+		t.Fatalf("seed completed laps: %v", err)
+	}
+	aiSvc := &spyAdviceAIService{}
+	cfg := config.Config{Addr: ":0", Env: "test"}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	frameStore := telemetry.NewFrameStore(100)
+	catalog := tracks.OfficialGT7SeedCatalog()
+	sessionRepo := sessions.NewMemoryRepository()
+	seedTestSession(t, sessionRepo, "session-signal")
+	statsRepo := admin.NewMemoryStatsRepo(sessionRepo, frameStore)
+	summaryRepo := sessions.NewMemorySummaryRepository(sessionRepo, frameStore, eventStore)
+	handler := routesWithAIAndSessionsAndLaps(cfg, logger, frameStore, catalog, eventStore, lapRepo, lapRepo, sessionRepo, aiSvc, statsRepo, summaryRepo)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/session-signal/race-engineer/advice", strings.NewReader(`{}`))
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d body %s", http.StatusOK, recorder.Code, recorder.Body.String())
+	}
+	if aiSvc.calls != 1 {
+		t.Fatalf("expected AI service called once for derived signals, got %d", aiSvc.calls)
+	}
+	if len(aiSvc.captured.Input.Events) != 0 || len(aiSvc.captured.Input.Signals) == 0 {
+		t.Fatalf("expected signals-only AI input, got events=%d signals=%d", len(aiSvc.captured.Input.Events), len(aiSvc.captured.Input.Signals))
+	}
+	if !gatewayRequestContainsSignal(aiSvc.captured, "lap_pace_regression") || !gatewayRequestContainsSignal(aiSvc.captured, "telemetry_gap_warning") {
+		t.Fatalf("expected lap pace and telemetry gap signals in AI input, got %+v", aiSvc.captured.Input.Signals)
+	}
+	var response raceEngineerAdviceResponse
+	decodeAdviceResponse(t, recorder, &response)
+	if response.Status != ai.StatusSuccess || response.Window.ProviderCalled != true || response.Window.DerivedSignalCount == 0 {
+		t.Fatalf("expected successful advice with derived signals, got %+v", response)
+	}
+	if len(response.Signals) == 0 {
+		t.Fatalf("expected derived signals in response, got %+v", response)
 	}
 }
 
@@ -635,6 +684,15 @@ func referencedEventIDsFromGateway(req ai.GatewayRequest) []string {
 func gatewayRequestContainsEvent(req ai.GatewayRequest, eventID string) bool {
 	for _, envelope := range req.Input.Events {
 		if envelope.Event.EventID == eventID {
+			return true
+		}
+	}
+	return false
+}
+
+func gatewayRequestContainsSignal(req ai.GatewayRequest, kind string) bool {
+	for _, signal := range req.Input.Signals {
+		if signal.Kind == kind {
 			return true
 		}
 	}

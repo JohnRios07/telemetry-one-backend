@@ -55,6 +55,16 @@ func TestGatewayRequestValidateRejectsNoEvents(t *testing.T) {
 	}
 }
 
+func TestGatewayRequestValidateAcceptsSignalsOnly(t *testing.T) {
+	req := validGatewayRequest(t, GatewayModeEngineer)
+	req.Input.Events = nil
+	req.Input.Signals = []Signal{{Kind: "telemetry_gap_warning", Severity: events.SeverityLow, Summary: "Telemetry gaps were recorded on 2 completed laps."}}
+
+	if err := req.Validate(); err != nil {
+		t.Fatalf("expected gateway request with derived signals to validate, got %v", err)
+	}
+}
+
 func TestGatewayRequestRejectsRawTelemetryViaConsumerInput(t *testing.T) {
 	req := validGatewayRequest(t, GatewayModeEngineer)
 	req.Input.Events[0].Event.Metrics = []events.MetricEvidence{
@@ -205,5 +215,4 @@ func marshalGatewayRequest(t *testing.T, req GatewayRequest) []byte {
 
 	return payload
 }
-
 

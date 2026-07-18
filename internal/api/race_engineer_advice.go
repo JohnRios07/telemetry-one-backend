@@ -10,6 +10,7 @@ import (
 
 	"telemetry-one-backend/internal/ai"
 	"telemetry-one-backend/internal/events"
+	"telemetry-one-backend/internal/laps"
 	"telemetry-one-backend/internal/platform/httperror"
 	"telemetry-one-backend/internal/sessions"
 	"telemetry-one-backend/internal/telemetry"
@@ -34,6 +35,7 @@ type raceEngineerAdviceResponse struct {
 	Status            string                   `json:"status"`
 	Message           string                   `json:"message"`
 	ReferencedEvents  []string                 `json:"referencedEvents"`
+	Signals           []ai.Signal              `json:"signals,omitempty"`
 	Window            raceEngineerAdviceWindow `json:"window"`
 	ProviderInfo      ai.ProviderResultInfo    `json:"providerInfo"`
 	GeneratedAtUnixMs int64                    `json:"generatedAtUnixMs"`
@@ -43,12 +45,13 @@ type raceEngineerAdviceWindow struct {
 	SinceUnixMs        *int64 `json:"sinceUnixMs"`
 	MaxEvents          int    `json:"maxEvents"`
 	SelectedEventCount int    `json:"selectedEventCount"`
+	DerivedSignalCount int    `json:"derivedSignalCount"`
 	FromUnixMs         int64  `json:"fromUnixMs"`
 	ToUnixMs           int64  `json:"toUnixMs"`
 	ProviderCalled     bool   `json:"providerCalled"`
 }
 
-func raceEngineerAdviceHandler(aiSvc ai.AIService, eventStore events.Repository, sessionRepo sessions.Repository, frameStore telemetry.Store, catalog tracks.Catalog) http.HandlerFunc {
+func raceEngineerAdviceHandler(aiSvc ai.AIService, eventStore events.Repository, lapRepo laps.Repository, sessionRepo sessions.Repository, frameStore telemetry.Store, catalog tracks.Catalog) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sessionID := r.PathValue("sessionId")
 		session, err := validateSession(r.Context(), sessionRepo, sessionID, false)
@@ -75,16 +78,19 @@ func raceEngineerAdviceHandler(aiSvc ai.AIService, eventStore events.Repository,
 			return
 		}
 
+		completedLaps := listRaceEngineerAdviceCompletedLaps(r.Context(), lapRepo, sessionID)
+		derivedSignals := buildRaceEngineerAdviceSignals(storedEvents, completedLaps)
 		selectedEvents := selectRaceEngineerAdviceEvents(storedEvents, request.SinceUnixMs, maxEvents)
-		window := buildRaceEngineerAdviceWindow(request.SinceUnixMs, maxEvents, selectedEvents, false)
+		window := buildRaceEngineerAdviceWindow(request.SinceUnixMs, maxEvents, selectedEvents, len(derivedSignals), false)
 		generatedAt := time.Now().UTC().UnixMilli()
 
-		if len(selectedEvents) == 0 {
+		if len(selectedEvents) == 0 && len(derivedSignals) == 0 {
 			writeVersionedJSON(w, http.StatusOK, raceEngineerAdviceResponse{
 				SessionID:         sessionID,
 				Status:            raceEngineerAdviceStatusNoEvents,
 				Message:           raceEngineerNoEventsMessage,
 				ReferencedEvents:  []string{},
+				Signals:           []ai.Signal{},
 				Window:            window,
 				ProviderInfo:      ai.ProviderResultInfo{},
 				GeneratedAtUnixMs: generatedAt,
@@ -92,7 +98,7 @@ func raceEngineerAdviceHandler(aiSvc ai.AIService, eventStore events.Repository,
 			return
 		}
 
-		gatewayReq := buildRaceEngineerAdviceGatewayRequest(r.Context(), session, selectedEvents, frameStore, catalog)
+		gatewayReq := buildRaceEngineerAdviceGatewayRequest(r.Context(), session, selectedEvents, frameStore, catalog, derivedSignals...)
 		gatewayResp, err := aiSvc.Analyze(r.Context(), gatewayReq)
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, httperror.Envelope(httperror.BadRequest(err.Error())))
@@ -110,6 +116,7 @@ func raceEngineerAdviceHandler(aiSvc ai.AIService, eventStore events.Repository,
 			Status:            status,
 			Message:           gatewayResp.Summary,
 			ReferencedEvents:  referencedEventIDs(selectedEvents),
+			Signals:           derivedSignals,
 			Window:            window,
 			ProviderInfo:      gatewayResp.ProviderInfo,
 			GeneratedAtUnixMs: generatedAt,
@@ -164,11 +171,12 @@ func selectRaceEngineerAdviceEvents(storedEvents []events.EngineerEvent, sinceUn
 	return matching
 }
 
-func buildRaceEngineerAdviceWindow(sinceUnixMs *int64, maxEvents int, selectedEvents []events.EngineerEvent, providerCalled bool) raceEngineerAdviceWindow {
+func buildRaceEngineerAdviceWindow(sinceUnixMs *int64, maxEvents int, selectedEvents []events.EngineerEvent, derivedSignalCount int, providerCalled bool) raceEngineerAdviceWindow {
 	window := raceEngineerAdviceWindow{
 		SinceUnixMs:        sinceUnixMs,
 		MaxEvents:          maxEvents,
 		SelectedEventCount: len(selectedEvents),
+		DerivedSignalCount: derivedSignalCount,
 		ProviderCalled:     providerCalled,
 	}
 	if len(selectedEvents) == 0 {
@@ -187,7 +195,7 @@ func buildRaceEngineerAdviceWindow(sinceUnixMs *int64, maxEvents int, selectedEv
 	return window
 }
 
-func buildRaceEngineerAdviceGatewayRequest(ctx context.Context, session sessions.Session, selectedEvents []events.EngineerEvent, frameStore telemetry.Store, catalog tracks.Catalog) ai.GatewayRequest {
+func buildRaceEngineerAdviceGatewayRequest(ctx context.Context, session sessions.Session, selectedEvents []events.EngineerEvent, frameStore telemetry.Store, catalog tracks.Catalog, derivedSignals ...ai.Signal) ai.GatewayRequest {
 	inputEvents := make([]ai.EventEnvelope, len(selectedEvents))
 	for i, event := range selectedEvents {
 		inputEvents[i] = ai.EventEnvelope{Event: event}
@@ -218,20 +226,22 @@ func buildRaceEngineerAdviceGatewayRequest(ctx context.Context, session sessions
 				SessionID: session.ID,
 				Track:     track,
 				Layout:    layout,
-			},
-			Events: inputEvents,
+				},
+				Events: inputEvents,
+				Signals: derivedSignals,
 			Safety: ai.SafetyMetadata{
-				RedactionPolicy: "structured engineer events and derived metrics only; raw telemetry frames, provider keys, prompts, and model configuration are not accepted from clients",
+				RedactionPolicy: "structured engineer events, derived metrics, and derived signals only; raw telemetry frames, provider keys, prompts, and model configuration are not accepted from clients",
 				AllowedInputKinds: []string{
 					ai.AllowedInputEngineerEvents,
 					ai.AllowedInputDerivedMetrics,
+					ai.AllowedInputDerivedSignals,
 					ai.AllowedInputCatalogRefs,
 					ai.AllowedInputSessionContext,
 					ai.UnknownStateExplicit,
 				},
 			},
 			Constraints: []string{
-				"Base advice only on the selected stored engineer events and their derived metric evidence.",
+				"Base advice only on the selected stored engineer events plus backend-derived signals and their supporting evidence.",
 				"Do not infer raw telemetry values or use client-supplied prompts, provider names, model names, or API keys.",
 				"Keep advice concise and actionable for a live race engineer text response.",
 			},
