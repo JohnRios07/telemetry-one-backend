@@ -51,14 +51,13 @@ jobs:
           TELEMETRY_ONE_OPENROUTER_API_KEY: ${{ secrets.TELEMETRY_ONE_OPENROUTER_API_KEY }}
           TELEMETRY_ONE_AI_PROVIDER: ${{ vars.TELEMETRY_ONE_AI_PROVIDER }}
           TELEMETRY_ONE_AI_MODEL: ${{ vars.TELEMETRY_ONE_AI_MODEL }}
-          TELEMETRY_ONE_ENABLE_SESSION_EXPORT: ${{ vars.TELEMETRY_ONE_ENABLE_SESSION_EXPORT }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           port: ${{ secrets.VPS_PORT || '22' }}
           key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
           # Pass GITHUB_TOKEN to remote so docker login can authenticate to GHCR
-          envs: GITHUB_TOKEN,GITHUB_ACTOR,VPS_POSTGRES_PASSWORD,TELEMETRY_ONE_OPENROUTER_API_KEY,TELEMETRY_ONE_AI_PROVIDER,TELEMETRY_ONE_AI_MODEL,TELEMETRY_ONE_ENABLE_SESSION_EXPORT
+          envs: GITHUB_TOKEN,GITHUB_ACTOR,VPS_POSTGRES_PASSWORD,TELEMETRY_ONE_OPENROUTER_API_KEY,TELEMETRY_ONE_AI_PROVIDER,TELEMETRY_ONE_AI_MODEL
           script: |
             set -e
             DEPLOY_DIR="/opt/telemetry-one/backend"
@@ -164,8 +163,6 @@ jobs:
             if [ -n "$TELEMETRY_ONE_AI_MODEL" ]; then
               upsert_env "TELEMETRY_ONE_AI_MODEL" "$TELEMETRY_ONE_AI_MODEL"
             fi
-
-            upsert_env "TELEMETRY_ONE_ENABLE_SESSION_EXPORT" "$TELEMETRY_ONE_ENABLE_SESSION_EXPORT"
 
             chmod 600 "$DEPLOY_DIR/.env"
 
