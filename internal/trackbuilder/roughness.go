@@ -48,18 +48,10 @@ func sourceChordExcessMetrics(points []geometry.Point) (windowCount int, ratioAv
 		return 0, math.NaN(), math.NaN(), math.NaN(), math.NaN(), math.NaN(), math.NaN(), math.NaN(), math.NaN()
 	}
 
-	analysis := points
-	if len(analysis) > 2 && samePoint(analysis[0], analysis[len(analysis)-1]) {
-		analysis = analysis[:len(analysis)-1]
-	}
-	if len(analysis) < sourceChordExcessWindowPoints {
-		return 0, math.NaN(), math.NaN(), math.NaN(), math.NaN(), math.NaN(), math.NaN(), math.NaN(), math.NaN()
-	}
-
-	ratios := make([]float64, 0, len(analysis)-sourceChordExcessWindowPoints+1)
-	excesses := make([]float64, 0, len(analysis)-sourceChordExcessWindowPoints+1)
-	for i := 0; i+sourceChordExcessWindowPoints <= len(analysis); i++ {
-		pathMeters, chordMeters, ok := planarWindowPathAndChord(analysis[i : i+sourceChordExcessWindowPoints])
+	ratios := make([]float64, 0, len(points)-sourceChordExcessWindowPoints+1)
+	excesses := make([]float64, 0, len(points)-sourceChordExcessWindowPoints+1)
+	for i := 0; i+sourceChordExcessWindowPoints <= len(points); i++ {
+		pathMeters, chordMeters, ok := planarWindowPathAndChord(points[i : i+sourceChordExcessWindowPoints])
 		if !ok {
 			continue
 		}

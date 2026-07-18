@@ -50,9 +50,9 @@ func (r Report) String() string {
 	fmt.Fprintf(&b, "source segment length meters: min %.2fm p50 %.2fm p95 %.2fm max %.2fm\n", r.SourceSegmentLengthMinMeters, r.SourceSegmentLengthP50Meters, r.SourceSegmentLengthP95Meters, r.SourceSegmentLengthMaxMeters)
 	fmt.Fprintf(&b, "source planar heading change (X/Z): %.2fdeg total, %.4fdeg/m\n", r.SourceHeadingChangeDegrees, r.SourceHeadingChangePerMeter)
 	if r.SourceLocalChordWindowCount == 0 || math.IsNaN(r.SourceLocalChordRatioAvg) || math.IsNaN(r.SourceLocalChordExcessAvg) {
-		fmt.Fprintf(&b, "source local chord excess (%d-point windows): n/a\n", r.SourceLocalChordWindowPoints)
+		fmt.Fprintf(&b, "source local chord excess (%d-point windows, %d windows): n/a\n", r.SourceLocalChordWindowPoints, r.SourceLocalChordWindowCount)
 	} else {
-		fmt.Fprintf(&b, "source local chord excess (%d-point windows): ratio avg %.4f p50 %.4f p95 %.4f max %.4f; excess meters avg %.2fm p50 %.2fm p95 %.2fm max %.2fm\n", r.SourceLocalChordWindowPoints, r.SourceLocalChordRatioAvg, r.SourceLocalChordRatioP50, r.SourceLocalChordRatioP95, r.SourceLocalChordRatioMax, r.SourceLocalChordExcessAvg, r.SourceLocalChordExcessP50, r.SourceLocalChordExcessP95, r.SourceLocalChordExcessMax)
+		fmt.Fprintf(&b, "source local chord excess (%d-point windows, %d windows): ratio avg %.4f p50 %.4f p95 %.4f max %.4f; excess meters avg %.2fm p50 %.2fm p95 %.2fm max %.2fm\n", r.SourceLocalChordWindowPoints, r.SourceLocalChordWindowCount, r.SourceLocalChordRatioAvg, r.SourceLocalChordRatioP50, r.SourceLocalChordRatioP95, r.SourceLocalChordRatioMax, r.SourceLocalChordExcessAvg, r.SourceLocalChordExcessP50, r.SourceLocalChordExcessP95, r.SourceLocalChordExcessMax)
 	}
 	fmt.Fprintf(&b, "source path length meters: %.2fm\n", r.SourcePathLengthMeters)
 	fmt.Fprintf(&b, "simplified point count: %d\n", r.SimplifiedPointCount)

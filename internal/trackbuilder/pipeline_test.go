@@ -48,7 +48,7 @@ func TestBuildCuratedCatalogFromIngestBatch(t *testing.T) {
 	if report.CatalogLengthMeters != seedLayout.LengthMeters || report.DeltaMeters != report.GeneratedPathLengthMeters-report.CatalogLengthMeters {
 		t.Fatalf("unexpected catalog delta in report: %+v", report)
 	}
-	if report.SourceLocalChordWindowCount == 0 || report.SourceLocalChordWindowPoints != 4 {
+	if report.SourceLocalChordWindowCount != 2 || report.SourceLocalChordWindowPoints != 4 {
 		t.Fatalf("expected local chord diagnostics in report: %+v", report)
 	}
 }
@@ -157,8 +157,8 @@ func TestSourceChordExcessMetricsSummarizeLocalWindowedPaths(t *testing.T) {
 	t.Run("square path", func(t *testing.T) {
 		points := []geometry.Point{{X: 0, Y: 0, Z: 0}, {X: 10, Y: 0, Z: 0}, {X: 10, Y: 0, Z: 10}, {X: 0, Y: 0, Z: 10}, {X: 0, Y: 0, Z: 0}}
 		count, ratioAvg, ratioP50, ratioP95, ratioMax, excessAvg, excessP50, excessP95, excessMax := sourceChordExcessMetrics(points)
-		if count != 1 {
-			t.Fatalf("expected 1 local window, got %d", count)
+		if count != 2 {
+			t.Fatalf("expected 2 local windows across closed boundary, got %d", count)
 		}
 		if ratioAvg != 3 || ratioP50 != 3 || ratioP95 != 3 || ratioMax != 3 {
 			t.Fatalf("expected ratio 3 for square window, got avg=%.4f p50=%.4f p95=%.4f max=%.4f", ratioAvg, ratioP50, ratioP95, ratioMax)
@@ -296,7 +296,7 @@ func TestRDPAndResampleKeepAccumulatedMetersIncreasing(t *testing.T) {
 func TestReportStringIncludesMetricsAndNAToDeviations(t *testing.T) {
 	report := Report{LayoutID: "layout", LayoutName: "Layout", SourcePointCount: 5, SourceSegmentCount: 4, SourceSegmentLengthMinMeters: 0.10, SourceSegmentLengthP50Meters: 1.20, SourceSegmentLengthP95Meters: 2.30, SourceSegmentLengthMaxMeters: 3.40, SourceHeadingChangeDegrees: 45.67, SourceHeadingChangePerMeter: 0.12, SourceLocalChordWindowPoints: 4, SourceLocalChordWindowCount: 1, SourceLocalChordRatioAvg: 1.23, SourceLocalChordRatioP50: 1.20, SourceLocalChordRatioP95: 1.30, SourceLocalChordRatioMax: 1.40, SourceLocalChordExcessAvg: 0.56, SourceLocalChordExcessP50: 0.50, SourceLocalChordExcessP95: 0.70, SourceLocalChordExcessMax: 0.80, SourcePathLengthMeters: 120.12, SimplifiedPointCount: 3, SimplificationDroppedPoints: 2, GeneratedPointCount: 8, GeneratedPathLengthMeters: 123.45, CatalogLengthMeters: 120.00, DeltaMeters: 3.45, DeltaPct: 2.88, StartEndGapMeters: 1.23, MeanDeviationMeters: math.NaN(), MaxDeviationMeters: math.NaN()}
 	text := report.String()
-	for _, want := range []string{"layoutId:", "layoutName:", "source point count:", "source segment count:", "source segment length meters:", "source planar heading change (X/Z):", "source local chord excess (4-point windows):", "source path length meters:", "simplified point count:", "simplification dropped points:", "generated point count:", "generated path length meters:", "catalogLengthMeters:", "deltaMeters:", "deltaPct:", "start-end gap:", "deviation vs catalog centerline: n/a"} {
+	for _, want := range []string{"layoutId:", "layoutName:", "source point count:", "source segment count:", "source segment length meters:", "source planar heading change (X/Z):", "source local chord excess (4-point windows, 1 windows):", "source path length meters:", "simplified point count:", "simplification dropped points:", "generated point count:", "generated path length meters:", "catalogLengthMeters:", "deltaMeters:", "deltaPct:", "start-end gap:", "deviation vs catalog centerline: n/a"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("expected %q in report %q", want, text)
 		}
