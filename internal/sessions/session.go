@@ -1,6 +1,10 @@
 package sessions
 
-import "time"
+import (
+	"time"
+
+	"telemetry-one-backend/internal/tracks"
+)
 
 type Status string
 
@@ -65,21 +69,22 @@ type Response struct {
 }
 
 type DTO struct {
-	ID               string     `json:"id"`
-	Source           string     `json:"source"`
-	Game             string     `json:"game"`
-	Platform         string     `json:"platform"`
-	DriverAlias      string     `json:"driverAlias,omitempty"`
-	StartedAt        time.Time  `json:"startedAt"`
-	EndedAt          *time.Time `json:"endedAt"`
-	TrackID          string     `json:"trackId,omitempty"`
-	LayoutID         string     `json:"layoutId,omitempty"`
-	Status           Status     `json:"status"`
-	DurationMs       *int64     `json:"durationMs,omitempty"`
-	FrameCount       int        `json:"frameCount,omitempty"`
-	EventCount       int        `json:"eventCount,omitempty"`
-	DetectedTrackID  *string    `json:"detectedTrackId,omitempty"`
-	DetectedLayoutID *string    `json:"detectedLayoutId,omitempty"`
+	ID                string                     `json:"id"`
+	Source            string                     `json:"source"`
+	Game              string                     `json:"game"`
+	Platform          string                     `json:"platform"`
+	DriverAlias       string                     `json:"driverAlias,omitempty"`
+	StartedAt         time.Time                  `json:"startedAt"`
+	EndedAt           *time.Time                 `json:"endedAt"`
+	TrackID           string                     `json:"trackId,omitempty"`
+	LayoutID          string                     `json:"layoutId,omitempty"`
+	Status            Status                     `json:"status"`
+	DurationMs        *int64                     `json:"durationMs,omitempty"`
+	FrameCount        int                        `json:"frameCount,omitempty"`
+	EventCount        int                        `json:"eventCount,omitempty"`
+	DetectedTrackID   *string                    `json:"detectedTrackId,omitempty"`
+	DetectedLayoutID  *string                    `json:"detectedLayoutId,omitempty"`
+	TrackCapabilities *tracks.LayoutCapabilities `json:"trackCapabilities,omitempty"`
 }
 
 type FinishRequest struct {

@@ -16,30 +16,32 @@ const (
 	DefaultRetainedFramesPerSession = 12000
 	DefaultDatabaseURL              = ""
 
-	DefaultAIMaxPromptChars         = 40000
-	DefaultAIMaxCompletionTokens    = 2000
-	DefaultAIMaxEventsPerRequest    = 50
-	DefaultAIRetryMaxAttempts       = 3
-	DefaultAIRetryBaseBackoffMs     = 1000
-	DefaultAIRetryMaxBackoffMs      = 10000
-	DefaultAIRatePerSecond          = 10.0
-	DefaultAIRateBurst              = 5
-	DefaultAICostPerPromptToken     = 0.00015
-	DefaultAICostPerCompletionToken = 0.00060
-	DefaultAIModel                  = "gpt-4o-mini"
-	DefaultAIProvider               = "fake"
-	DefaultOpenRouterBaseURL        = "https://openrouter.ai/api/v1"
+	DefaultAIMaxPromptChars            = 40000
+	DefaultAIMaxCompletionTokens       = 2000
+	DefaultAIMaxEventsPerRequest       = 50
+	DefaultAIRetryMaxAttempts          = 3
+	DefaultAIRetryBaseBackoffMs        = 1000
+	DefaultAIRetryMaxBackoffMs         = 10000
+	DefaultAIRatePerSecond             = 10.0
+	DefaultAIRateBurst                 = 5
+	DefaultAICostPerPromptToken        = 0.00015
+	DefaultAICostPerCompletionToken    = 0.00060
+	DefaultAIModel                     = "gpt-4o-mini"
+	DefaultAIProvider                  = "fake"
+	DefaultOpenRouterBaseURL           = "https://openrouter.ai/api/v1"
+	DefaultSkipInvalidApprovedGeometry = false
 )
 
 type Config struct {
-	Addr                     string
-	Env                      string
-	LogLevel                 string
-	ReadHeaderTimeout        time.Duration
-	ShutdownTimeout          time.Duration
-	RetainedFramesPerSession int
-	DatabaseURL              string
-	AdminToken               string
+	Addr                        string
+	Env                         string
+	LogLevel                    string
+	ReadHeaderTimeout           time.Duration
+	ShutdownTimeout             time.Duration
+	RetainedFramesPerSession    int
+	DatabaseURL                 string
+	AdminToken                  string
+	SkipInvalidApprovedGeometry bool
 
 	AIMaxPromptChars         int
 	AIMaxCompletionTokens    int
@@ -118,13 +120,14 @@ func Load() (Config, error) {
 	}
 
 	return Config{
-		Addr:                     stringEnv("TELEMETRY_ONE_ADDR", DefaultAddr),
-		Env:                      stringEnv("TELEMETRY_ONE_ENV", DefaultEnv),
-		LogLevel:                 stringEnv("TELEMETRY_ONE_LOG_LEVEL", DefaultLogLevel),
-		ReadHeaderTimeout:        readHeaderTimeout,
-		ShutdownTimeout:          shutdownTimeout,
-		RetainedFramesPerSession: retainedFramesPerSession,
-		DatabaseURL:              stringEnv("TELEMETRY_ONE_DATABASE_URL", DefaultDatabaseURL),
+		Addr:                        stringEnv("TELEMETRY_ONE_ADDR", DefaultAddr),
+		Env:                         stringEnv("TELEMETRY_ONE_ENV", DefaultEnv),
+		LogLevel:                    stringEnv("TELEMETRY_ONE_LOG_LEVEL", DefaultLogLevel),
+		ReadHeaderTimeout:           readHeaderTimeout,
+		ShutdownTimeout:             shutdownTimeout,
+		RetainedFramesPerSession:    retainedFramesPerSession,
+		DatabaseURL:                 stringEnv("TELEMETRY_ONE_DATABASE_URL", DefaultDatabaseURL),
+		SkipInvalidApprovedGeometry: boolEnv("TELEMETRY_ONE_SKIP_INVALID_APPROVED_GEOMETRY", DefaultSkipInvalidApprovedGeometry),
 
 		AIMaxPromptChars:         aiMaxPromptChars,
 		AIMaxCompletionTokens:    aiMaxCompletionTokens,
@@ -202,4 +205,18 @@ func positiveIntEnv(key string, fallback int) (int, error) {
 	}
 
 	return parsed, nil
+}
+
+func boolEnv(key string, fallback bool) bool {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return fallback
+	}
+
+	return parsed
 }

@@ -29,6 +29,7 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("TELEMETRY_ONE_OPENROUTER_BASE_URL", "")
 	t.Setenv("TELEMETRY_ONE_OPENROUTER_HTTP_REFERER", "")
 	t.Setenv("TELEMETRY_ONE_OPENROUTER_TITLE", "")
+	t.Setenv("TELEMETRY_ONE_SKIP_INVALID_APPROVED_GEOMETRY", "")
 
 	cfg, err := Load()
 	if err != nil {
@@ -104,6 +105,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.OpenRouterTitle != "" {
 		t.Fatalf("expected empty Title, got %q", cfg.OpenRouterTitle)
 	}
+	if cfg.SkipInvalidApprovedGeometry != DefaultSkipInvalidApprovedGeometry {
+		t.Fatalf("expected skip-invalid-approved-geometry default %v, got %v", DefaultSkipInvalidApprovedGeometry, cfg.SkipInvalidApprovedGeometry)
+	}
 }
 
 func TestLoadEnvironmentOverrides(t *testing.T) {
@@ -114,6 +118,7 @@ func TestLoadEnvironmentOverrides(t *testing.T) {
 	t.Setenv("TELEMETRY_ONE_SHUTDOWN_TIMEOUT", "3s")
 	t.Setenv("TELEMETRY_ONE_RETAINED_FRAMES_PER_SESSION", "42")
 	t.Setenv("TELEMETRY_ONE_DATABASE_URL", "postgres://telemetry:secret@localhost:5432/telemetry_one?sslmode=disable")
+	t.Setenv("TELEMETRY_ONE_SKIP_INVALID_APPROVED_GEOMETRY", "true")
 
 	cfg, err := Load()
 	if err != nil {
@@ -140,6 +145,9 @@ func TestLoadEnvironmentOverrides(t *testing.T) {
 	}
 	if cfg.DatabaseURL != "postgres://telemetry:secret@localhost:5432/telemetry_one?sslmode=disable" {
 		t.Fatalf("expected database URL override, got %q", cfg.DatabaseURL)
+	}
+	if !cfg.SkipInvalidApprovedGeometry {
+		t.Fatal("expected skip-invalid-approved-geometry override to load")
 	}
 }
 

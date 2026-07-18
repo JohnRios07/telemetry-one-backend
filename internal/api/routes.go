@@ -34,7 +34,10 @@ const responseAPIVersion = "telemetry-one.api.v2"
 func routes(cfg config.Config, logger *slog.Logger) http.Handler {
 	frameStore := telemetry.NewFrameStore(cfg.RetainedFramesPerSession)
 	rejectionStore := telemetry.NewMemoryRejectionSummaryStore()
-	catalog := tracks.OfficialGT7SeedCatalog()
+	catalog, err := prepareRuntimeCatalog(cfg, tracks.OfficialGT7SeedCatalog())
+	if err != nil {
+		panic(err)
+	}
 	eventStore := events.NewStore(events.DefaultStoredEventsLimit, events.DedupOptions{})
 	lapRepo := laps.NewMemoryRepository()
 	sessionRepo := sessions.NewMemoryRepository()
@@ -77,9 +80,9 @@ func routesWithLapAndSampleRepositories(cfg config.Config, logger *slog.Logger, 
 	mux.HandleFunc("GET /api/v1/settings/bootstrap", settingsBootstrapHandler(cfg))
 	mux.HandleFunc("GET /api/v1/catalog/track-layouts", catalogTrackLayoutsHandler(catalog))
 	mux.HandleFunc("POST /api/v1/sessions", createSessionHandler(sessionRepo, catalog))
-	mux.HandleFunc("GET /api/v1/sessions/{sessionId}", getSessionHandler(sessionRepo, frameStore, eventStore))
+	mux.HandleFunc("GET /api/v1/sessions/{sessionId}", getSessionHandler(sessionRepo, frameStore, eventStore, catalog))
 	mux.HandleFunc("PUT /api/v1/sessions/{sessionId}/track-layout", sessionTrackLayoutHandler(sessionRepo, catalog, frameStore, eventStore))
-	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/finish", finishSessionHandler(sessionRepo, frameStore, eventStore))
+	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/finish", finishSessionHandler(sessionRepo, frameStore, eventStore, catalog))
 	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/frames", ingestFramesHandler(frameStore, eventStore, lapRepo, sampleRepo, sessionRepo, catalog, logger, rejectionStore))
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/track", detectTrackHandler(frameStore, catalog, sessionRepo))
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/events", listEventsHandler(eventStore, sessionRepo))
@@ -182,11 +185,12 @@ func createSessionHandler(repo sessions.Repository, catalog tracks.Catalog) http
 			return
 		}
 
-		writeVersionedJSON(w, http.StatusCreated, sessions.Response{Session: sessions.NewDTO(session, 0, 0)})
+		dto := sessions.NewDTO(session, 0, 0)
+		writeVersionedJSON(w, http.StatusCreated, sessions.Response{Session: enrichSessionDTO(dto, session, catalog)})
 	}
 }
 
-func getSessionHandler(repo sessions.Repository, frameStore telemetry.Store, eventStore events.Repository) http.HandlerFunc {
+func getSessionHandler(repo sessions.Repository, frameStore telemetry.Store, eventStore events.Repository, catalog tracks.Catalog) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		session, err := repo.FindByID(r.Context(), r.PathValue("sessionId"))
 		if err != nil {
@@ -194,7 +198,7 @@ func getSessionHandler(repo sessions.Repository, frameStore telemetry.Store, eve
 			return
 		}
 
-		dto, err := sessionDTO(r, session, frameStore, eventStore)
+		dto, err := sessionDTO(r, session, frameStore, eventStore, catalog)
 		if err != nil {
 			writeSessionDTOError(w, err)
 			return
@@ -206,7 +210,7 @@ func getSessionHandler(repo sessions.Repository, frameStore telemetry.Store, eve
 
 var nowUTC = func() time.Time { return time.Now().UTC() }
 
-func finishSessionHandler(repo sessions.Repository, frameStore telemetry.Store, eventStore events.Repository) http.HandlerFunc {
+func finishSessionHandler(repo sessions.Repository, frameStore telemetry.Store, eventStore events.Repository, catalog tracks.Catalog) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var request sessions.FinishRequest
 		if r.Body != nil && r.ContentLength != 0 {
@@ -226,7 +230,7 @@ func finishSessionHandler(repo sessions.Repository, frameStore telemetry.Store, 
 			return
 		}
 
-		dto, err := sessionDTO(r, session, frameStore, eventStore)
+		dto, err := sessionDTO(r, session, frameStore, eventStore, catalog)
 		if err != nil {
 			writeSessionDTOError(w, err)
 			return
@@ -236,7 +240,7 @@ func finishSessionHandler(repo sessions.Repository, frameStore telemetry.Store, 
 	}
 }
 
-func sessionDTO(r *http.Request, session sessions.Session, frameStore telemetry.Store, eventStore events.Repository) (sessions.DTO, error) {
+func sessionDTO(r *http.Request, session sessions.Session, frameStore telemetry.Store, eventStore events.Repository, catalog tracks.Catalog) (sessions.DTO, error) {
 	frames, err := frameStore.Frames(r.Context(), session.ID)
 	if err != nil {
 		return sessions.DTO{}, fmt.Errorf("%w: %v", errFrameRepository, err)
@@ -251,7 +255,8 @@ func sessionDTO(r *http.Request, session sessions.Session, frameStore telemetry.
 		eventCount = len(storedEvents)
 	}
 
-	return sessions.NewDTO(session, frameCount, eventCount), nil
+	dto := sessions.NewDTO(session, frameCount, eventCount)
+	return enrichSessionDTO(dto, session, catalog), nil
 }
 
 var (
@@ -304,6 +309,32 @@ func catalogHasTrack(catalog tracks.Catalog, trackID string) bool {
 	}
 
 	return false
+}
+
+func prepareRuntimeCatalog(cfg config.Config, catalog tracks.Catalog) (tracks.Catalog, error) {
+	return catalog.PrepareApprovedGeometry(cfg.SkipInvalidApprovedGeometry)
+}
+
+func enrichSessionDTO(dto sessions.DTO, session sessions.Session, catalog tracks.Catalog) sessions.DTO {
+	if caps, ok := sessionTrackCapabilities(session, catalog); ok {
+		dto.TrackCapabilities = &caps
+	}
+
+	return dto
+}
+
+func sessionTrackCapabilities(session sessions.Session, catalog tracks.Catalog) (tracks.LayoutCapabilities, bool) {
+	trackID := session.DetectedTrackID
+	layoutID := session.DetectedLayoutID
+	if trackID == "" || layoutID == "" {
+		trackID = session.TrackID
+		layoutID = ""
+	}
+	if trackID == "" || layoutID == "" {
+		return tracks.LayoutCapabilities{}, false
+	}
+
+	return catalog.LayoutCapabilities(trackID, layoutID), true
 }
 
 func ingestFramesHandler(frameStore telemetry.Store, eventStore events.Repository, lapRepo laps.Repository, sampleRepo laps.SampleRepository, sessionRepo sessions.Repository, catalog tracks.Catalog, logger *slog.Logger, rejectionStore telemetry.RejectionSummaryStore) http.HandlerFunc {
@@ -589,6 +620,10 @@ func detectTrackHandler(frameStore telemetry.Store, catalog tracks.Catalog, sess
 		}
 
 		result := tracks.DetectTrack(frames, catalog, tracks.DetectionOptions{})
+		if result.Status == tracks.DetectionStatusDetected && result.TrackID != nil && result.LayoutID != nil {
+			caps := catalog.LayoutCapabilities(*result.TrackID, *result.LayoutID)
+			result.Capabilities = &caps
+		}
 		writeVersionedJSON(w, http.StatusOK, result)
 	}
 }
@@ -666,9 +701,9 @@ func routesWithAIAndSessionsAndLaps(cfg config.Config, logger *slog.Logger, fram
 	mux.HandleFunc("GET /api/v1/settings/bootstrap", settingsBootstrapHandler(cfg))
 	mux.HandleFunc("GET /api/v1/catalog/track-layouts", catalogTrackLayoutsHandler(catalog))
 	mux.HandleFunc("POST /api/v1/sessions", createSessionHandler(sessionRepo, catalog))
-	mux.HandleFunc("GET /api/v1/sessions/{sessionId}", getSessionHandler(sessionRepo, frameStore, eventStore))
+	mux.HandleFunc("GET /api/v1/sessions/{sessionId}", getSessionHandler(sessionRepo, frameStore, eventStore, catalog))
 	mux.HandleFunc("PUT /api/v1/sessions/{sessionId}/track-layout", sessionTrackLayoutHandler(sessionRepo, catalog, frameStore, eventStore))
-	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/finish", finishSessionHandler(sessionRepo, frameStore, eventStore))
+	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/finish", finishSessionHandler(sessionRepo, frameStore, eventStore, catalog))
 	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/frames", ingestFramesHandler(frameStore, eventStore, lapRepo, sampleRepo, sessionRepo, catalog, logger, rejectionStore))
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/track", detectTrackHandler(frameStore, catalog, sessionRepo))
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/events", listEventsHandler(eventStore, sessionRepo))

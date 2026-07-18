@@ -37,7 +37,20 @@ func NewServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (*ht
 
 func runtimeHandler(ctx context.Context, cfg config.Config, logger *slog.Logger) (http.Handler, func(), error) {
 	if cfg.DatabaseURL == "" {
-		return routes(cfg, logger), nil, nil
+		frameStore := telemetry.NewFrameStore(cfg.RetainedFramesPerSession)
+		rejectionStore := telemetry.NewMemoryRejectionSummaryStore()
+		catalog, err := prepareRuntimeCatalog(cfg, tracks.OfficialGT7SeedCatalog())
+		if err != nil {
+			return nil, nil, err
+		}
+		eventStore := events.NewStore(events.DefaultStoredEventsLimit, events.DedupOptions{})
+		lapRepo := laps.NewMemoryRepository()
+		sessionRepo := sessions.NewMemoryRepository()
+		pipeCfg := ai.PipelineConfigFromConfig(cfg)
+		aiSvc := ai.ComposePipeline(pipeCfg, logger)
+		statsRepo := admin.NewMemoryStatsRepo(sessionRepo, frameStore)
+		summaryRepo := sessions.NewMemorySummaryRepository(sessionRepo, frameStore, eventStore, rejectionStore)
+		return routesWithAIAndSessionsAndLaps(cfg, logger, frameStore, catalog, eventStore, lapRepo, lapRepo, sessionRepo, aiSvc, statsRepo, summaryRepo, rejectionStore), nil, nil
 	}
 
 	db, err := persistence.OpenPostgres(ctx, cfg.DatabaseURL)
@@ -47,7 +60,10 @@ func runtimeHandler(ctx context.Context, cfg config.Config, logger *slog.Logger)
 
 	frameStore := telemetry.NewPostgresStore(db.Pool)
 	rejectionStore := telemetry.NewPostgresRejectionSummaryStore(db.Pool)
-	catalog := tracks.OfficialGT7SeedCatalog()
+	catalog, err := prepareRuntimeCatalog(cfg, tracks.OfficialGT7SeedCatalog())
+	if err != nil {
+		return nil, nil, err
+	}
 	eventStore := events.NewPostgresRepository(db.Pool, events.DedupOptions{})
 	lapRepo := laps.NewPostgresRepository(db.Pool)
 	sessionRepo := sessions.NewPostgresRepository(db.Pool)

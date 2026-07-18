@@ -8,9 +8,10 @@ func OfficialGT7SeedCatalog() Catalog {
 	officialTracklist := officialTracklistAssetSource(gt7TracklistAssetURL)
 
 	return Catalog{
-		CatalogVersion: CatalogVersionV1,
-		GeneratedBy:    "telemetry-one curated GT7 tracklist asset seed",
-		Notes:          "Curated GT7 layout metadata from the official Gran Turismo tracklist asset, cross-checked against gt7info course.csv. Corners are generated as ordinal Corner 1..N entries from NumCorners only; sectors and centerLine are intentionally empty because neither source provides reliable sector boundaries or sampled layout geometry.",
+		CatalogVersion:   CatalogVersionV1,
+		GeneratedBy:      "telemetry-one curated GT7 tracklist asset seed",
+		Notes:            "Curated GT7 layout metadata from the official Gran Turismo tracklist asset, cross-checked against gt7info course.csv. Corners are generated as ordinal Corner 1..N entries from NumCorners only; sectors and centerLine are intentionally empty because neither source provides reliable sector boundaries or sampled layout geometry.",
+		ApprovedGeometry: defaultApprovedGeometryManifest(),
 		Tracks: []CatalogTrack{
 			track("gt7_watkins_glen_international", "Watkins Glen International", "United States", []Source{officialTracklist, gt7Info},
 				layoutFromGT7Info(1240, "Watkins Glen Long Course", 5423, 11, []Source{officialTracklist, gt7Info}),

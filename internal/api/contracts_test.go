@@ -1083,6 +1083,12 @@ func TestDetectTrackContractMatchesRetainedFramesAgainstSeedCatalog(t *testing.T
 	if len(response.Reasons) != 1 || response.Reasons[0] != tracks.DetectionReasonLengthMatch || response.NextAction != tracks.DetectionNextActionUseDetectedLayout {
 		t.Fatalf("expected stable reason and next action, got %+v", response)
 	}
+	if response.Capabilities == nil {
+		t.Fatal("expected detected track response to include capabilities")
+	}
+	if response.Capabilities.DistanceDelta.State != tracks.CapabilityStateUnavailable || response.Capabilities.DistanceDelta.Reason != tracks.CapabilityReasonApprovedGeometryMissing {
+		t.Fatalf("expected explicit unavailable distanceDelta without approved geometry, got %+v", response.Capabilities.DistanceDelta)
+	}
 }
 
 func TestListEventsContractReturnsStoredEvents(t *testing.T) {
@@ -1462,6 +1468,23 @@ func TestIngestFramesPersistsDetectedTrackLayoutOnSession(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("expected session-detect-persist in list response")
+	}
+
+	getRecorder := httptest.NewRecorder()
+	getRequest := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/session-detect-persist", nil)
+	handler.ServeHTTP(getRecorder, getRequest)
+	if getRecorder.Code != http.StatusOK {
+		t.Fatalf("expected session get status %d, got %d body %s", http.StatusOK, getRecorder.Code, getRecorder.Body.String())
+	}
+	var sessionResponse sessions.Response
+	if err := json.Unmarshal(getRecorder.Body.Bytes(), &sessionResponse); err != nil {
+		t.Fatalf("decode session response: %v", err)
+	}
+	if sessionResponse.Session.TrackCapabilities == nil {
+		t.Fatal("expected detected session response to include trackCapabilities")
+	}
+	if sessionResponse.Session.TrackCapabilities.DistanceDelta.State != tracks.CapabilityStateUnavailable {
+		t.Fatalf("expected explicit unavailable distanceDelta without approved geometry, got %+v", sessionResponse.Session.TrackCapabilities.DistanceDelta)
 	}
 }
 

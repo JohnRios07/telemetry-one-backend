@@ -41,10 +41,11 @@ const (
 )
 
 type Catalog struct {
-	CatalogVersion string         `json:"catalogVersion"`
-	GeneratedBy    string         `json:"generatedBy,omitempty"`
-	Notes          string         `json:"notes,omitempty"`
-	Tracks         []CatalogTrack `json:"tracks"`
+	CatalogVersion   string                   `json:"catalogVersion"`
+	GeneratedBy      string                   `json:"generatedBy,omitempty"`
+	Notes            string                   `json:"notes,omitempty"`
+	Tracks           []CatalogTrack           `json:"tracks"`
+	ApprovedGeometry ApprovedGeometryManifest `json:"approvedGeometry,omitempty"`
 }
 
 type CatalogTrack struct {

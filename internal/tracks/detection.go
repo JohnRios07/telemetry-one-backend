@@ -45,6 +45,7 @@ type DetectionResult struct {
 	Reasons              []string            `json:"reasons"`
 	Evidence             []DetectionEvidence `json:"evidence"`
 	NextAction           string              `json:"nextAction"`
+	Capabilities         *LayoutCapabilities `json:"capabilities,omitempty"`
 }
 
 type DetectionEvidence struct {
@@ -120,6 +121,7 @@ func DetectTrack(frames []telemetry.Frame, catalog Catalog, options DetectionOpt
 		})
 	}
 
+	caps := catalog.LayoutCapabilities(best.trackID, best.layoutID)
 	return DetectionResult{
 		Status:               DetectionStatusDetected,
 		TrackID:              stringPtr(best.trackID),
@@ -139,7 +141,8 @@ func DetectTrack(frames []telemetry.Frame, catalog Catalog, options DetectionOpt
 			DifferenceMeters: best.difference,
 			Confidence:       best.confidence,
 		}},
-		NextAction: DetectionNextActionUseDetectedLayout,
+		NextAction:   DetectionNextActionUseDetectedLayout,
+		Capabilities: &caps,
 	}
 }
 

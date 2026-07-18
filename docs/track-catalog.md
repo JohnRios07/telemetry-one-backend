@@ -141,6 +141,15 @@ Source-of-truth validation also rejects unsafe provenance labels. The production
 
 Each source must include `url`, `sourceType`, and `retrievedAt`. GT7 UDP telemetry is never a source for track, layout, sector, or corner names. If metadata lacks provenance, consumers must keep the selected display name unknown rather than inventing or copying a heuristic label.
 
+## Runtime Approved Geometry
+
+Telemetry One now keeps a separate runtime-approved geometry overlay for distance-based analysis. It is not part of the runtime source-of-truth allowlist and it does not reuse review-only curated geometry provenance.
+
+- Approved geometry is loaded separately at startup and joined in memory by `trackId` + `layoutId`.
+- Approved geometry must validate monotonic `accumulatedMeters`, closed-loop consistency, and declared length consistency before it can activate distance-based capabilities.
+- Invalid approved geometry fails closed by default. An emergency skip mode may exclude invalid layouts instead of blocking startup.
+- Layouts without approved geometry stay explicit about unavailable distance-analysis capabilities rather than projecting false certainty.
+
 ## Official GT7 / gt7info Seed
 
 `OfficialGT7SeedCatalog()` is a curated GT7 seed for runtime detection. It combines the public Gran Turismo tracklist page and its generated JS asset as the first-party source of layout ID, name, length, and corner count, with the upstream gt7info `course.csv` data source as a secondary cross-check:

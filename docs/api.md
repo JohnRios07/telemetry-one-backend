@@ -180,6 +180,8 @@ Request:
 
 The manual pair must exist in the sourced catalog and the layout must belong to the selected track. The backend persists the pair on the session record and returns the standard versioned session response.
 
+When a session response can resolve a concrete layout, the backend may also include `trackCapabilities` with explicit per-capability states for Flutter to render.
+
 ### Session Validation
 
 All V2 endpoints validate `{sessionId}` against the backend session repository:
@@ -670,6 +672,8 @@ Example unknown response after a completed lap with no catalog match:
 ```
 
 The endpoint does not infer official geometry, sectors, corners, or names from telemetry. Names appear only when a provenance-backed catalog layout is matched. The current official seed has no sourced sector boundaries or corner-name catalog, so this endpoint does not emit sector or corner names.
+
+When a detected layout is matched, the response also includes a `capabilities` object with per-capability `{state, reason?}` entries. Layouts without runtime-approved geometry keep geometry-dependent capabilities explicitly `unavailable`.
 
 ## Admin Ingest Stats
 
