@@ -42,10 +42,10 @@ func TestBuildCuratedCatalogFromIngestBatch(t *testing.T) {
 	if report.LayoutID != layout.ID || report.LayoutName != layout.Name {
 		t.Fatalf("unexpected layout identity in report: %+v", report)
 	}
-	if report.PointCount != len(layout.CenterLine) || report.TelemetryPathLengthMeters <= 0 || math.IsNaN(report.StartEndGapMeters) {
+	if report.SourcePointCount != len(testFramesLoop()) || report.SimplifiedPointCount < 2 || report.GeneratedPointCount != len(layout.CenterLine) || report.GeneratedPathLengthMeters <= 0 || report.SourcePathLengthMeters <= 0 || math.IsNaN(report.StartEndGapMeters) {
 		t.Fatalf("unexpected report: %+v", report)
 	}
-	if report.CatalogLengthMeters != seedLayout.LengthMeters || report.DeltaMeters != report.TelemetryPathLengthMeters-report.CatalogLengthMeters {
+	if report.CatalogLengthMeters != seedLayout.LengthMeters || report.DeltaMeters != report.GeneratedPathLengthMeters-report.CatalogLengthMeters {
 		t.Fatalf("unexpected catalog delta in report: %+v", report)
 	}
 }
@@ -62,7 +62,7 @@ func TestBuildResolvesTsukubaSeedLayout(t *testing.T) {
 	if got := catalog.Tracks[0].Layouts[0].ID; got != "gt7_layout_471" {
 		t.Fatalf("expected Tsukuba layout to resolve, got %q", got)
 	}
-	if report.PointCount != len(catalog.Tracks[0].Layouts[0].CenterLine) {
+	if report.SimplifiedPointCount > report.SourcePointCount || report.GeneratedPointCount != len(catalog.Tracks[0].Layouts[0].CenterLine) {
 		t.Fatalf("unexpected report/catalog mismatch: %+v %+v", report, catalog.Tracks[0].Layouts[0])
 	}
 }
@@ -133,7 +133,7 @@ func TestBuildFiltersInvalidPointsAndIsDeterministic(t *testing.T) {
 	if !bytes.Equal(firstEncoded, secondEncoded) {
 		t.Fatalf("expected identical catalog JSON for identical input\nfirst: %s\nsecond: %s", firstEncoded, secondEncoded)
 	}
-	if firstReport.TelemetryPathLengthMeters != secondReport.TelemetryPathLengthMeters || firstReport.PointCount != secondReport.PointCount || firstReport.StartEndGapMeters != secondReport.StartEndGapMeters {
+	if firstReport.SourcePathLengthMeters != secondReport.SourcePathLengthMeters || firstReport.GeneratedPathLengthMeters != secondReport.GeneratedPathLengthMeters || firstReport.SourcePointCount != secondReport.SourcePointCount || firstReport.SimplifiedPointCount != secondReport.SimplifiedPointCount || firstReport.GeneratedPointCount != secondReport.GeneratedPointCount || firstReport.StartEndGapMeters != secondReport.StartEndGapMeters {
 		t.Fatalf("expected identical stable report fields, got %+v and %+v", firstReport, secondReport)
 	}
 	if firstReport.CatalogLengthMeters != secondReport.CatalogLengthMeters || firstReport.DeltaMeters != secondReport.DeltaMeters || firstReport.DeltaPct != secondReport.DeltaPct {
@@ -150,7 +150,7 @@ func TestBuildFiltersInvalidPointsAndIsDeterministic(t *testing.T) {
 	if len(layout.CenterLine) < 2 {
 		t.Fatalf("expected centerline points after filtering invalid input, got %+v", layout.CenterLine)
 	}
-	if firstReport.PointCount != len(layout.CenterLine) {
+	if firstReport.SimplificationDroppedPoints != firstReport.SourcePointCount-firstReport.SimplifiedPointCount || firstReport.GeneratedPointCount != len(layout.CenterLine) {
 		t.Fatalf("report point count should match catalog centerline, got %+v and %d", firstReport, len(layout.CenterLine))
 	}
 }
@@ -182,7 +182,7 @@ func TestBuildAcceptsRequestsLargerThanIngestBatchLimit(t *testing.T) {
 	if len(catalog.Tracks) != 1 || len(catalog.Tracks[0].Layouts) != 1 {
 		t.Fatalf("expected generated catalog for long request, got %+v", catalog.Tracks)
 	}
-	if report.PointCount < 2 || report.TelemetryPathLengthMeters <= 0 {
+	if report.SimplifiedPointCount < 2 || report.GeneratedPointCount < 2 || report.GeneratedPathLengthMeters <= 0 || report.SourcePathLengthMeters <= 0 {
 		t.Fatalf("unexpected report for long request: %+v", report)
 	}
 }
@@ -219,9 +219,9 @@ func TestRDPAndResampleKeepAccumulatedMetersIncreasing(t *testing.T) {
 }
 
 func TestReportStringIncludesMetricsAndNAToDeviations(t *testing.T) {
-	report := Report{LayoutID: "layout", LayoutName: "Layout", TelemetryPathLengthMeters: 123.45, CatalogLengthMeters: 120.00, DeltaMeters: 3.45, DeltaPct: 2.88, PointCount: 8, StartEndGapMeters: 1.23, MeanDeviationMeters: math.NaN(), MaxDeviationMeters: math.NaN()}
+	report := Report{LayoutID: "layout", LayoutName: "Layout", SourcePointCount: 5, SourcePathLengthMeters: 120.12, SimplifiedPointCount: 3, SimplificationDroppedPoints: 2, GeneratedPointCount: 8, GeneratedPathLengthMeters: 123.45, CatalogLengthMeters: 120.00, DeltaMeters: 3.45, DeltaPct: 2.88, StartEndGapMeters: 1.23, MeanDeviationMeters: math.NaN(), MaxDeviationMeters: math.NaN()}
 	text := report.String()
-	for _, want := range []string{"layoutId:", "layoutName:", "telemetry/generated path length meters:", "catalogLengthMeters:", "deltaMeters:", "deltaPct:", "points:", "start-end gap:", "deviation vs catalog centerline: n/a"} {
+	for _, want := range []string{"layoutId:", "layoutName:", "source point count:", "source path length meters:", "simplified point count:", "simplification dropped points:", "generated point count:", "generated path length meters:", "catalogLengthMeters:", "deltaMeters:", "deltaPct:", "start-end gap:", "deviation vs catalog centerline: n/a"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("expected %q in report %q", want, text)
 		}
