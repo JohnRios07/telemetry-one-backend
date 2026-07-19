@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"telemetry-one-backend/internal/events"
 )
 
 type serviceTestAdapter struct {
@@ -37,6 +39,36 @@ func TestServiceSatisfiesAIServiceInterface(t *testing.T) {
 	}
 	if len(resp.ReferencedEvents) != 1 {
 		t.Fatalf("expected 1 referenced event, got %d", len(resp.ReferencedEvents))
+	}
+}
+
+func TestServiceAcceptsSignalsOnlyWithoutGeometry(t *testing.T) {
+	adapter := &serviceTestAdapter{
+		result: ProviderResponse{
+			Content:      "Signals-only advice: focus on lap consistency and telemetry reliability.",
+			Model:        "test-model",
+			FinishReason: "stop",
+			Usage:        UsageInfo{PromptTokens: 8, CompletionTokens: 12, TotalTokens: 20},
+		},
+	}
+	controller := &Controller{Budget: DefaultTokenBudget(), Retry: DefaultRetryPolicy()}
+	svc := NewService(adapter, controller)
+
+	req := validGatewayRequest(t, GatewayModeEngineer)
+	req.Input.Events = nil
+	req.Input.Session.Track = nil
+	req.Input.Session.Layout = nil
+	req.Input.Signals = []Signal{{Kind: "telemetry_gap_warning", Severity: events.SeverityLow, Summary: "Telemetry gaps were recorded on 2 completed laps."}}
+
+	resp, err := svc.Analyze(context.Background(), req)
+	if err != nil {
+		t.Fatalf("expected signals-only request without geometry to succeed: %v", err)
+	}
+	if resp.Summary == "" {
+		t.Fatal("expected non-empty advice summary")
+	}
+	if len(resp.Signals) != 1 || resp.Signals[0].Kind != "telemetry_gap_warning" {
+		t.Fatalf("expected signals to round-trip through production service, got %+v", resp.Signals)
 	}
 }
 

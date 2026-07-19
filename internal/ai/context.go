@@ -12,6 +12,7 @@ type ContextBuilder struct{}
 type ContextSummary struct {
 	Session SessionSummary
 	Events  []EventSummary
+	Signals []Signal
 	Safety  SafetySummary
 }
 
@@ -43,11 +44,13 @@ func NewContextBuilder() ContextBuilder {
 func (b ContextBuilder) Build(input ConsumerInput) ContextSummary {
 	session := b.sessionSummary(input.Session)
 	events_ := b.eventSummaries(input.Events)
+	signals := b.signalSummaries(input.Signals)
 	safety := b.safetySummary(input.Safety)
 
 	return ContextSummary{
 		Session: session,
 		Events:  events_,
+		Signals: signals,
 		Safety:  safety,
 	}
 }
@@ -83,6 +86,20 @@ func (b ContextBuilder) BuildPromptSummary(input ConsumerInput) string {
 		))
 		if ev.MetricSummary != "" {
 			parts = append(parts, fmt.Sprintf("    metrics: %s", ev.MetricSummary))
+		}
+	}
+
+	if len(summary.Signals) > 0 {
+		parts = append(parts, "")
+		parts = append(parts, fmt.Sprintf("Signals (%d total):", len(summary.Signals)))
+		for _, signal := range summary.Signals {
+			parts = append(parts, fmt.Sprintf("  - [%s] %s", signal.Kind, signal.Summary))
+			if signal.Severity != "" {
+				parts = append(parts, fmt.Sprintf("    severity: %s", signal.Severity))
+			}
+			for _, detail := range signal.Details {
+				parts = append(parts, fmt.Sprintf("    detail: %s", detail))
+			}
 		}
 	}
 
@@ -127,6 +144,16 @@ func (b ContextBuilder) eventSummaries(envelopes []EventEnvelope) []EventSummary
 			MetricSummary: metricSummary,
 		})
 	}
+	return summaries
+}
+
+func (b ContextBuilder) signalSummaries(signals []Signal) []Signal {
+	if len(signals) == 0 {
+		return nil
+	}
+
+	summaries := make([]Signal, len(signals))
+	copy(summaries, signals)
 	return summaries
 }
 

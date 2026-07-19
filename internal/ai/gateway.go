@@ -9,7 +9,7 @@ import (
 
 var (
 	ErrEmptyGatewayRequest    = errors.New("gateway request must not be empty")
-	ErrNoEventsInGateway      = errors.New("gateway request must contain at least one engineer event")
+	ErrNoEventsInGateway      = errors.New("gateway request must contain at least one engineer event or derived signal")
 	ErrUnsupportedGatewayMode = errors.New("unsupported gateway mode")
 	ErrProviderNotAvailable   = errors.New("AI provider is not available")
 	ErrProviderRejected       = errors.New("AI provider rejected the request")
@@ -63,7 +63,7 @@ func (r GatewayRequest) Validate() error {
 	if r.Input.ContractVersion == "" {
 		return ErrEmptyGatewayRequest
 	}
-	if len(r.Input.Events) == 0 {
+	if len(r.Input.Events) == 0 && len(r.Input.Signals) == 0 {
 		return ErrNoEventsInGateway
 	}
 	if err := r.Input.Validate(); err != nil {
@@ -82,6 +82,7 @@ type GatewayResponse struct {
 	EventExplanations []EventExplanation  `json:"eventExplanations,omitempty"`
 	Recommendations   []string            `json:"recommendations,omitempty"`
 	ReferencedEvents  []string            `json:"referencedEvents,omitempty"`
+	Signals           []Signal            `json:"signals,omitempty"`
 	ProviderInfo      ProviderResultInfo  `json:"providerInfo"`
 	Status            string              `json:"status"`
 	Error             string              `json:"error,omitempty"`

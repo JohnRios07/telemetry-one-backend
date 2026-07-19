@@ -17,6 +17,18 @@ func TestConsumerInputValidateAcceptsStructuredEngineerEvents(t *testing.T) {
 	}
 }
 
+func TestConsumerInputValidateAcceptsDerivedSignalsWithoutEvents(t *testing.T) {
+	input := validConsumerInput()
+	input.Events = nil
+	input.Session.Track = nil
+	input.Session.Layout = nil
+	input.Signals = []Signal{{Kind: "lap_pace_regression", Severity: events.SeverityMedium, Summary: "Latest completed lap is slower than the session best."}}
+
+	if err := input.Validate(); err != nil {
+		t.Fatalf("expected valid AI consumer input with derived signals only: %v", err)
+	}
+}
+
 func TestDecodeConsumerInputJSONRejectsRawTelemetryFields(t *testing.T) {
 	payload := strings.Replace(validConsumerInputJSON(t), `"safety":`, `"frames":[{"positionX":123.4,"speedMps":58.33,"throttle":0.82}],"safety":`, 1)
 

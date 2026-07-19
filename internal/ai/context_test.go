@@ -63,6 +63,22 @@ func TestContextBuilderBuildPromptSummaryFormatsNicely(t *testing.T) {
 	}
 }
 
+func TestContextBuilderBuildPromptSummaryRendersSignals(t *testing.T) {
+	builder := NewContextBuilder()
+	input := validConsumerInput()
+	input.Events = nil
+	input.Signals = []Signal{{Kind: "lap_pace_regression", Severity: events.SeverityMedium, Summary: "Latest completed lap is slower than the session best.", Details: []string{"latestLapMs=92100", "bestLapMs=90200"}}}
+
+	promptSummary := builder.BuildPromptSummary(input)
+
+	if !strings.Contains(promptSummary, "Signals (1 total)") {
+		t.Fatalf("expected signal count in prompt summary, got %q", promptSummary)
+	}
+	if !strings.Contains(promptSummary, "lap_pace_regression") || !strings.Contains(promptSummary, "bestLapMs=90200") {
+		t.Fatalf("expected signal details in prompt summary, got %q", promptSummary)
+	}
+}
+
 func TestContextBuilderBuildPromptSummaryRendersUnknownLayoutCleanly(t *testing.T) {
 	builder := NewContextBuilder()
 	input := validConsumerInput()

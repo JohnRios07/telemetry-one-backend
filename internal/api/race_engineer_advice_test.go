@@ -16,10 +16,19 @@ import (
 	"telemetry-one-backend/internal/ai"
 	"telemetry-one-backend/internal/config"
 	"telemetry-one-backend/internal/events"
+	"telemetry-one-backend/internal/laps"
 	"telemetry-one-backend/internal/sessions"
 	"telemetry-one-backend/internal/telemetry"
 	"telemetry-one-backend/internal/tracks"
 )
+
+type productionAdviceAdapter struct {
+	result ai.ProviderResponse
+}
+
+func (a *productionAdviceAdapter) Analyze(_ context.Context, _ ai.ProviderRequest) (ai.ProviderResponse, error) {
+	return a.result, nil
+}
 
 type spyAdviceAIService struct {
 	calls    int
@@ -138,6 +147,122 @@ func TestRaceEngineerAdviceNoEventsSkipsProvider(t *testing.T) {
 	}
 	if len(response.ReferencedEvents) != 0 || response.Window.ProviderCalled || response.Window.SelectedEventCount != 0 {
 		t.Fatalf("unexpected no-events metadata: %+v", response)
+	}
+}
+
+func TestRaceEngineerAdviceUsesDerivedSignalsWithoutGeometry(t *testing.T) {
+	eventStore := events.NewStore(100, events.DedupOptions{})
+	seedAPIEvent(t, eventStore, apiEngineerEvent(func(event *events.EngineerEvent) {
+		event.EventID = "event-offtrack"
+		event.SessionID = "session-signal"
+		event.Type = events.TypeOffTrackStint
+		event.Severity = events.SeverityMedium
+		event.TimestampUnixMs = 1720656180000
+		event.TimeRange = &events.TimeRange{StartUnixMs: event.TimestampUnixMs - 1000, EndUnixMs: event.TimestampUnixMs}
+		event.LapNumber = 3
+	}))
+	lapRepo := laps.NewMemoryRepository()
+	ctx := context.Background()
+	if err := lapRepo.UpsertCompleted(ctx, []laps.CompletedLap{
+		{SessionID: "session-signal", LapNumber: 1, LapTimeMs: 92100, CompletedAtUnixMs: 1720656000000, TelemetryGapCount: 0},
+		{SessionID: "session-signal", LapNumber: 2, LapTimeMs: 97800, CompletedAtUnixMs: 1720656060000, TelemetryGapCount: 2},
+		{SessionID: "session-signal", LapNumber: 3, LapTimeMs: 100400, CompletedAtUnixMs: 1720656120000, TelemetryGapCount: 1},
+	}); err != nil {
+		t.Fatalf("seed completed laps: %v", err)
+	}
+	adapter := &productionAdviceAdapter{result: ai.ProviderResponse{Content: "Keep pushing the exits and protect the tyres.", Model: "test-model", FinishReason: "stop", Usage: ai.UsageInfo{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15}}}
+	controller := &ai.Controller{Budget: ai.DefaultTokenBudget(), Retry: ai.DefaultRetryPolicy()}
+	aiSvc := ai.NewService(adapter, controller)
+	cfg := config.Config{Addr: ":0", Env: "test"}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	frameStore := telemetry.NewFrameStore(100)
+	catalog := tracks.OfficialGT7SeedCatalog()
+	sessionRepo := sessions.NewMemoryRepository()
+	seedTestSession(t, sessionRepo, "session-signal")
+	statsRepo := admin.NewMemoryStatsRepo(sessionRepo, frameStore)
+	summaryRepo := sessions.NewMemorySummaryRepository(sessionRepo, frameStore, eventStore)
+	handler := routesWithAIAndSessionsAndLaps(cfg, logger, frameStore, catalog, eventStore, lapRepo, lapRepo, sessionRepo, aiSvc, statsRepo, summaryRepo)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/session-signal/race-engineer/advice", strings.NewReader(`{}`))
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d body %s", http.StatusOK, recorder.Code, recorder.Body.String())
+	}
+	var response raceEngineerAdviceResponse
+	decodeAdviceResponse(t, recorder, &response)
+	if response.Status != ai.StatusSuccess || response.Window.ProviderCalled != true || response.Window.DerivedSignalCount == 0 {
+		t.Fatalf("expected successful advice with derived signals, got %+v", response)
+	}
+	if len(response.Signals) != 3 {
+		t.Fatalf("expected all recent signals in response, got %+v", response.Signals)
+	}
+	for _, kind := range []string{"lap_pace_regression", "telemetry_gap_warning", "off_track_stint_warning"} {
+		if !signalKindsContain(response.Signals, kind) {
+			t.Fatalf("expected signal %s in response, got %+v", kind, response.Signals)
+		}
+	}
+	if response.ProviderInfo.Model != "test-model" || response.Message == "" {
+		t.Fatalf("expected production AI service response, got %+v", response)
+	}
+}
+
+func TestRaceEngineerAdviceFiltersStaleDerivedSignalsBySince(t *testing.T) {
+	eventStore := events.NewStore(100, events.DedupOptions{})
+	seedAPIEvent(t, eventStore, apiEngineerEvent(func(event *events.EngineerEvent) {
+		event.EventID = "event-1"
+		event.SessionID = "session-window"
+		event.TimestampUnixMs = 1720656000000
+		event.TimeRange = &events.TimeRange{StartUnixMs: event.TimestampUnixMs - 1000, EndUnixMs: event.TimestampUnixMs}
+		event.LapNumber = 1
+	}))
+	seedAPIEvent(t, eventStore, apiEngineerEvent(func(event *events.EngineerEvent) {
+		event.EventID = "event-2"
+		event.SessionID = "session-window"
+		event.TimestampUnixMs = 1720656300000
+		event.TimeRange = &events.TimeRange{StartUnixMs: event.TimestampUnixMs - 1000, EndUnixMs: event.TimestampUnixMs}
+		event.LapNumber = 2
+	}))
+
+	lapRepo := laps.NewMemoryRepository()
+	if err := lapRepo.UpsertCompleted(context.Background(), []laps.CompletedLap{
+		{SessionID: "session-window", LapNumber: 1, LapTimeMs: 91000, CompletedAtUnixMs: 1720656000000, TelemetryGapCount: 4},
+		{SessionID: "session-window", LapNumber: 2, LapTimeMs: 94000, CompletedAtUnixMs: 1720656300000, TelemetryGapCount: 0},
+	}); err != nil {
+		t.Fatalf("seed laps: %v", err)
+	}
+
+	adapter := &productionAdviceAdapter{result: ai.ProviderResponse{Content: "Recent window only.", Model: "test-model", FinishReason: "stop", Usage: ai.UsageInfo{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15}}}
+	controller := &ai.Controller{Budget: ai.DefaultTokenBudget(), Retry: ai.DefaultRetryPolicy()}
+	aiSvc := ai.NewService(adapter, controller)
+	cfg := config.Config{Addr: ":0", Env: "test"}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	frameStore := telemetry.NewFrameStore(100)
+	catalog := tracks.OfficialGT7SeedCatalog()
+	sessionRepo := sessions.NewMemoryRepository()
+	seedTestSession(t, sessionRepo, "session-window")
+	statsRepo := admin.NewMemoryStatsRepo(sessionRepo, frameStore)
+	summaryRepo := sessions.NewMemorySummaryRepository(sessionRepo, frameStore, eventStore)
+	handler := routesWithAIAndSessionsAndLaps(cfg, logger, frameStore, catalog, eventStore, lapRepo, lapRepo, sessionRepo, aiSvc, statsRepo, summaryRepo)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/session-window/race-engineer/advice", strings.NewReader(`{"sinceUnixMs":1720656200000}`))
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d body %s", http.StatusOK, recorder.Code, recorder.Body.String())
+	}
+	var response raceEngineerAdviceResponse
+	decodeAdviceResponse(t, recorder, &response)
+	if response.Window.DerivedSignalCount != 0 {
+		t.Fatalf("expected stale laps and off-track events to be filtered out, got %+v", response.Window)
+	}
+	if len(response.Signals) != 0 {
+		t.Fatalf("expected no derived signals in recent window, got %+v", response.Signals)
+	}
+	if response.Window.SelectedEventCount != 1 || len(response.ReferencedEvents) != 1 || response.ReferencedEvents[0] != "event-2" {
+		t.Fatalf("expected only the recent event to survive the window, got %+v", response)
 	}
 }
 
@@ -635,6 +760,24 @@ func referencedEventIDsFromGateway(req ai.GatewayRequest) []string {
 func gatewayRequestContainsEvent(req ai.GatewayRequest, eventID string) bool {
 	for _, envelope := range req.Input.Events {
 		if envelope.Event.EventID == eventID {
+			return true
+		}
+	}
+	return false
+}
+
+func gatewayRequestContainsSignal(req ai.GatewayRequest, kind string) bool {
+	for _, signal := range req.Input.Signals {
+		if signal.Kind == kind {
+			return true
+		}
+	}
+	return false
+}
+
+func signalKindsContain(signals []ai.Signal, kind string) bool {
+	for _, signal := range signals {
+		if signal.Kind == kind {
 			return true
 		}
 	}

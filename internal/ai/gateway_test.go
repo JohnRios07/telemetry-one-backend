@@ -55,6 +55,18 @@ func TestGatewayRequestValidateRejectsNoEvents(t *testing.T) {
 	}
 }
 
+func TestGatewayRequestValidateAcceptsSignalsOnly(t *testing.T) {
+	req := validGatewayRequest(t, GatewayModeEngineer)
+	req.Input.Events = nil
+	req.Input.Session.Track = nil
+	req.Input.Session.Layout = nil
+	req.Input.Signals = []Signal{{Kind: "telemetry_gap_warning", Severity: events.SeverityLow, Summary: "Telemetry gaps were recorded on 2 completed laps."}}
+
+	if err := req.Validate(); err != nil {
+		t.Fatalf("expected gateway request with derived signals to validate, got %v", err)
+	}
+}
+
 func TestGatewayRequestRejectsRawTelemetryViaConsumerInput(t *testing.T) {
 	req := validGatewayRequest(t, GatewayModeEngineer)
 	req.Input.Events[0].Event.Metrics = []events.MetricEvidence{
@@ -107,7 +119,7 @@ func TestGatewayResponseEventExplanationsAreTyped(t *testing.T) {
 		EventExplanations: []EventExplanation{
 			{EventID: "event-1", Type: events.TypeLateThrottle, Explanation: "late throttle on exit", Relevance: 0.85},
 		},
-		Recommendations: []string{"work on earlier throttle application"},
+		Recommendations:  []string{"work on earlier throttle application"},
 		ReferencedEvents: []string{"event-1"},
 	}
 
@@ -205,5 +217,3 @@ func marshalGatewayRequest(t *testing.T, req GatewayRequest) []byte {
 
 	return payload
 }
-
-

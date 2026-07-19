@@ -40,7 +40,10 @@ func (s *FallbackService) Analyze(ctx context.Context, req GatewayRequest) (Gate
 
 	resp, err := s.inner.Analyze(ctx, req)
 	if err == nil {
-		if resp.Summary == "" || len(resp.ReferencedEvents) == 0 {
+		if resp.Summary == "" {
+			return s.buildFallbackResponse(req, ErrInvalidProviderResponse, StatusInvalidResponse), nil
+		}
+		if len(req.Input.Events) > 0 && len(resp.ReferencedEvents) == 0 {
 			return s.buildFallbackResponse(req, ErrInvalidProviderResponse, StatusInvalidResponse), nil
 		}
 		resp.Status = StatusSuccess
@@ -60,6 +63,7 @@ func (s *FallbackService) buildFallbackResponse(req GatewayRequest, err error, s
 		EventExplanations: nil,
 		Recommendations:  nil,
 		ReferencedEvents: referencedEvents,
+		Signals:          req.Input.Signals,
 		ProviderInfo: ProviderResultInfo{
 			FinishReason: status,
 			Usage:        UsageInfo{},
@@ -125,9 +129,27 @@ func (s *FallbackService) buildFallbackSummary(input ConsumerInput, status strin
 		parts = append(parts, fmt.Sprintf("  ... and %d more event(s)", remaining))
 	}
 
+	if len(contextSummary.Signals) > 0 {
+		parts = append(parts, "")
+		parts = append(parts, fmt.Sprintf("Derived Signals (%d total):", len(contextSummary.Signals)))
+		for _, signal := range contextSummary.Signals {
+			parts = append(parts, fmt.Sprintf("  [%s] %s", signal.Kind, signal.Summary))
+			if signal.Severity != "" {
+				parts = append(parts, fmt.Sprintf("    severity: %s", signal.Severity))
+			}
+			for _, detail := range signal.Details {
+				parts = append(parts, fmt.Sprintf("    detail: %s", detail))
+			}
+		}
+	}
+
 	parts = append(parts, "")
 	parts = append(parts, "No AI explanations or recommendations are available for this request.")
-	parts = append(parts, "Review the highest severity events above for manual analysis.")
+	if len(contextSummary.Signals) > 0 {
+		parts = append(parts, "Review the derived signals above for manual analysis.")
+	} else {
+		parts = append(parts, "Review the highest severity events above for manual analysis.")
+	}
 
 	return strings.Join(parts, "\n")
 }
